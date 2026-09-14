@@ -11,13 +11,14 @@ import { drawSample, SAMPLES, type Sample } from './samples'
  * The landing page's showroom. Every object is built from `SAMPLES` through the same trace →
  * extrude / inflate pipeline as the studio; nothing is downloaded.
  *
- * Two layouts share the renderer, environment and materials:
+ * Three layouts share the renderer, environment and materials:
+ *   hero    — the mark alone, centred, turning slowly on its own and leaning with the pointer.
  *   story   — one object (the Vitrum mark) on the right, turning as the page scrolls. The camera
  *             never moves; scroll progress drives the object's rotation, so it always reads as
  *             "the thing being talked about" beside the text on the left.
  *   gallery — a fixed camera over two rows: six icons above, two inflated products below.
  */
-export type Layout = 'story' | 'gallery'
+export type Layout = 'hero' | 'story' | 'gallery'
 
 interface Placed {
   id: string
@@ -31,7 +32,7 @@ export const GALLERY_ICONS = ['heart', 'bolt', 'star', 'play', 'leaf', 'ring']
 export const GALLERY_PRODUCTS = ['armchair', 'mug']
 const ICON_GAP = 150
 const ROW_ICONS_Y = 70
-const ROW_PRODUCTS_Y = -210
+const ROW_PRODUCTS_Y = -200
 
 export class Showcase {
   readonly renderer: THREE.WebGLRenderer
@@ -117,15 +118,19 @@ export class Showcase {
   /** Fixed camera per layout. A narrow viewport stacks: object above the text. */
   private placeCamera() {
     const n = this.opts.narrow
-    if (this.opts.layout === 'story') {
+    if (this.opts.layout === 'hero') {
+      // Centred, a little above the middle so the headline has the lower third.
+      this.camera.position.set(0, 20, n ? 900 : 880)
+      this.target.set(0, n ? -95 : -78, 0)
+    } else if (this.opts.layout === 'story') {
       this.camera.position.set(0, 30, n ? 960 : 520)
       // Look left of the object on desktop so it sits in the right half; below it on phones so
       // it rides in the upper half above the copy.
       this.target.set(n ? 0 : -78, n ? -125 : 0, 0)
     } else {
       const centre = (ICON_GAP * (GALLERY_ICONS.length - 1)) / 2
-      this.camera.position.set(centre, 0, n ? 4200 : 1320)
-      this.target.set(centre, n ? -60 : -64, 0)
+      this.camera.position.set(centre, 0, n ? 4200 : 1420)
+      this.target.set(centre, n ? -60 : -85, 0)
     }
     this.camera.lookAt(this.target)
   }
@@ -133,9 +138,9 @@ export class Showcase {
   /** Build the layout's objects, yielding between them so the page stays responsive. */
   async load() {
     const idle = () => new Promise<void>(r => setTimeout(r, 0))
-    if (this.opts.layout === 'story') {
+    if (this.opts.layout !== 'gallery') {
       const brand = SAMPLES.find(s => s.id === 'vitrum')!
-      this.story = this.place(brand, new THREE.Vector3(0, 0, 0), 120, 'story')
+      this.story = this.place(brand, new THREE.Vector3(0, 0, 0), this.opts.layout === 'hero' ? 130 : 120, 'story')
       this.onReady?.()
       return
     }
@@ -317,7 +322,7 @@ export class Showcase {
     // Scroll and pointer both ease so a fast wheel flick reads as one smooth turn.
     this.shownProgress += (this.progress - this.shownProgress) * (1 - Math.exp(-dt * 5))
     this.shownPointer.lerp(this.pointer, 1 - Math.exp(-dt * 4))
-    const story = this.opts.layout === 'story'
+    const layout = this.opts.layout
 
     for (const o of this.placed) {
       const g = o.group
@@ -326,8 +331,12 @@ export class Showcase {
       const e = 1 - Math.pow(1 - landing, 3)
       g.position.y = o.home.y - 40 * (1 - e) + Math.sin(t * 0.7 + o.phase) * 3
       g.scale.setScalar(0.92 + 0.08 * e)
-      if (story) {
-        // One full turn over the three scrolled beats, plus a slow idle sway so it never sits still.
+      if (layout === 'hero') {
+        // A slow sway rather than a full spin: the face always reads, never the thin edge.
+        g.rotation.y = Math.sin(t * 0.32) * 0.55 + this.shownPointer.x * 0.16
+        g.rotation.x = Math.sin(t * 0.3) * 0.05 - this.shownPointer.y * 0.08
+      } else if (layout === 'story') {
+        // A third of a turn per scrolled beat, plus a slow idle sway.
         g.rotation.y = this.shownProgress * (Math.PI * 2 / 3) + Math.sin(t * 0.4) * 0.12 + this.shownPointer.x * 0.1
         g.rotation.x = Math.sin(t * 0.3) * 0.05 - this.shownPointer.y * 0.06
       } else {
