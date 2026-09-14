@@ -41,8 +41,10 @@ export class Showcase {
   private placed: Placed[] = []
   private progress = 0
   private shownProgress = 0
-  private pointer = new THREE.Vector2()
-  private shownPointer = new THREE.Vector2()
+  /** Pointer in canvas px; `pointerIn` false when it is off the canvas (objects ease back to idle). */
+  private pointer = new THREE.Vector2(-1e6, -1e6)
+  private pointerIn = false
+  private tmp = new THREE.Vector3()
   private raf = 0
   private last = 0
   private disposed = false
@@ -151,7 +153,7 @@ export class Showcase {
     }
     const productX = [centre - 150, centre + 150]
     for (const [i, id] of GALLERY_PRODUCTS.entries()) {
-      this.placeProduct(SAMPLES.find(x => x.id === id)!, new THREE.Vector3(productX[i]!, ROW_PRODUCTS_Y, 0), i === 0 ? 170 : 120)
+      this.placeProduct(SAMPLES.find(x => x.id === id)!, new THREE.Vector3(productX[i]!, ROW_PRODUCTS_Y, 0), 150)
       await idle()
     }
     this.onReady?.()
@@ -163,12 +165,15 @@ export class Showcase {
     return { trace, source }
   }
 
-  private place(sample: Sample, home: THREE.Vector3, widthMm: number, id = sample.id): THREE.Mesh | null {
+  /** `sizeMm` is the longer side of the object, so a tall bolt and a wide heart read as one family. */
+  private place(sample: Sample, home: THREE.Vector3, sizeMm: number, id = sample.id): THREE.Mesh | null {
     const stack = sample.id === 'play'
     const traced = this.trace(sample, stack)
     const { trace, source } = traced
     if (!trace.polygons.length) return null
-    const depth = widthMm * 0.12
+    const aspect = (trace.bbox.maxY - trace.bbox.minY) / Math.max(1e-6, trace.bbox.maxX - trace.bbox.minX)
+    const widthMm = aspect > 1 ? sizeMm / aspect : sizeMm
+    const depth = sizeMm * 0.12
     const bevel = Math.min(3, Math.max(0.6, (trace.strokeWidth * widthMm) / Math.max(1, trace.bbox.maxX - trace.bbox.minX) * 0.3))
     const built = buildExtrudeGeometry(trace, { widthMm, depthMm: depth, bevelMm: bevel, bevelSegments: 8, layerMm: 2, stack })
     if (!built) return null
@@ -181,12 +186,14 @@ export class Showcase {
     return mesh
   }
 
-  private placeProduct(sample: Sample, home: THREE.Vector3, widthMm: number) {
+  private placeProduct(sample: Sample, home: THREE.Vector3, sizeMm: number) {
     const { trace, source } = this.trace(sample)
     if (!trace.polygons.length) return
+    const aspect = (trace.bbox.maxY - trace.bbox.minY) / Math.max(1e-6, trace.bbox.maxX - trace.bbox.minX)
+    const widthMm = aspect > 1 ? sizeMm / aspect : sizeMm
     const mask = { polygons: trace.polygons, width: trace.width, height: trace.height }
     const relief = computeRelief(source as unknown as ImageBitmap, { ...DEFAULT_RELIEF_OPTIONS, inflate: true, resolution: 448, roundness: 0.6, detail: 0.35, smooth: 1.5 }, trace.crop, mask)
-    const depth = widthMm * 0.32
+    const depth = sizeMm * 0.32
     const geo = buildReliefGeometry(relief, { widthMm, baseMm: 0, reliefMm: depth / 2 })
     const centre = geo.boundingBox!.getCenter(new THREE.Vector3())
     geo.translate(-centre.x, -centre.y, -centre.z)
@@ -283,16 +290,22 @@ export class Showcase {
     this.progress = Math.max(0, p)
   }
 
-  /** Pointer in [-1, 1] across the viewport; objects lean toward it. */
-  setPointer(x: number, y: number) {
+  /** Pointer in canvas CSS px; `inside` false once it leaves the canvas. Objects turn toward it. */
+  setPointer(x: number, y: number, inside = true) {
     this.pointer.set(x, y)
+    this.pointerIn = inside
+  }
+
+  /** Normalised screen position of a placed object's home, in [-1, 1]. */
+  private screenOf(o: Placed): THREE.Vector3 {
+    return this.tmp.copy(o.home).project(this.camera)
   }
 
   /** Where an object's centre lands on the canvas, in CSS px; null before it is placed. */
   project(id: string, out = new THREE.Vector3()): { x: number; y: number; z: number } | null {
     const o = this.placed.find(p => p.id === id)
     if (!o) return null
-    out.copy(o.group.position).project(this.camera)
+    out.copy(o.home).project(this.camera)
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight
     return { x: (out.x * 0.5 + 0.5) * w, y: (-out.y * 0.5 + 0.5) * h, z: out.z }
   }
@@ -319,29 +332,54 @@ export class Showcase {
     const dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
     const t = now / 1000
-    // Scroll and pointer both ease so a fast wheel flick reads as one smooth turn.
+    // Scroll eases so a fast wheel flick reads as one smooth turn.
     this.shownProgress += (this.progress - this.shownProgress) * (1 - Math.exp(-dt * 5))
-    this.shownPointer.lerp(this.pointer, 1 - Math.exp(-dt * 4))
     const layout = this.opts.layout
+    const w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1
+    // Pointer in normalised device coords; parked far away when it is off the canvas.
+    const px = this.pointerIn ? (this.pointer.x / w) * 2 - 1 : 0
+    const py = this.pointerIn ? -((this.pointer.y / h) * 2 - 1) : 0
+    const follow = 1 - Math.exp(-dt * 6)
 
     for (const o of this.placed) {
       const g = o.group
       const landing = Math.min(1, (g.userData.landing as number) + dt * 1.4)
       g.userData.landing = landing
       const e = 1 - Math.pow(1 - landing, 3)
-      g.position.y = o.home.y - 40 * (1 - e) + Math.sin(t * 0.7 + o.phase) * 3
       g.scale.setScalar(0.92 + 0.08 * e)
+
+      // Where the cursor is relative to this object, on screen. The object turns to face it:
+      // fully when the cursor is on or near it, fading out with distance, off when it leaves.
+      const sp = this.screenOf(o)
+      const dx = px - sp.x, dy = py - sp.y
+      let reach = 1
+      if (layout === 'gallery') {
+        const dist = Math.hypot(dx * (w / h), dy)
+        reach = 1 - Math.min(1, Math.max(0, (dist - 0.18) / 0.5))
+        reach *= reach
+      }
+      const gain = this.pointerIn ? reach : 0
+      const wantY = Math.max(-0.9, Math.min(0.9, dx * (layout === 'gallery' ? 2.2 : 1.1))) * gain
+      const wantX = Math.max(-0.6, Math.min(0.6, -dy * (layout === 'gallery' ? 1.6 : 0.8))) * gain
+      const look = g.userData.look as THREE.Vector2 | undefined ?? (g.userData.look = new THREE.Vector2())
+      look.x += (wantX - look.x) * follow
+      look.y += (wantY - look.y) * follow
+
       if (layout === 'hero') {
-        // A slow sway rather than a full spin: the face always reads, never the thin edge.
-        g.rotation.y = Math.sin(t * 0.32) * 0.55 + this.shownPointer.x * 0.16
-        g.rotation.x = Math.sin(t * 0.3) * 0.05 - this.shownPointer.y * 0.08
+        g.position.y = o.home.y - 40 * (1 - e) + Math.sin(t * 0.7 + o.phase) * 3
+        // A slow sway so the object never sits still; the cursor turns it further.
+        g.rotation.y = Math.sin(t * 0.32) * 0.35 * (1 - gain * 0.6) + look.y
+        g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x
       } else if (layout === 'story') {
-        // A third of a turn per scrolled beat, plus a slow idle sway.
-        g.rotation.y = this.shownProgress * (Math.PI * 2 / 3) + Math.sin(t * 0.4) * 0.12 + this.shownPointer.x * 0.1
-        g.rotation.x = Math.sin(t * 0.3) * 0.05 - this.shownPointer.y * 0.06
+        g.position.y = o.home.y - 40 * (1 - e) + Math.sin(t * 0.7 + o.phase) * 3
+        // A third of a turn per scrolled beat, plus a slow idle sway and the cursor's pull.
+        g.rotation.y = this.shownProgress * (Math.PI * 2 / 3) + Math.sin(t * 0.4) * 0.12 + look.y
+        g.rotation.x = Math.sin(t * 0.3) * 0.05 + look.x
       } else {
-        g.rotation.y = Math.sin(t * o.spin + o.phase) * 0.5 + this.shownPointer.x * 0.1
-        g.rotation.x = Math.sin(t * 0.35 + o.phase) * 0.05 - this.shownPointer.y * 0.06
+        // Gallery objects hold their row exactly (captions hang under them); only the face turns.
+        g.position.y = o.home.y - 40 * (1 - e)
+        g.rotation.y = Math.sin(t * o.spin + o.phase) * 0.22 * (1 - gain) + look.y
+        g.rotation.x = Math.sin(t * 0.35 + o.phase) * 0.03 * (1 - gain) + look.x
       }
     }
     this.renderer.render(this.scene, this.camera)

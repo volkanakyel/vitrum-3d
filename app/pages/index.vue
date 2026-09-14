@@ -84,13 +84,24 @@ onMounted(async () => {
       if (b === 1 && !userPicked) setPreset('gold', false)
     }
   }
+  // Each canvas gets the pointer in its own pixels, and knows when the cursor has left it, so
+  // objects turn toward the cursor while it is over them and settle back when it is not.
+  const feed = (sc: Showcase | null, el: HTMLCanvasElement | null, e: PointerEvent) => {
+    if (!sc || !el) return
+    const r = el.getBoundingClientRect()
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
+    sc.setPointer(e.clientX - r.left, e.clientY - r.top, inside)
+  }
   const onPointer = (e: PointerEvent) => {
     if (reduced) return
-    const x = (e.clientX / window.innerWidth) * 2 - 1
-    const y = -((e.clientY / window.innerHeight) * 2 - 1)
-    hero?.setPointer(x, y)
-    story?.setPointer(x, y)
-    gallery?.setPointer(x, y)
+    feed(hero, heroCanvas.value, e)
+    feed(story, storyCanvas.value, e)
+    feed(gallery, galleryCanvas.value, e)
+  }
+  const onPointerOut = () => {
+    hero?.setPointer(0, 0, false)
+    story?.setPointer(0, 0, false)
+    gallery?.setPointer(0, 0, false)
   }
   const onResize = () => {
     hero?.resize()
@@ -117,6 +128,7 @@ onMounted(async () => {
   }
   window.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('pointermove', onPointer, { passive: true })
+  document.addEventListener('pointerleave', onPointerOut)
   window.addEventListener('resize', onResize)
   document.addEventListener('visibilitychange', onVisibility)
   onScroll()
@@ -137,6 +149,7 @@ onMounted(async () => {
     io.disconnect()
     window.removeEventListener('scroll', onScroll)
     window.removeEventListener('pointermove', onPointer)
+    document.removeEventListener('pointerleave', onPointerOut)
     window.removeEventListener('resize', onResize)
     document.removeEventListener('visibilitychange', onVisibility)
     hero?.dispose()
