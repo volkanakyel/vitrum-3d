@@ -341,7 +341,7 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
                     class="hero-mark relative"
                   />
                 </span>
-                <h1 class="mb-2.5 font-serif text-[30px] leading-[1.05] font-normal tracking-[-0.02em] text-foreground">
+                <h1 class="font-display mb-2.5 text-[26px] leading-[1.08] text-foreground">
                   <template v-if="mode === 'icon'">
                     Turn an icon into solid glass
                   </template>
