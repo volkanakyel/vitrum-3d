@@ -1,0 +1,205 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  Vitrum — "Cold light" (studio glass, v2).
+
+  The app is a light table. The shell is a cool slate (the table), the stage is a white pane with a
+  glass rim (the object under the light). Depth is 1px hairlines, inner bevels and one soft lift —
+  never borders plus heavy shadows. Actions are pills; containers are 12–24px rounded rects.
+  One accent (ice) exists only for focus, drop and "live" states. Type is Inter for UI, IBM Plex
+  Mono for numbers and indices, Instrument Serif italic for the single accent word in the hero.
+*/
+:root {
+  /* shadcn tokens */
+  --background: #eceef2;
+  --foreground: #0d0e12;
+  --card: #ffffff;
+  --card-foreground: #0d0e12;
+  --popover: #ffffff;
+  --popover-foreground: #0d0e12;
+  --primary: #0d0e12;
+  --primary-foreground: #ffffff;
+  --secondary: #e3e6eb;
+  --secondary-foreground: #0d0e12;
+  --muted: #e3e6eb;
+  --muted-foreground: #64676f;
+  --accent: #e3e6eb;
+  --accent-foreground: #0d0e12;
+  --destructive: #d24444;
+  --border: #dfe2e7;
+  --input: #d5d8de;
+  --ring: #2f6fed;
+  --radius: 0.625rem;
+
+  /* brand */
+  --ink: #0d0e12;
+  --ink-2: rgba(13, 14, 18, 0.62);
+  --ink-3: rgba(13, 14, 18, 0.42);
+  --surface: #ffffff;
+  --shell: #eceef2;
+  --well: rgba(13, 14, 18, 0.045);
+  --well-strong: rgba(13, 14, 18, 0.08);
+  --ice: #2f6fed;
+  --ice-soft: #e7eefc;
+  --ice-glow: rgba(47, 111, 237, 0.16);
+  --hairline: rgba(13, 14, 18, 0.08);
+  --hairline-strong: rgba(13, 14, 18, 0.14);
+
+  /* sidebar sits directly on the shell */
+  --sidebar: transparent;
+  --sidebar-foreground: #0d0e12;
+  --sidebar-primary: #0d0e12;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e3e6eb;
+  --sidebar-accent-foreground: #0d0e12;
+  --sidebar-border: rgba(13, 14, 18, 0.08);
+  --sidebar-ring: #2f6fed;
+
+  /* elevation
+     raise  = a control sitting on a surface
+     float  = a layer above the page (popover, dock, toast)
+     pane   = the stage: a white pane with a glass rim, lifted off the slate */
+  --shadow-raise:
+    0 0 0 1px rgba(13, 14, 18, 0.08),
+    0 1px 2px -1px rgba(13, 14, 18, 0.12),
+    0 2px 4px rgba(13, 14, 18, 0.04),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.8);
+  --shadow-raise-dark:
+    0 0 0 1px rgba(13, 14, 18, 0.9),
+    0 1px 2px rgba(13, 14, 18, 0.24),
+    0 8px 16px -8px rgba(13, 14, 18, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --shadow-float:
+    0 0 0 1px var(--hairline),
+    0 1px 2px rgba(13, 14, 18, 0.05),
+    0 2px 24px rgba(13, 14, 18, 0.06),
+    0 16px 32px -16px rgba(13, 14, 18, 0.18);
+  --shadow-pane:
+    inset 1.5px 1.5px 1px rgba(255, 255, 255, 0.9),
+    inset -1px -1px 1px rgba(255, 255, 255, 0.5),
+    0 0 0 0.5px rgba(3, 7, 18, 0.1),
+    0 2px 24px rgba(3, 7, 18, 0.05),
+    0 24px 48px -24px rgba(3, 7, 18, 0.18);
+  --shadow-sm: 0 1px 2px rgba(13, 14, 18, 0.05);
+  --shadow: 0 6px 24px rgba(13, 14, 18, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@theme inline {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: 'Instrument Serif', 'Times New Roman', Georgia, serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-shell: var(--shell);
+  --color-well: var(--well);
+  --color-well-strong: var(--well-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ice: var(--ice);
+  --color-ice-soft: var(--ice-soft);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow);
+}
+
+/* Elevation utilities so components share one vocabulary. */
+@utility hairline {
+  box-shadow: 0 0 0 1px var(--hairline);
+}
+@utility raise {
+  box-shadow: var(--shadow-raise);
+}
+@utility floating {
+  box-shadow: var(--shadow-float);
+}
+@utility pane {
+  box-shadow: var(--shadow-pane);
+}
+/* Recessed trough for segmented controls and wells. */
+@utility well {
+  background: var(--well);
+  box-shadow: inset 0 1px 1px rgba(13, 14, 18, 0.04);
+}
+/* Mono index used for section numbers and small labels. */
+@utility index {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  font-feature-settings: 'zero', 'tnum';
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; box-sizing: border-box; }
+  html, body, #__nuxt { height: 100%; margin: 0; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01', 'tnum';
+    font-optical-sizing: auto;
+    font-size: 13px;
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+  }
+  html:has(.studio-root) { overflow: hidden; }
+  button { cursor: pointer; }
+  .font-mono { font-feature-settings: 'zero', 'tnum'; letter-spacing: -0.01em; }
+  .font-serif { letter-spacing: -0.01em; font-feature-settings: normal; }
+  ::selection { background: rgba(47, 111, 237, 0.18); }
+  /* Key caps: white, hairline, a 1px ledge underneath. */
+  kbd {
+    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] bg-card px-1 text-[10.5px] font-medium text-muted-foreground;
+    box-shadow: 0 0 0 1px var(--hairline), 0 1px 0 rgba(13, 14, 18, 0.1);
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+  input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+}
+
+/* Film grain over the shell: a fixed, non-interactive layer that gives the flat slate a
+   material quality. Kept very quiet so it reads as paper, not noise. */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
