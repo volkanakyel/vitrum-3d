@@ -17,6 +17,10 @@ pnpm build        # server + client build in .output
 pnpm generate     # static site (landing is prerendered, studio is client-only)
 pnpm typecheck
 pnpm test         # vitest: geometry builder and sample checks
+pnpm test:e2e     # playwright: the sculpt sandbox smoke test (tests/*.spec.ts)
+pnpm kit-api      # re-render the sculpt kit's API doc into the build prompt
+pnpm eval         # sculpt quality harness over eval/photos (needs a key)
+pnpm sculpt-smoke <photo>   # one live intake + spec call against a running dev server
 ```
 
 To add shadcn-vue components: `npx shadcn-vue@latest add <name>` (they land in
@@ -87,6 +91,54 @@ image the new way. Every geometry, finish and scene control stays available in b
 8. **Export.** GLB (metres; KHR transmission/ior/iridescence for glass, normal + roughness maps and
    KHR sheen for colour, vertex colours for a carved hull), binary STL (millimetres), 2× PNG.
 
+## Sculpt (parts model)
+
+Everything above runs in the browser and nothing leaves it. Sculpt is the one exception, and it is
+opt-in per press: in product mode, **Rebuild as parts** sends the imported photo to Anthropic's API
+and asks Claude to rebuild the object as a *parts model* — a chair with a seat, a back, four legs
+and its own materials, instead of one carved blob wearing the photo.
+
+The loop: Claude reads the photo (intake), writes a `SculptSpec` (components, dimensions,
+materials, what must match), then writes procedural three.js against an in-repo kit
+(`app/utils/sculpt/kit/`) in five passes — blockout, structural, form, material, surface. Each
+pass's code runs in an opaque-origin `<iframe sandbox="allow-scripts">` (`/sandbox`), which renders
+four views; those are pasted into one comparison sheet next to the photo, and Claude reviews the
+sheet and either continues, orders a fix, revises the spec, or asks a question. The finished model
+is exported as a GLB and replaces the carved hull on the stage; scene controls, GLB/STL/PNG export
+and the size fields all work on it unchanged. The run (spec, code, sheets, GLB) is cached in
+IndexedDB and can be reopened without paying again. Expect 3–6 minutes and $1–3 per run.
+
+**The photo goes to Anthropic.** The panel says so, and only this button does it: tracing, carving
+and depth all still stay in the browser.
+
+### Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NUXT_ANTHROPIC_KEY` | *(unset)* | Server-only API key. Without it the sculpt routes reply 503 and the button is hidden. |
+| `NUXT_ANTHROPIC_WORKSPACE_ID` | *(unset)* | Only needed when the key is not itself scoped to a workspace. |
+| `NUXT_SCULPT_DAILY_BUDGET_USD` | `25` | Ceiling on what the sculpt routes may spend in one UTC day. `0` disables it. |
+| `NUXT_PUBLIC_SCULPT_ENABLED` | `false` | Forces the panel on in the client. Normally unnecessary: the client asks `/api/sculpt/status`, which reports whether the server has a key. |
+
+### Deployment posture
+
+The `/api/sculpt/*` routes spend the owner's Anthropic credit and **have no authentication**. Real
+auth and paid credits are the next phase. Until then they carry defence in depth only: a per-IP
+rate limit (30 requests / 10 minutes), a daily spend ceiling, an 8 MB body cap, and server-side
+validation of every image, spec and generated file. Both counters live in the serving process's
+memory, so on a serverless platform they are per instance, not global.
+
+**Do not set `NUXT_ANTHROPIC_KEY` on a publicly reachable deploy before the auth phase.** Run it
+locally, or behind an access control of your own. A deploy without the key is safe and inert: the
+routes refuse, and the studio simply does not offer the button.
+
+The routes also need a long function timeout (`maxDuration: 300`, set in `nuxt.config.ts`), which
+on Vercel means a Pro plan; Hobby caps functions at 60 s and a run will be cut off mid-file.
+
+Further reading: [`eval/README.md`](eval/README.md) for the quality harness, and
+[`docs/superpowers/specs/2026-09-15-sculpt-design.md`](docs/superpowers/specs/2026-09-15-sculpt-design.md)
+for the design.
+
 ## Files
 
 | Path | Purpose |
@@ -102,6 +154,12 @@ image the new way. Every geometry, finish and scene control stays available in b
 | `app/utils/trace.ts`, `tracer.ts`, `relief.ts`, `printTexture.ts` | tracing, worker client, height fields, colour textures |
 | `app/utils/surface.ts` | colour finish PBR maps from the picture: de-lit albedo, grain normal and roughness |
 | `app/utils/hull.ts` | multi-view visual hull: outline distance fields → marching cubes, per-view projection (uv + weight per vertex) |
+| `app/utils/sculpt/kit/*` | the sculpt kit: the geometry, surface, material and assembly helpers generated code is allowed to call |
+| `app/utils/sculpt/{job,sandbox,sandboxRuntime,sheet,store,transport,glb}.ts` | job state machine, the sandbox host and its page-side runtime, comparison sheets, IndexedDB cache, route client, GLB safety check |
+| `app/composables/useSculpt.ts` | Vue glue for a sculpt run: reactive job, start/cancel/answer/reopen |
+| `server/utils/sculpt/*` | route cores, zod schemas, the Anthropic client, `validateCode`, the CSP strings, the rate-limit/budget guard |
+| `server/utils/sculpt/prompts/*.md` | the intake, spec, per-pass build and review prompts; `kit-api.md` is generated |
+| `server/api/sculpt/*` | `intake`, `spec`, `build`, `review` (POST) and `status` (GET) |
 | `app/components/studio/*` | control panel, viewer, loader, fields |
 | `app/components/site/*` | navigation and footer |
 | `app/components/ui/*` | generated shadcn-vue primitives |

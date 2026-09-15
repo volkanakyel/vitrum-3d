@@ -168,6 +168,13 @@ layer, passes, fixes, tokens, cost, seconds). Prompts and kit are iterated again
 Target before the credits phase: fidelity ≥ 0.8 on 8 of 10 IKEA furniture photos, median cost ≤ $2,
 median time ≤ 5 min.
 
+**How that bar is judged (amended 2026-09-15).** The ≥ 0.8-on-8-of-10 bar is a *human* judgement
+made over the comparison sheets in `eval/out/summary.md`: a person looks at photo beside render and
+decides whether this is the object. The model's own `fidelity` number is a signal *for the loop* —
+it is what decides `continue` versus another fix — and it is a useful column to sort the table by,
+but it is not the acceptance metric. It cannot be: the review loop is tuned against it, so treating
+it as the score would be scoring the prompts by the number the prompts were written to raise.
+
 ## Error handling
 - Any route error, validation failure after retry, sandbox crash after one reload, or watchdog →
   job `failed` with the message; the studio keeps the previous model; the user can retry from the

@@ -14,7 +14,8 @@
     "postinstall": "nuxt prepare",
     "kit-api": "tsx scripts/kit-api.ts",
     "eval": "tsx scripts/sculpt-eval.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "sculpt-smoke": "node scripts/sculpt-smoke.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
