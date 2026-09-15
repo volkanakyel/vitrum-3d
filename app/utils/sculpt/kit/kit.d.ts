@@ -15,21 +15,28 @@ export interface KitOptions {
 /**
  * The sculpt kit. Everything a generated `createModel(kit, THREE, options)`
  * is allowed to build with. Units are metres, +Y is up, +Z is towards the
- * viewer. Geometry builders return a `THREE.BufferGeometry` centred on the
- * origin with computed normals; assembly helpers return `THREE.Object3D`s.
+ * viewer.
+ *
+ * The primitive builders (`box`, `roundedBox`, `pillow`, `cylinder`,
+ * `capsule`, `torus`, `extrude`, `button`) return a `THREE.BufferGeometry`
+ * centred on the origin — place them with `part(..., { position })`.
+ * The path builders (`tube`, `bentTube`, `sweep`, `piping`) and `lathe` are
+ * built in the coordinates of the points/profile you pass, not re-centred, so
+ * you can lay a rail out in model space directly. `seam` and `tuft` mutate the
+ * geometry handed to them and return it.
  */
 export interface Kit {
   /** Sharp-edged box. w/h/d in metres, e.g. box(0.8, 0.3, 0.75). */
   box(w: number, h: number, d: number): BufferGeometry
   /** Box with rounded edges — radius 0.005–0.03 m for furniture edges, up to h/2 for a slab. */
   roundedBox(w: number, h: number, d: number, radius: number): BufferGeometry
-  /** The cushion primitive: rounded box whose faces bow outward. radius 0.04–0.12 m, bulge 0.01–0.04 m (added outside w/h/d). */
+  /** The cushion primitive: rounded box whose faces bow outward. radius 0.04–0.12 m (default 0.06), bulge 0.01–0.04 m (default 0.02, added outside w/h/d). */
   pillow(w: number, h: number, d: number, o?: { radius?: number, bulge?: number }): BufferGeometry
   /** Cylinder along +Y. topRadius tapers it (default = radius); edge 0.002–0.01 m chamfers both rims. */
   cylinder(radius: number, height: number, o?: { topRadius?: number, edge?: number }): BufferGeometry
   /** Capsule along +Y: `length` is the straight section between the two hemispherical caps. */
   capsule(radius: number, length: number): BufferGeometry
-  /** Torus in the XZ plane. arc in radians, default 2π; use π for a half hoop handle. */
+  /** Horizontal ring: a torus lying in the XZ plane, so its height is 2 × tube. arc in radians, default 2π; use π for a half hoop handle. */
   torus(radius: number, tube: number, o?: { arc?: number }): BufferGeometry
   /** Smooth Catmull-Rom tube through the points, constant radius. tension 0–1, default 0.5. */
   tube(points: V3[], radius: number, o?: { closed?: boolean, tension?: number }): BufferGeometry
@@ -37,7 +44,7 @@ export interface Kit {
   bentTube(points: V3[], radius: number, cornerRadius: number): BufferGeometry
   /** Parallel-transport sweep; radius may be a function of t (0..1) to taper, e.g. t => 0.05 * (1 - t). */
   sweep(points: V3[], radius: number | ((t: number) => number), o?: { segments?: number }): BufferGeometry
-  /** Revolve a profile of [radius, y] pairs around +Y — vases, knobs, turned legs. */
+  /** Revolve a profile of [radius, y] pairs around +Y — vases, knobs, turned legs. List it bottom-to-top, or it comes out inside-out. */
   lathe(profile: [number, number][], o?: { segments?: number }): BufferGeometry
   /** Extrude a 2D outline of [x, y] points along +Z by depth. bevel 0.001–0.01 m; holes are inner outlines. */
   extrude(shape: [number, number][], depth: number, o?: { bevel?: number, holes?: [number, number][][] }): BufferGeometry

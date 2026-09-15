@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { createKit } from '~/utils/sculpt/kit'
 import type { Kit, KitOptions } from '~/utils/sculpt/kit/kit'
 import { validateCode } from '../server/utils/sculpt/validateCode'
+import { KIT_API_PATH, KIT_TYPES_PATH, renderKitApi } from '../scripts/kit-api'
 
 /* ------------------------------------------------------------------ stubs */
 
@@ -67,6 +68,26 @@ function hasNaN(geometry: THREE.BufferGeometry, name: string) {
     if (value === undefined || Number.isNaN(value)) return true
   }
   return false
+}
+
+/** Signed volume via the divergence theorem: positive when the winding is
+ * outward (counter-clockwise seen from outside). */
+function signedVolume(geometry: THREE.BufferGeometry): number {
+  const position = geometry.getAttribute('position')
+  const index = geometry.getIndex()
+  const count = index ? index.count : position.count
+  const a = new THREE.Vector3()
+  const b = new THREE.Vector3()
+  const c = new THREE.Vector3()
+  const cross = new THREE.Vector3()
+  let total = 0
+  for (let i = 0; i + 2 < count; i += 3) {
+    a.fromBufferAttribute(position, index ? index.getX(i) : i)
+    b.fromBufferAttribute(position, index ? index.getX(i + 1) : i + 1)
+    c.fromBufferAttribute(position, index ? index.getX(i + 2) : i + 2)
+    total += cross.copy(b).cross(c).dot(a) / 6
+  }
+  return total
 }
 
 const fixturePath = fileURLToPath(new URL('./fixtures/orange-chair.kit.js', import.meta.url))
@@ -318,5 +339,107 @@ describe('every kit method builds usable output', () => {
       .map(quality => makeKit({ quality }).pillow(1, 1, 1).getAttribute('position').count)
     expect(counts[0] as number).toBeLessThan(counts[1] as number)
     expect(counts[1] as number).toBeLessThan(counts[2] as number)
+  })
+})
+
+/* ------------------------------------------------------------- orientation */
+
+describe('sculpt kit orientation', () => {
+  it('builds solids with outward winding', () => {
+    const kit = makeKit()
+    expect(signedVolume(kit.box(1, 1, 1))).toBeCloseTo(1, 6)
+    expect(signedVolume(kit.button(0.016, { depth: 0.005 }))).toBeGreaterThan(0)
+    expect(signedVolume(kit.cylinder(0.1, 0.5, { edge: 0.01 }))).toBeGreaterThan(0)
+    expect(signedVolume(kit.lathe([[0, 0], [0.1, 0], [0.12, 0.2], [0.05, 0.3], [0, 0.3]]))).toBeGreaterThan(0)
+    expect(signedVolume(kit.pillow(0.8, 0.2, 0.7, { radius: 0.05, bulge: 0.02 }))).toBeGreaterThan(0)
+  })
+
+  it('lays the torus flat in the XZ plane', () => {
+    const kit = makeKit()
+    const size = bounds(kit.torus(0.2, 0.02))
+    expect(size.y).toBeCloseTo(0.04, 4)
+    expect(size.x).toBeCloseTo(0.44, 4)
+    expect(size.z).toBeCloseTo(0.44, 4)
+  })
+})
+
+/* --------------------------------------------------------------- uv seams */
+
+describe('pillow uv seams', () => {
+  const kit = makeKit()
+  const geometry = kit.pillow(0.8, 0.2, 0.7, { radius: 0.05, bulge: 0.02 })
+
+  it('never stretches a triangle across the uv square', () => {
+    const uv = geometry.getAttribute('uv')
+    const index = geometry.getIndex() as THREE.BufferAttribute
+    let worst = 0
+    for (let i = 0; i + 2 < index.count; i += 3) {
+      const us: number[] = []
+      const vs: number[] = []
+      for (let k = 0; k < 3; k += 1) {
+        const vertex = index.getX(i + k)
+        us.push(uv.getX(vertex))
+        vs.push(uv.getY(vertex))
+      }
+      worst = Math.max(worst, Math.max(...us) - Math.min(...us), Math.max(...vs) - Math.min(...vs))
+    }
+    expect(worst).toBeLessThan(0.25)
+  })
+
+  it('still shades smoothly across the welded edges', () => {
+    const position = geometry.getAttribute('position')
+    const normal = geometry.getAttribute('normal')
+    const groups = new Map<string, number[]>()
+    for (let i = 0; i < position.count; i += 1) {
+      const key = [position.getX(i), position.getY(i), position.getZ(i)].map(n => Math.round(n * 1e5)).join(',')
+      const group = groups.get(key)
+      if (group) group.push(i)
+      else groups.set(key, [i])
+    }
+    const shared = [...groups.values()].filter(group => group.length > 1)
+    expect(shared.length).toBeGreaterThan(100)
+
+    const a = new THREE.Vector3()
+    const b = new THREE.Vector3()
+    for (const group of shared) {
+      a.fromBufferAttribute(normal, group[0] as number)
+      for (let k = 1; k < group.length; k += 1) {
+        b.fromBufferAttribute(normal, group[k] as number)
+        expect(a.dot(b)).toBeGreaterThan(0.99)
+      }
+    }
+  })
+})
+
+/* ------------------------------------------------------------ closed tubes */
+
+describe('closed sweeps', () => {
+  it('closes the frame on a non-planar loop', () => {
+    const kit = makeKit()
+    const geometry = kit.tube([
+      [0.3, 0, 0.3],
+      [-0.3, 0.12, 0.3],
+      [-0.3, 0, -0.3],
+      [0.3, -0.12, -0.3],
+    ], 0.02, { closed: true })
+
+    const meta = geometry.userData.sweep as { samples: number, radialSegments: number }
+    const position = geometry.getAttribute('position')
+    const first = new THREE.Vector3()
+    const last = new THREE.Vector3()
+    for (let j = 0; j < meta.radialSegments; j += 1) {
+      first.fromBufferAttribute(position, j)
+      last.fromBufferAttribute(position, (meta.samples - 1) * meta.radialSegments + j)
+      expect(first.distanceTo(last)).toBeLessThan(1e-6)
+    }
+    expect(hasNaN(geometry, 'normal')).toBe(false)
+  })
+})
+
+/* ------------------------------------------------------------ prompt build */
+
+describe('kit-api renderer', () => {
+  it('matches the committed prompt markdown', () => {
+    expect(renderKitApi(readFileSync(KIT_TYPES_PATH, 'utf8'))).toBe(readFileSync(KIT_API_PATH, 'utf8'))
   })
 })

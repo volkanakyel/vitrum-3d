@@ -33,25 +33,36 @@ const EPS = 1e-9
 /** Weld vertices that share a position (within `tolerance`), keeping the first
  * vertex's other attributes. Kept local so the kit depends on nothing but the
  * `THREE` namespace it is handed. */
-export function mergeByPosition(
+export function weldVertices(
   THREE: ThreeNS,
   geometry: import('three').BufferGeometry,
+  keyNames: string[] = ['position'],
   tolerance = 1e-5,
 ): import('three').BufferGeometry {
   const position = geometry.getAttribute('position')
   if (!position) return geometry
   const names = Object.keys(geometry.attributes)
   const sources = names.map(name => geometry.getAttribute(name))
+  const keys = keyNames
+    .map(name => geometry.getAttribute(name))
+    .filter((attribute): attribute is import('three').BufferAttribute => Boolean(attribute))
   const buckets: number[][] = names.map(() => [])
   const index = geometry.getIndex()
   const count = index ? index.count : position.count
   const factor = 1 / tolerance
   const lookup = new Map<string, number>()
   const nextIndex: number[] = []
+  const parts: number[] = []
 
   for (let i = 0; i < count; i += 1) {
     const vertex = index ? index.getX(i) : i
-    const key = `${Math.round(position.getX(vertex) * factor)},${Math.round(position.getY(vertex) * factor)},${Math.round(position.getZ(vertex) * factor)}`
+    parts.length = 0
+    for (const attribute of keys) {
+      for (let c = 0; c < attribute.itemSize; c += 1) {
+        parts.push(Math.round(attribute.getComponent(vertex, c) * factor))
+      }
+    }
+    const key = parts.join(',')
     const existing = lookup.get(key)
     if (existing !== undefined) {
       nextIndex.push(existing)
@@ -80,6 +91,43 @@ export function mergeByPosition(
   }
   merged.setIndex(nextIndex)
   return merged
+}
+
+/**
+ * Average the vertex normals of every vertex that shares a position. Welding
+ * by position *and* uv keeps the texture seams separate (so a face's uv square
+ * is never stretched across an edge) but leaves the shared edge faceted; this
+ * restores the smooth shading across it.
+ */
+export function smoothNormalsByPosition(
+  THREE: ThreeNS,
+  geometry: import('three').BufferGeometry,
+  tolerance = 1e-5,
+): void {
+  const position = geometry.getAttribute('position')
+  const normal = geometry.getAttribute('normal')
+  if (!position || !normal) return
+  const factor = 1 / tolerance
+  const groups = new Map<string, number[]>()
+
+  for (let i = 0; i < position.count; i += 1) {
+    const key = `${Math.round(position.getX(i) * factor)},${Math.round(position.getY(i) * factor)},${Math.round(position.getZ(i) * factor)}`
+    const group = groups.get(key)
+    if (group) group.push(i)
+    else groups.set(key, [i])
+  }
+
+  const sum = new THREE.Vector3()
+  const one = new THREE.Vector3()
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+    sum.set(0, 0, 0)
+    for (const i of group) sum.add(one.fromBufferAttribute(normal, i))
+    if (sum.lengthSq() < 1e-12) continue
+    sum.normalize()
+    for (const i of group) normal.setXYZ(i, sum.x, sum.y, sum.z)
+  }
+  normal.needsUpdate = true
 }
 
 /* ------------------------------------------------------------------ boxes */
@@ -148,9 +196,10 @@ export function pillowGeometry(
     position.setXYZ(i, v.x, v.y, v.z)
   }
 
-  const merged = mergeByPosition(THREE, source)
+  const merged = weldVertices(THREE, source, ['position', 'uv'])
   source.dispose()
   merged.computeVertexNormals()
+  smoothNormalsByPosition(THREE, merged)
   return merged
 }
 
@@ -190,9 +239,7 @@ export function latheGeometry(
   segments: number,
 ): import('three').BufferGeometry {
   const points = profile.map(([r, y]) => new THREE.Vector2(Math.max(0, r), y))
-  const geometry = new THREE.LatheGeometry(points, segments)
-  geometry.computeVertexNormals()
-  return geometry
+  return new THREE.LatheGeometry(points, segments)
 }
 
 /* ----------------------------------------------------------------- extrude */
@@ -238,15 +285,33 @@ export function sweepFromSamples(
   radialSegments: number,
   closed: boolean,
 ): import('three').BufferGeometry {
-  const points = samples.filter((point, i) => i === 0 || point.distanceToSquared(samples[i - 1] as import('three').Vector3) > 1e-12)
-  const n = points.length
+  const points = samples
+    .filter((point, i) => i === 0 || point.distanceToSquared(samples[i - 1] as import('three').Vector3) > 1e-12)
+    .map(point => point.clone())
   const geometry = new THREE.BufferGeometry()
-  if (n < 2) return geometry
+  if (points.length < 2) return geometry
+
+  // A closed sweep keeps a final ring that repeats the first one, so the uv
+  // seam is explicit and the frame is guaranteed to line up across it.
+  if (closed) {
+    const start = points[0] as import('three').Vector3
+    const end = points[points.length - 1] as import('three').Vector3
+    if (end.distanceTo(start) < 1e-6) end.copy(start)
+    else points.push(start.clone())
+  }
+
+  const n = points.length
+  /** distinct samples: the wrap-around copy is not one of them */
+  const period = closed ? n - 1 : n
 
   const tangents: import('three').Vector3[] = []
   for (let i = 0; i < n; i += 1) {
-    const prev = points[Math.max(0, i - 1)] as import('three').Vector3
-    const next = points[Math.min(n - 1, i + 1)] as import('three').Vector3
+    const prev = closed
+      ? points[(i - 1 + period) % period] as import('three').Vector3
+      : points[Math.max(0, i - 1)] as import('three').Vector3
+    const next = closed
+      ? points[(i + 1) % period] as import('three').Vector3
+      : points[Math.min(n - 1, i + 1)] as import('three').Vector3
     const tangent = next.clone().sub(prev)
     if (tangent.lengthSq() < 1e-16) tangent.copy(tangents[i - 1] ?? new THREE.Vector3(0, 0, 1))
     tangents.push(tangent.normalize())
@@ -264,6 +329,24 @@ export function sweepFromSamples(
     carried.addScaledVector(tangent, -carried.dot(tangent))
     if (carried.lengthSq() < 1e-12) carried.copy(normals[i - 1] as import('three').Vector3)
     normals.push(carried.normalize())
+  }
+
+  // Holonomy: transporting a frame around a closed non-planar loop returns it
+  // rotated about the tangent. Measure that residual twist and unwind it
+  // linearly along the path so the last ring lands exactly on the first.
+  if (closed && n > 2) {
+    const startNormal = normals[0] as import('three').Vector3
+    const startTangent = tangents[0] as import('three').Vector3
+    const wrapped = normals[n - 1] as import('three').Vector3
+    const startBinormal = startTangent.clone().cross(startNormal)
+    const residual = Math.atan2(wrapped.dot(startBinormal), wrapped.dot(startNormal))
+    if (Math.abs(residual) > 1e-12) {
+      for (let i = 1; i < n; i += 1) {
+        const tangent = tangents[i] as import('three').Vector3
+        ;(normals[i] as import('three').Vector3).applyAxisAngle(tangent, (-residual * i) / (n - 1))
+      }
+    }
+    wrapped.copy(startNormal)
   }
 
   const positions: number[] = []
@@ -291,9 +374,8 @@ export function sweepFromSamples(
   }
 
   const indices: number[] = []
-  const rings = closed ? n : n - 1
-  for (let i = 0; i < rings; i += 1) {
-    const next = (i + 1) % n
+  for (let i = 0; i < n - 1; i += 1) {
+    const next = i + 1
     for (let j = 0; j < radialSegments; j += 1) {
       const jn = (j + 1) % radialSegments
       const a = i * radialSegments + j

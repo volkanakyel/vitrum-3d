@@ -41,7 +41,9 @@ function createModel(kit, THREE, options) {
     lacquer,
   )
 
-  // Side strap across the seat/backrest junction, with two buttons.
+  // Side strap across the seat/backrest junction, with two buttons. It has to
+  // stand clear of the backrest's bulged flank (~0.408 m at this height) or it
+  // z-fights with it and swallows the buttons.
   const strapOutline = [
     [-0.030, -0.150],
     [0.030, -0.150],
@@ -53,20 +55,20 @@ function createModel(kit, THREE, options) {
     'strap',
     kit.extrude(strapOutline, 0.012, { bevel: 0.002 }),
     lacquer,
-    { position: [0.400, strapY, -0.240], rotation: [0, Math.PI / 2, 0] },
+    { position: [0.409, strapY, -0.240], rotation: [0, Math.PI / 2, 0] },
   )
 
   const buttonUpper = kit.part(
     'button-upper',
     kit.button(0.016, { depth: 0.005 }),
     lacquer,
-    { position: [0.408, strapY + 0.085, -0.240], rotation: [0, 0, -Math.PI / 2] },
+    { position: [0.417, strapY + 0.085, -0.240], rotation: [0, 0, -Math.PI / 2] },
   )
   const buttonLower = kit.part(
     'button-lower',
     kit.button(0.016, { depth: 0.005 }),
     lacquer,
-    { position: [0.408, strapY - 0.085, -0.240], rotation: [0, 0, -Math.PI / 2] },
+    { position: [0.417, strapY - 0.085, -0.240], rotation: [0, 0, -Math.PI / 2] },
   )
 
   return kit.root([

@@ -87,6 +87,7 @@ function toTexture(
   texture.wrapS = THREE.RepeatWrapping
   texture.wrapT = THREE.RepeatWrapping
   texture.repeat.set(repeat, repeat)
+  texture.anisotropy = 8
   texture.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace
   texture.needsUpdate = true
   return texture

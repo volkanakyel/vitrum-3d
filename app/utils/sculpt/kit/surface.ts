@@ -121,14 +121,13 @@ export function buttonGeometry(
   segments: number,
   capSegments: number,
 ): BufferGeometry {
-  const profile: import('three').Vector2[] = []
+  // The profile runs base-outward then up to the apex: a lathe profile walked
+  // in the other direction comes out inside-out.
+  const profile: import('three').Vector2[] = [new THREE.Vector2(0, 0)]
   const steps = Math.max(2, capSegments)
-  for (let i = 0; i <= steps; i += 1) {
+  for (let i = steps; i >= 0; i -= 1) {
     const a = (i / steps) * (Math.PI / 2)
     profile.push(new THREE.Vector2(radius * Math.sin(a), depth * Math.cos(a)))
   }
-  profile.push(new THREE.Vector2(0, 0))
-  const geometry = new THREE.LatheGeometry(profile, segments)
-  geometry.computeVertexNormals()
-  return geometry
+  return new THREE.LatheGeometry(profile, segments)
 }

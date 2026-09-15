@@ -49,7 +49,9 @@ export const createKit: typeof import('./kit').createKit = function createKit(TH
       return new THREE.CapsuleGeometry(radius, length, tess.cap, tess.radial)
     },
     torus(radius, tube, o) {
+      // three builds a torus in XY; furniture hoops, rings and handles sit flat.
       return new THREE.TorusGeometry(radius, tube, tess.cap, tess.radial, o?.arc ?? Math.PI * 2)
+        .rotateX(-Math.PI / 2)
     },
     tube(points, radius, o) {
       return tubeGeometry(THREE, tess, points, radius, o?.closed ?? false, o?.tension ?? 0.5)
