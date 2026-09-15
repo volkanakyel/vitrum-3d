@@ -16,6 +16,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
     "@huggingface/transformers": "^4.2.0",
     "@lucide/vue": "^1.41.0",
     "@pmndrs/vanilla": "^1.25.0",

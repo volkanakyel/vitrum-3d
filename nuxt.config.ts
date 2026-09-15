@@ -90,10 +90,47 @@ export default defineNuxtConfig({
       ? { cors: { origin: ['null', /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/] } }
       : undefined,
   },
+  // A sculpt run is a chain of long tool calls; the platform default (10 s / 60 s)
+  // cuts the author model off mid-file.
+  nitro: {
+    vercel: { functions: { maxDuration: 300 } },
+    rollupConfig: {
+      // The sculpt prompts are Markdown imported as strings. Vite resolves the
+      // `?raw` query natively, but Nitro's own raw plugin keys on the extension
+      // alone and hands rollup "intake.md?raw" as a filename, which does not
+      // exist. Drop the query here; Nitro's raw plugin then loads the .md as
+      // text, exactly as Vite's ?raw does for the test run.
+      plugins: [{
+        name: 'raw-query',
+        async resolveId(id: string, importer: string | undefined, options: unknown) {
+          if (!id.endsWith('?raw')) return null
+          const resolved = await (this as {
+            resolve: (id: string, importer?: string, options?: unknown) => Promise<{ id: string } | null>
+          }).resolve(id.slice(0, -4), importer, options)
+          return resolved?.id ?? null
+        },
+      }],
+    },
+  },
   runtimeConfig: {
+    /** Server-only: set with NUXT_ANTHROPIC_KEY. Never exposed to the client. */
+    anthropicKey: '',
+    /** Only needed when the key is not itself scoped to a workspace (NUXT_ANTHROPIC_WORKSPACE_ID). */
+    anthropicWorkspaceId: '',
     public: {
       /** Depth model id on the Hugging Face hub, or a path under `/models/` when self-hosted. */
       depthModel: 'onnx-community/depth-anything-v2-small',
+      /** Writes the intake, the spec and the factory code. */
+      sculptModelAuthor: 'claude-opus-5',
+      /** Scores the renders — cheaper, and the judgement is vision-bound, not authoring-bound. */
+      sculptModelReview: 'claude-sonnet-5',
+      /** USD per million tokens, by model family. */
+      sculptPrices: {
+        opus: { input: 5, output: 25 },
+        sonnet: { input: 2, output: 10 },
+      },
+      /** The studio hides the sculpt panel when the server has no key. */
+      sculptEnabled: !!process.env.NUXT_ANTHROPIC_KEY,
     },
   },
 })
