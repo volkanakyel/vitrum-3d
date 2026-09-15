@@ -47,25 +47,25 @@ export function validateCode(code: string): { ok: true } | { ok: false; errors: 
     const message = err.message.match(/\(\d+:\d+\)/)
       ? err.message
       : `${err.message} (${err.loc?.line ?? 0}:${err.loc?.column ?? 0})`
-    const syntaxErrors = [message]
+    errors.push(message)
     for (const name of FORBIDDEN) {
       const re = new RegExp(`\\b${name}\\b`)
-      if (re.test(code)) syntaxErrors.push(`forbidden identifier used: ${name}`)
+      if (re.test(code)) errors.push(`forbidden identifier used: ${name}`)
     }
-    return { ok: false, errors: syntaxErrors }
+    return { ok: false, errors }
   }
 
   const forbiddenHits = new Set<string>()
 
-  let hasCreateModel = false
+  let createModelCount = 0
   for (const stmt of (ast as unknown as { body: Node[] }).body) {
     const fn = stmt as unknown as { type: string; id?: { name: string } | null; params: unknown[] }
-    if (fn.type === 'FunctionDeclaration' && fn.id?.name === 'createModel') {
-      if (fn.params.length === 3) hasCreateModel = true
+    if (fn.type === 'FunctionDeclaration' && fn.id?.name === 'createModel' && fn.params.length === 3) {
+      createModelCount += 1
     }
   }
-  if (!hasCreateModel) {
-    errors.push('code must declare a top-level "function createModel(kit, THREE, options)" with exactly 3 parameters')
+  if (createModelCount !== 1) {
+    errors.push('code must declare exactly one top-level "function createModel(kit, THREE, options)" with exactly 3 parameters')
   }
 
   full(ast, (node) => {

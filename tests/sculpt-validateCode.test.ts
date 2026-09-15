@@ -16,6 +16,13 @@ describe('validateCode', () => {
     expect(validateCode('function create(kit) {}').ok).toBe(false)
     expect(validateCode('function createModel(kit) { return kit.root([]) }').ok).toBe(false)
   })
+  it('rejects a duplicate top-level createModel declaration', () => {
+    const dup = `function createModel(kit, THREE, options) { return kit.root([]) }
+function createModel(kit, THREE, options) { return kit.root([]) }`
+    const r = validateCode(dup)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors.join(' ')).toContain('createModel')
+  })
   it.each(FORBIDDEN)('rejects the identifier %s', (name) => {
     const r = validateCode(`function createModel(kit, THREE, options) { const x = ${name}; return kit.root([]) }`)
     expect(r.ok).toBe(false); if (!r.ok) expect(r.errors.join(' ')).toContain(name)
