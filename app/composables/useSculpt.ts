@@ -11,6 +11,7 @@
 
 import type * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { toApiImage } from '~/utils/sculpt/apiImage'
 import { JobRunner, createJob, type JobStatus, type SculptJob } from '~/utils/sculpt/job'
 import { Sandbox } from '~/utils/sculpt/sandbox'
 import { buildSheet } from '~/utils/sculpt/sheet'
@@ -34,33 +35,15 @@ export interface SculptDeps {
 /** Statuses that mean the runner is working; `waiting-input` is the user's turn, not the runner's. */
 const RUNNING_STATUSES: JobStatus[] = ['intake', 'spec', 'building', 'rendering', 'reviewing', 'exporting']
 
-/** Long side of the photo sent to the API (Anthropic's image budget). */
-const MAX_IMAGE_PX = 1568
-const IMAGE_QUALITY = 0.9
-
-/** The source photo as a JPEG data URL no larger than the API takes. */
-function toApiImage(img: HTMLImageElement): string {
-  const iw = img.naturalWidth || img.width
-  const ih = img.naturalHeight || img.height
-  const k = Math.min(1, MAX_IMAGE_PX / Math.max(iw, ih))
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(iw * k))
-  canvas.height = Math.max(1, Math.round(ih * k))
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('2d canvas context unavailable')
-  // JPEG has no alpha: a transparent cut-out would come out black otherwise.
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-  return canvas.toDataURL('image/jpeg', IMAGE_QUALITY)
-}
-
 export function useSculpt(deps: SculptDeps) {
   const job = shallowRef<SculptJob | null>(null)
   const jobs = ref<JobSummary[]>([])
-  const available = computed(() => !!useRuntimeConfig().public.sculptEnabled)
+  const enabled = !!useRuntimeConfig().public.sculptEnabled
+  const available = computed(() => enabled)
   /** A run is in flight: the panel shows stages and a Cancel, `start` is refused. */
-  const running = computed(() => !!job.value && RUNNING_STATUSES.includes(job.value.status))
+  /** True from the moment a run is started until its `run()` settles. */
+  const inFlight = ref(false)
+  const running = computed(() => inFlight.value || (!!job.value && RUNNING_STATUSES.includes(job.value.status)))
 
   let runner: JobRunner | null = null
   let sandbox: Sandbox | null = null
@@ -104,7 +87,10 @@ export function useSculpt(deps: SculptDeps) {
       },
       sheet: (reference, renders) => buildSheet(reference, renders),
       save: saveJob,
-      onChange: (j) => { job.value = { ...j } },
+      // A runner that was cancelled still reports its last state; once the
+      // studio has moved off that job (cleared, or another run reopened) those
+      // updates are not ours to show.
+      onChange: (j) => { if (j.id === job.value?.id) job.value = { ...j } },
     })
   }
 
@@ -115,7 +101,16 @@ export function useSculpt(deps: SculptDeps) {
     deps.viewer.value?.setExternalModel(gltf.scene)
   }
 
+  /**
+   * Land a settled run. A result whose job is no longer the current one — the
+   * user cleared it, imported another photo or reopened an older run while it
+   * was in flight — must not touch the stage or the panel.
+   */
   async function finish(result: SculptJob) {
+    if (result.id !== job.value?.id) {
+      await refreshJobs()
+      return
+    }
     job.value = { ...result }
     await refreshJobs()
     if (result.status === 'done' && result.glb) {
@@ -139,10 +134,23 @@ export function useSculpt(deps: SculptDeps) {
       deps.notify('Import a photo first')
       return
     }
-    const fresh = createJob(toApiImage(img), hint.trim(), dims)
-    job.value = fresh
-    runner = runnerFor(fresh)
-    await finish(await runner.run())
+    inFlight.value = true
+    let fresh: SculptJob | null = null
+    try {
+      fresh = createJob(toApiImage(img), hint.trim(), dims)
+      job.value = fresh
+      runner = runnerFor(fresh)
+      await finish(await runner.run())
+    }
+    catch (e) {
+      // A canvas the browser would not give us, a sandbox that never came up:
+      // the run never started, so there is nothing to resume.
+      if (fresh && job.value?.id === fresh.id) job.value = null
+      deps.notify(`Could not start the run: ${(e as Error).message}`)
+    }
+    finally {
+      inFlight.value = false
+    }
   }
 
   function cancel() {
@@ -163,15 +171,34 @@ export function useSculpt(deps: SculptDeps) {
   async function retry() {
     const current = job.value
     if (!current || !available.value || running.value) return
-    const resumed: SculptJob = { ...current, error: null }
-    job.value = resumed
-    runner = runnerFor(resumed)
-    await finish(await runner.run())
+    inFlight.value = true
+    try {
+      const resumed: SculptJob = { ...current, error: null }
+      job.value = resumed
+      runner = runnerFor(resumed)
+      await finish(await runner.run())
+    }
+    catch (e) {
+      deps.notify(`Could not resume the run: ${(e as Error).message}`)
+    }
+    finally {
+      inFlight.value = false
+    }
   }
 
   /** Open a stored job: its model goes back on the stage, without a single API call. */
   async function reopen(id: string) {
-    const stored = await loadJob(id)
+    // Opening an older run under a live one would leave the runner writing into
+    // a job the studio has moved off.
+    if (running.value) return
+    let stored: SculptJob | null = null
+    try {
+      stored = await loadJob(id)
+    }
+    catch (e) {
+      deps.notify(`Could not open that run: ${(e as Error).message}`)
+      return
+    }
     if (!stored) {
       deps.notify('That run is no longer stored')
       return
@@ -190,9 +217,11 @@ export function useSculpt(deps: SculptDeps) {
 
   /** Back to the carve: the run stays in the history, the stage does not. */
   function clear() {
+    // A live run would keep paying for passes and keep writing into `job`.
+    runner?.cancel()
+    runner = null
     deps.viewer.value?.setExternalModel(null)
     job.value = null
-    runner = null
   }
 
   const api = { job, jobs, available, running, start, cancel, answer, retry, reopen, clear, refreshJobs }

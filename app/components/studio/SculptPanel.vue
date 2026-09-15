@@ -14,6 +14,20 @@ const hint = ref('')
 const reply = ref('')
 /** The sheet opened full size, if any. */
 const zoomed = ref('')
+/** How many previous runs the list shows: each carries a full-size data-URL thumbnail. */
+const RECENT_JOBS = 5
+const recent = computed(() => props.sculpt.jobs.value.slice(0, RECENT_JOBS))
+
+// Escape closes the zoomed sheet. The overlay is not focusable, so the key has
+// to be caught on the window — only while a sheet is open.
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') zoomed.value = ''
+}
+watch(zoomed, (open, was) => {
+  if (open && !was) window.addEventListener('keydown', onKey)
+  else if (!open && was) window.removeEventListener('keydown', onKey)
+})
+onScopeDispose(() => window.removeEventListener('keydown', onKey))
 
 /** The run's stages in order, with the two that come before the build passes. */
 const STAGES: { id: 'intake' | 'spec' | PassId, label: string }[] = [
@@ -31,10 +45,9 @@ const activeStage = computed(() => {
   const pass = j.currentPass
   return pass ? 2 + PASSES.indexOf(pass) : j.intake ? 1 : 0
 })
-const stageState = (index: number) => {
-  if (status.value === 'done') return 'done'
-  return index < activeStage.value ? 'done' : index === activeStage.value ? 'active' : 'todo'
-}
+// Only ever read while the run is in flight, so there is no finished case here.
+const stageState = (index: number) =>
+  index < activeStage.value ? 'done' : index === activeStage.value ? 'active' : 'todo'
 
 const running = computed(() => props.sculpt.running.value)
 const sheets = computed(() => (job.value?.passes.flatMap(p => p.sheets) ?? []).slice(-3).reverse())
@@ -129,12 +142,12 @@ function when(ms: number) {
       </p>
 
       <div
-        v-if="sculpt.jobs.value.length"
+        v-if="recent.length"
         class="flex flex-col gap-1"
       >
         <span class="text-[11px] text-ink-3">Previous runs</span>
         <button
-          v-for="previous in sculpt.jobs.value"
+          v-for="previous in recent"
           :key="previous.id"
           type="button"
           class="flex items-center gap-2 rounded-lg p-1 text-left transition-colors hover:bg-well"
@@ -280,9 +293,7 @@ function when(ms: number) {
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
         role="dialog"
         aria-label="Comparison sheet"
-        tabindex="-1"
         @click="zoomed = ''"
-        @keydown.esc="zoomed = ''"
       >
         <img
           :src="zoomed"

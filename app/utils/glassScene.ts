@@ -632,11 +632,13 @@ export class GlassStudio {
     this.rim.color.set(product ? 0xffffff : 0xdfe9ff)
     this.rim.intensity = product ? 0.5 : 1.4
     this.rim.position.copy(rig.rimDir)
-    this.key.position.copy(rig.keyDir).multiplyScalar(this.keyDistance)
+    this.key.position.copy(rig.keyDir).multiplyScalar(this.keyDistance).add(this.modelCentre)
   }
 
   /** How far out along its direction the key light sits; set per model in `placeFloor`. */
   private keyDistance = 1
+  /** The middle of the model the lights aim at; set per model in `placeFloor`. */
+  private modelCentre = new THREE.Vector3()
 
   private applyEnvironment() {
     const product = this.stage === 'floor'
@@ -747,8 +749,13 @@ export class GlassStudio {
     this.floor.scale.setScalar(r * 14)
     this.floor.position.y = box.min.y - r * 0.002
     this.keyDistance = r * 5
+    // The carve is centred on the origin, an external model stands on the floor: the key light
+    // and its shadow camera follow the model's middle so the shadow map covers it either way.
+    box.getCenter(this.modelCentre)
+    if (this.key.target.parent !== this.scene) this.scene.add(this.key.target)
+    this.key.target.position.copy(this.modelCentre)
     const rig = this.params.floor ? GlassStudio.RIGS.floor : GlassStudio.RIGS.wall
-    this.key.position.copy(rig.keyDir).multiplyScalar(this.keyDistance)
+    this.key.position.copy(rig.keyDir).multiplyScalar(this.keyDistance).add(this.modelCentre)
     const cam = this.key.shadow.camera
     cam.left = cam.bottom = -r * 1.7
     cam.right = cam.top = r * 1.7
@@ -1115,6 +1122,9 @@ export class GlassStudio {
    * rebuilds the carved mesh.
    */
   setExternalModel(group: THREE.Group | null) {
+    // Clearing what was never set is a no-op: every import and every `clearImage`
+    // calls this, and a stray rebuild would re-carve the old trace for nothing.
+    if (!group && !this.external) return
     if (this.external) {
       this.scene.remove(this.external)
       this.disposeExternal(this.external)
