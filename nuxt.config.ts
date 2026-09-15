@@ -21,7 +21,24 @@ export default defineNuxtConfig({
     '/studio/**': { ssr: false },
     // The sandbox runs generated code in an opaque-origin iframe; there is
     // nothing to render on the server, and its dev-only host page is the same.
-    '/sandbox': { ssr: false },
+    // The CSP travels as a response header, not a meta tag: `frame-ancestors`
+    // is header-only, and it is what stops another site embedding this page
+    // WITHOUT the sandbox attribute — which would run generated code on our
+    // own origin. `ws:` only matters to the dev client and is inert in a build.
+    '/sandbox': {
+      ssr: false,
+      headers: {
+        'content-security-policy': [
+          'default-src \'none\'',
+          // 'unsafe-eval' is the point of this page: generated code runs in new Function().
+          'script-src \'self\' \'unsafe-eval\' \'unsafe-inline\'',
+          'style-src \'self\' \'unsafe-inline\'',
+          'img-src data: blob:',
+          'connect-src \'self\' ws: wss:',
+          'frame-ancestors \'self\'',
+        ].join('; '),
+      },
+    },
     '/sandbox-host': { ssr: false },
   },
   // The sandbox page runs on an opaque origin ("null"), and ES modules are
@@ -63,9 +80,15 @@ export default defineNuxtConfig({
       include: ['three', 'three/examples/jsm/exporters/GLTFExporter.js', 'd3-contour'],
       exclude: ['@huggingface/transformers'],
     },
-    // Same reason as the `/_nuxt/**` rule above, for the dev server: the
-    // sandbox iframe asks for its modules from origin "null".
-    server: { cors: { origin: ['null', /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/] } },
+    // Same reason as the `$production` rule above, for the dev server: the
+    // sandbox iframe asks for its modules from origin "null". Allowing the
+    // null origin also lets any page that can reach this dev server read source
+    // from a sandboxed frame, so it is opt-in: the e2e run sets the variable,
+    // ordinary `pnpm dev` does not (and the sandbox page is then unusable in
+    // dev, which is the safer default).
+    server: process.env.VITRUM_SANDBOX_E2E === '1'
+      ? { cors: { origin: ['null', /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/] } }
+      : undefined,
   },
   runtimeConfig: {
     public: {

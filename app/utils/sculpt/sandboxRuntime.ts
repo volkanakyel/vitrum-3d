@@ -24,27 +24,40 @@ export interface SandboxView {
   distance: number
 }
 
+/** Every request carries the host's per-frame nonce; every reply echoes it. */
+interface Envelope { id: number, nonce: string }
+
 export type SandboxRequest =
-  | { type: 'load', id: number, code: string, quality: KitOptions['quality'], seed: number }
-  | { type: 'render', id: number, views: SandboxView[], size: number }
-  | { type: 'export', id: number }
+  | (Envelope & { type: 'load', code: string, quality: KitOptions['quality'], seed: number })
+  | (Envelope & { type: 'render', views: SandboxView[], size: number })
+  | (Envelope & { type: 'export' })
 
 export type SandboxResponse =
   | { type: 'ready' }
   | {
     type: 'loaded'
     id: number
+    nonce: string
     parts: string[]
     triangles: number
     drawCalls: number
     bounds: { w: number, h: number, d: number }
   }
-  | { type: 'rendered', id: number, views: { name: string, png: ArrayBuffer }[] }
-  | { type: 'exported', id: number, glb: ArrayBuffer }
-  | { type: 'error', id: number, message: string, stack?: string }
+  | { type: 'rendered', id: number, nonce: string, views: { name: string, png: ArrayBuffer }[] }
+  | { type: 'exported', id: number, nonce: string, glb: ArrayBuffer }
+  | { type: 'error', id: number, nonce: string, message: string, stack?: string }
 
 /** The generated factory gets this long before the watchdog gives up on it. */
 const FACTORY_TIMEOUT_MS = 10_000
+/** Matches the host's cap; a render request larger than this is a mistake or an attack. */
+const MAX_RENDER_SIZE = 4096
+
+/**
+ * The host's nonce, learned from its first request and kept in module scope:
+ * generated code runs inside `new Function` and has no way to reach this
+ * binding, so it cannot forge a reply the host will accept.
+ */
+let sessionNonce: string | null = null
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
@@ -155,23 +168,62 @@ function errorMessage(error: unknown): { message: string, stack?: string } {
   return { message: String(error) }
 }
 
+/**
+ * True only when this document is a framed, sandboxed one: an opaque origin
+ * (`window.origin === 'null'`) inside someone else's page. Loaded any other
+ * way — top level, or framed without the `sandbox` attribute, which would put
+ * it on the app's real origin — the runtime must not run generated code.
+ */
+function isIsolated(): boolean {
+  return window.parent !== window && window.origin === 'null'
+}
+
+type Stage = ReturnType<typeof buildStage>
+
 export class SandboxRuntime {
-  readonly #stage = buildStage()
+  /** Built on the first request: a refused page must not hold a GL context. */
+  #stageRef: Stage | null = null
   #group: THREE.Group | null = null
   #disposed = false
+  #busy = false
+  readonly #active: boolean
   readonly #onMessage: (event: MessageEvent) => void
 
   constructor() {
+    this.#active = isIsolated()
     this.#onMessage = (event: MessageEvent) => {
       // Only the embedder may drive this page.
       if (event.source !== window.parent) return
-      void this.#handle(event.data as SandboxRequest)
+      const request = event.data as SandboxRequest
+      if (!request || typeof request !== 'object' || typeof request.nonce !== 'string') return
+      // The first request settles whose page this is; nothing else is served.
+      if (sessionNonce === null) sessionNonce = request.nonce
+      else if (request.nonce !== sessionNonce) return
+      if (this.#busy) {
+        this.#post({ type: 'error', id: request.id, nonce: request.nonce, message: 'busy' })
+        return
+      }
+      this.#busy = true
+      void this.#handle(request).finally(() => { this.#busy = false })
+    }
+    if (!this.#active) {
+      console.error(
+        '[sandbox] refusing to run: this page only executes generated code inside '
+        + 'an <iframe sandbox="allow-scripts">, on an opaque origin.',
+      )
+      return
     }
     window.addEventListener('message', this.#onMessage)
   }
 
+  get #stage(): Stage {
+    this.#stageRef ??= buildStage()
+    return this.#stageRef
+  }
+
   /** Announce readiness once the module is live. */
   announce(): void {
+    if (!this.#active) return
     this.#post({ type: 'ready' })
   }
 
@@ -181,7 +233,8 @@ export class SandboxRuntime {
     window.removeEventListener('message', this.#onMessage)
     if (this.#group) disposeGroup(this.#group)
     this.#group = null
-    this.#stage.renderer.dispose()
+    this.#stageRef?.renderer.dispose()
+    this.#stageRef = null
   }
 
   #post(message: SandboxResponse, transfer: Transferable[] = []): void {
@@ -191,7 +244,6 @@ export class SandboxRuntime {
   }
 
   async #handle(request: SandboxRequest): Promise<void> {
-    if (!request || typeof request !== 'object') return
     try {
       switch (request.type) {
         case 'load': return await this.#load(request)
@@ -202,7 +254,13 @@ export class SandboxRuntime {
     }
     catch (error) {
       const { message, stack } = errorMessage(error)
-      this.#post({ type: 'error', id: (request as { id?: number }).id ?? 0, message, stack })
+      this.#post({
+        type: 'error',
+        id: request.id,
+        nonce: request.nonce,
+        message,
+        stack,
+      })
     }
   }
 
@@ -267,6 +325,7 @@ export class SandboxRuntime {
     this.#post({
       type: 'loaded',
       id: request.id,
+      nonce: request.nonce,
       parts: partNames(group),
       triangles,
       drawCalls,
@@ -278,7 +337,7 @@ export class SandboxRuntime {
     const group = this.#group
     if (!group) throw new Error('nothing loaded')
     const { renderer, scene, camera, key, canvas } = this.#stage
-    const size = Math.max(16, Math.round(request.size))
+    const size = Math.min(MAX_RENDER_SIZE, Math.max(16, Math.round(request.size)))
     canvas.width = size
     canvas.height = size
     renderer.setSize(size, size, false)
@@ -323,13 +382,16 @@ export class SandboxRuntime {
       views.push({ name: view.name, png: await blob.arrayBuffer() })
     }
 
-    this.#post({ type: 'rendered', id: request.id, views }, views.map(v => v.png))
+    this.#post(
+      { type: 'rendered', id: request.id, nonce: request.nonce, views },
+      views.map(v => v.png),
+    )
   }
 
   async #export(request: Extract<SandboxRequest, { type: 'export' }>): Promise<void> {
     const group = this.#group
     if (!group) throw new Error('nothing loaded')
     const glb = await new GLTFExporter().parseAsync(group, { binary: true }) as ArrayBuffer
-    this.#post({ type: 'exported', id: request.id, glb }, [glb])
+    this.#post({ type: 'exported', id: request.id, nonce: request.nonce, glb }, [glb])
   }
 }

@@ -117,6 +117,13 @@ The deterministic half. Generated code calls only this and `THREE`.
   `export {}` → GLB ArrayBuffer (GLTFExporter, canvas textures baked as PNG, transferred).
 - On the main side `app/utils/sculpt/sandbox.ts` wraps this in promises with timeouts and
   recreates the iframe on any error (a crashed sandbox never affects the app).
+- Known limitation — synchronous infinite loops: the host's recovery from a wedged sandbox is to
+  drop the iframe and build a new one, which only frees the app if the browser gave that sandboxed
+  frame its own renderer process. Desktop Chrome does (sandboxed-frame isolation); Firefox and
+  Chrome on low-memory Android do not, so a `while (true)` in generated code freezes the whole tab
+  and no host-side timeout can fire. The follow-up that removes the dependency is to move execution
+  into a Worker with an `OffscreenCanvas` for the renderer: `worker.terminate()` is unconditional,
+  which would also let the 10 s factory watchdog actually bite.
 
 ### Job orchestrator (`app/utils/sculpt/job.ts`, pure state machine + effects; `useSculpt` composable)
 ```

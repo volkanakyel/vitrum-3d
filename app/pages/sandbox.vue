@@ -8,18 +8,13 @@ import { SandboxRuntime } from '~/utils/sculpt/sandboxRuntime'
 
 definePageMeta({ layout: false })
 
-const csp = [
-  'default-src \'none\'',
-  // 'unsafe-eval' is the point of this page: generated code runs in new Function().
-  'script-src \'self\' \'unsafe-eval\' \'unsafe-inline\'',
-  'style-src \'unsafe-inline\'',
-  'img-src data: blob:',
-  import.meta.dev ? 'connect-src \'self\' ws: wss:' : 'connect-src \'self\'',
-].join('; ')
-
+// The policy that matters — including `frame-ancestors 'self'`, which a meta
+// tag cannot express — is served as a response header by the `/sandbox` route
+// rule in nuxt.config.ts. It is in force while the document loads; a meta tag
+// on an ssr:false page would not be.
 useHead({
   title: 'sandbox',
-  meta: [{ 'http-equiv': 'Content-Security-Policy', 'content': csp }],
+  meta: [{ name: 'robots', content: 'noindex, nofollow' }],
 })
 
 let runtime: SandboxRuntime | null = null

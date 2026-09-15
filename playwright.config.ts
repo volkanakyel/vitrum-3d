@@ -33,7 +33,10 @@ export default defineConfig({
   webServer: {
     command: 'pnpm dev --port 3010',
     url: 'http://localhost:3010/sandbox-host',
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
+    // Opts the dev server into the CORS relaxation the opaque-origin sandbox
+    // frame needs; see the comment on `vite.server.cors` in nuxt.config.ts.
+    env: { VITRUM_SANDBOX_E2E: '1' },
     timeout: 120_000,
   },
 })

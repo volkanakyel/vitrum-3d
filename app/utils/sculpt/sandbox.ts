@@ -3,9 +3,18 @@
  *
  * Owns the `<iframe sandbox="allow-scripts">` that runs generated code. The
  * main app never evaluates that code itself; it only sends requests and
- * receives images, counts and a GLB. Every call is matched by id and bounded
- * by a timeout — a hung sandbox (a synchronous infinite loop, say) is dealt
- * with by throwing the iframe away and building a new one.
+ * receives images, counts and a GLB.
+ *
+ * The frame is treated as hostile, because it runs code we did not write:
+ * - every request carries a per-frame nonce the generated code cannot read
+ *   from its own document, and a response without it is dropped;
+ * - every response is shape-checked and size-capped before it is handed on;
+ * - requests are serialised, so one wedged call cannot be answered by the
+ *   reply to another;
+ * - each `load` gets a brand new frame, so code that navigated or wired up its
+ *   own listeners is gone before the next model is built;
+ * - any timeout tears the frame down (a synchronous infinite loop cannot be
+ *   interrupted any other way) and the next call waits for a fresh `ready`.
  */
 
 import type { View } from './types'
@@ -20,22 +29,72 @@ const READY_TIMEOUT_MS = 15_000
 const LOAD_TIMEOUT_MS = 20_000
 const RENDER_TIMEOUT_MS = 30_000
 const EXPORT_TIMEOUT_MS = 60_000
+/** Consecutive failures to come up before we stop spawning replacement frames. */
+const MAX_READY_FAILURES = 3
+export const MAX_RENDER_SIZE = 4096
+const MAX_PNG_BYTES = 32 * 1024 * 1024
+const MAX_GLB_BYTES = 64 * 1024 * 1024
+const GLB_MAGIC = [0x67, 0x6C, 0x54, 0x46] // 'glTF'
 
 interface Pending {
-  id: number
   resolve: (response: SandboxResponse) => void
   reject: (error: Error) => void
   timer: number
 }
 
+interface Frame {
+  el: HTMLIFrameElement
+  nonce: string
+}
+
+function isFinitePositive(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+const MALFORMED = 'malformed sandbox response'
+
+/** Nothing from the frame is trusted until it has been through here. */
+function validate(message: SandboxResponse): boolean {
+  switch (message.type) {
+    case 'loaded':
+      return Array.isArray(message.parts)
+        && message.parts.every(part => typeof part === 'string')
+        && isFinitePositive(message.triangles)
+        && isFinitePositive(message.drawCalls)
+        && Boolean(message.bounds)
+        && isFinitePositive(message.bounds.w)
+        && isFinitePositive(message.bounds.h)
+        && isFinitePositive(message.bounds.d)
+    case 'rendered':
+      return Array.isArray(message.views)
+        && message.views.every(view =>
+          Boolean(view)
+          && typeof view.name === 'string'
+          && view.png instanceof ArrayBuffer
+          && view.png.byteLength <= MAX_PNG_BYTES,
+        )
+    case 'exported': {
+      if (!(message.glb instanceof ArrayBuffer)) return false
+      if (message.glb.byteLength > MAX_GLB_BYTES || message.glb.byteLength < 4) return false
+      const head = new Uint8Array(message.glb, 0, 4)
+      return GLB_MAGIC.every((byte, i) => head[i] === byte)
+    }
+    default:
+      return false
+  }
+}
+
 export class Sandbox {
   readonly #mount: HTMLElement
-  #frame: HTMLIFrameElement
+  #frame: Frame
   #pending = new Map<number, Pending>()
   #readyWaiters: { resolve: () => void, reject: (error: Error) => void, timer: number }[] = []
   #ready = false
+  #readyFailures = 0
   #nextId = 1
   #disposed = false
+  /** One request in flight at a time, in call order. */
+  #queue: Promise<unknown> = Promise.resolve()
   readonly #onMessage: (event: MessageEvent) => void
 
   constructor(mount: HTMLElement) {
@@ -45,13 +104,15 @@ export class Sandbox {
     this.#frame = this.#createFrame()
   }
 
-  #createFrame(): HTMLIFrameElement {
-    const frame = document.createElement('iframe')
-    frame.setAttribute('sandbox', 'allow-scripts')
-    frame.src = '/sandbox'
-    frame.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden'
-    this.#mount.appendChild(frame)
-    return frame
+  #createFrame(): Frame {
+    const el = document.createElement('iframe')
+    el.setAttribute('sandbox', 'allow-scripts')
+    el.src = '/sandbox'
+    el.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden'
+    this.#mount.appendChild(el)
+    // The generated code never sees this: it arrives inside a message the page
+    // handler closes over, and the page keeps it in module scope.
+    return { el, nonce: crypto.randomUUID() }
   }
 
   /** Tear the frame down mid-flight and start a fresh one. */
@@ -67,19 +128,20 @@ export class Sandbox {
     }
     this.#readyWaiters = []
     this.#ready = false
-    this.#frame.remove()
+    this.#frame.el.remove()
     if (!this.#disposed) this.#frame = this.#createFrame()
   }
 
   #receive(event: MessageEvent): void {
     if (this.#disposed) return
     // Only our own frame is allowed to talk to us.
-    if (event.source !== this.#frame.contentWindow) return
+    if (event.source !== this.#frame.el.contentWindow) return
     const message = event.data as SandboxResponse
     if (!message || typeof message !== 'object' || typeof message.type !== 'string') return
 
     if (message.type === 'ready') {
       this.#ready = true
+      this.#readyFailures = 0
       for (const waiter of this.#readyWaiters) {
         window.clearTimeout(waiter.timer)
         waiter.resolve()
@@ -88,78 +150,109 @@ export class Sandbox {
       return
     }
 
+    // Generated code shares the document and can post messages of its own; it
+    // cannot know this frame's nonce, so an answer without it is not ours.
+    if (message.nonce !== this.#frame.nonce) return
+
     const pending = this.#pending.get(message.id)
     if (!pending) return
     window.clearTimeout(pending.timer)
     this.#pending.delete(message.id)
     if (message.type === 'error') pending.reject(new Error(message.message))
+    else if (!validate(message)) pending.reject(new Error(MALFORMED))
     else pending.resolve(message)
   }
 
   ready(): Promise<void> {
     if (this.#disposed) return Promise.reject(new Error('sandbox disposed'))
     if (this.#ready) return Promise.resolve()
+    if (this.#readyFailures >= MAX_READY_FAILURES) {
+      return Promise.reject(new Error(`sandbox failed to start ${MAX_READY_FAILURES} times; giving up`))
+    }
     return new Promise<void>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         this.#readyWaiters = this.#readyWaiters.filter(w => w.timer !== timer)
-        reject(new Error(`sandbox ready timeout after ${READY_TIMEOUT_MS} ms`))
-        this.#recreate(`sandbox ready timeout after ${READY_TIMEOUT_MS} ms`)
+        this.#readyFailures += 1
+        const message = `sandbox ready timeout after ${READY_TIMEOUT_MS} ms`
+        reject(new Error(message))
+        if (this.#readyFailures < MAX_READY_FAILURES) this.#recreate(message)
       }, READY_TIMEOUT_MS)
       this.#readyWaiters.push({ resolve, reject, timer })
     })
   }
 
-  async #send<T extends SandboxResponse['type']>(
-    build: (id: number) => SandboxRequest,
+  /** Serialise calls: at most one request is in flight per frame. */
+  #enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.#queue.then(task, task)
+    this.#queue = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  #request<T extends SandboxResponse['type']>(
+    build: (id: number, nonce: string) => SandboxRequest,
     timeoutMs: number,
     label: string,
   ): Promise<Extract<SandboxResponse, { type: T }>> {
-    if (this.#disposed) throw new Error('sandbox disposed')
-    await this.ready()
     const id = this.#nextId++
-    const request = build(id)
     const frame = this.#frame
+    const request = build(id, frame.nonce)
     return new Promise<Extract<SandboxResponse, { type: T }>>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         this.#pending.delete(id)
-        reject(new Error(`sandbox ${label} timeout after ${timeoutMs} ms`))
+        const message = `sandbox ${label} timeout after ${timeoutMs} ms`
+        reject(new Error(message))
         // The page may be wedged in a synchronous loop: only a new frame frees it.
-        this.#recreate(`sandbox ${label} timeout after ${timeoutMs} ms`)
+        this.#recreate(message)
       }, timeoutMs)
       this.#pending.set(id, {
-        id,
         resolve: response => resolve(response as Extract<SandboxResponse, { type: T }>),
         reject,
         timer,
       })
-      frame.contentWindow?.postMessage(request, '*')
+      frame.el.contentWindow?.postMessage(request, '*')
     })
   }
 
   load(code: string, quality: KitOptions['quality'], seed: number): Promise<SandboxLoaded> {
-    return this.#send<'loaded'>(
-      id => ({ type: 'load', id, code, quality, seed }),
-      LOAD_TIMEOUT_MS,
-      'load',
-    )
+    return this.#enqueue(async () => {
+      if (this.#disposed) throw new Error('sandbox disposed')
+      // A fresh document per model: the previous one ran code that may have
+      // navigated the frame or installed listeners of its own.
+      this.#recreate('sandbox restarted for a new load')
+      await this.ready()
+      return this.#request<'loaded'>(
+        (id, nonce) => ({ type: 'load', id, nonce, code, quality, seed }),
+        LOAD_TIMEOUT_MS,
+        'load',
+      )
+    })
   }
 
-  async render(views: View[], size = 1024): Promise<{ name: string, blob: Blob }[]> {
-    const response = await this.#send<'rendered'>(
-      id => ({ type: 'render', id, views: views.map(v => ({ ...v })), size }),
-      RENDER_TIMEOUT_MS,
-      'render',
-    )
-    return response.views.map(v => ({ name: v.name, blob: new Blob([v.png], { type: 'image/png' }) }))
+  render(views: View[], size = 1024): Promise<{ name: string, blob: Blob }[]> {
+    const clamped = Math.min(MAX_RENDER_SIZE, Math.max(16, Math.round(size)))
+    return this.#enqueue(async () => {
+      if (this.#disposed) throw new Error('sandbox disposed')
+      await this.ready()
+      const response = await this.#request<'rendered'>(
+        (id, nonce) => ({ type: 'render', id, nonce, views: views.map(v => ({ ...v })), size: clamped }),
+        RENDER_TIMEOUT_MS,
+        'render',
+      )
+      return response.views.map(v => ({ name: v.name, blob: new Blob([v.png], { type: 'image/png' }) }))
+    })
   }
 
-  async exportGLB(): Promise<ArrayBuffer> {
-    const response = await this.#send<'exported'>(
-      id => ({ type: 'export', id }),
-      EXPORT_TIMEOUT_MS,
-      'export',
-    )
-    return response.glb
+  exportGLB(): Promise<ArrayBuffer> {
+    return this.#enqueue(async () => {
+      if (this.#disposed) throw new Error('sandbox disposed')
+      await this.ready()
+      const response = await this.#request<'exported'>(
+        (id, nonce) => ({ type: 'export', id, nonce }),
+        EXPORT_TIMEOUT_MS,
+        'export',
+      )
+      return response.glb
+    })
   }
 
   dispose(): void {
@@ -176,6 +269,6 @@ export class Sandbox {
       waiter.reject(new Error('sandbox disposed'))
     }
     this.#readyWaiters = []
-    this.#frame.remove()
+    this.#frame.el.remove()
   }
 }

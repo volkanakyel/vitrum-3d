@@ -8,6 +8,8 @@ import { Sandbox } from '~/utils/sculpt/sandbox'
 
 definePageMeta({ layout: false })
 
+useHead({ meta: [{ name: 'robots', content: 'noindex, nofollow' }] })
+
 const isDev = import.meta.dev
 const mount = ref<HTMLElement | null>(null)
 let sandbox: Sandbox | null = null
