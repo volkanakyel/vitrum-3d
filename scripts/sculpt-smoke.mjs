@@ -4,22 +4,23 @@
  *
  *   NUXT_ANTHROPIC_KEY=... pnpm dev           # or put it in .env
  *   # a key that is not scoped to a workspace also needs NUXT_ANTHROPIC_WORKSPACE_ID
- *   node scripts/sculpt-smoke.mjs <image.jpg|png> [--base=http://localhost:3000]
+ *   node scripts/sculpt-smoke.mjs <image.jpg|png> [--base=http://localhost:3000] [--build]
  *
- * Posts the photo to /api/sculpt/intake, feeds the intake to /api/sculpt/spec,
- * and prints both results with their tokens and cost. Pass a photo of one object
- * on a plain background — a comparison sheet with two panels is two objects, and
- * the intake will say so.
+ * Posts the photo to /api/sculpt/plan and prints the plan with its tokens and
+ * cost. With --build it also asks /api/sculpt/build for the model and writes
+ * it next to the photo as <name>.sculpt.js. Pass a photo of one object on a
+ * plain background.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 
 const args = process.argv.slice(2)
 const baseArg = args.find(a => a.startsWith('--base='))
 const base = baseArg ? baseArg.slice('--base='.length) : 'http://localhost:3000'
+const build = args.includes('--build')
 const imagePath = args.find(a => !a.startsWith('--'))
 
 if (!imagePath) {
-  console.error('usage: node scripts/sculpt-smoke.mjs <image.jpg|png> [--base=http://localhost:3000]')
+  console.error('usage: node scripts/sculpt-smoke.mjs <image.jpg|png> [--base=http://localhost:3000] [--build]')
   process.exit(2)
 }
 
@@ -48,18 +49,30 @@ const image = readFileSync(imagePath).toString('base64')
 console.log(`image: ${imagePath} (${(image.length * 0.75 / 1024).toFixed(0)} kB)`)
 console.log(`server: ${base}`)
 
-const intake = report('intake', await post('/api/sculpt/intake', { image }))
-console.log(`  ${intake.data.name} — ${intake.data.objectClass}, verdict ${intake.data.suitability.verdict}`)
-console.log(`  dimensions: ${intake.data.dimensions.widthM} × ${intake.data.dimensions.heightM} × ${intake.data.dimensions.depthM} m (${intake.data.dimensions.source})`)
-console.log(`  camera: yaw ${intake.data.camera.yaw}, pitch ${intake.data.camera.pitch}, fov ${intake.data.camera.fov}, distance ${intake.data.camera.distance}`)
-console.log(`  details: ${intake.data.detailInventory.length}, materials: ${intake.data.materialsSeen.length}`)
-
-const spec = report('spec', await post('/api/sculpt/spec', { intake: intake.data, image }))
-console.log(`  components: ${spec.data.components.map(c => c.id).join(', ')}`)
-console.log(`  materials: ${spec.data.materials.map(m => `${m.id}(${m.family})`).join(', ')}`)
+const started = Date.now()
+const plan = report('plan', await post('/api/sculpt/plan', { image }))
+const spec = plan.data
+console.log(`  ${spec.name} — ${spec.objectClass}, verdict ${spec.suitability.verdict}`)
+console.log(`  dimensions: ${spec.dimensions.widthM} × ${spec.dimensions.heightM} × ${spec.dimensions.depthM} m (${spec.dimensions.source})`)
+console.log(`  camera: yaw ${spec.camera.yaw}, pitch ${spec.camera.pitch}, fov ${spec.camera.fov}, distance ${spec.camera.distance}`)
+console.log(`  components: ${spec.components.map(c => c.id).join(', ')}`)
+console.log(`  materials: ${spec.materials.map(m => `${m.id}(${m.family})`).join(', ')}`)
 console.log('  mustMatch:')
-for (const fact of spec.data.mustMatch) console.log(`    - ${fact}`)
+for (const fact of spec.mustMatch) console.log(`    - ${fact}`)
 
-const totalIn = intake.usage.input + spec.usage.input
-const totalOut = intake.usage.output + spec.usage.output
-console.log(`\ntotal: ${totalIn} in / ${totalOut} out tokens, $${(intake.costUsd + spec.costUsd).toFixed(4)}`)
+let totalIn = plan.usage.input
+let totalOut = plan.usage.output
+let totalCost = plan.costUsd
+
+if (build) {
+  const built = report('build', await post('/api/sculpt/build', { spec, image }))
+  const out = imagePath.replace(/\.[^.]+$/, '') + '.sculpt.js'
+  writeFileSync(out, built.data.code)
+  console.log(`  ${built.data.code.length} chars → ${out}`)
+  for (const note of built.data.notes) console.log(`    - ${note}`)
+  totalIn += built.usage.input
+  totalOut += built.usage.output
+  totalCost += built.costUsd
+}
+
+console.log(`\ntotal: ${totalIn} in / ${totalOut} out tokens, $${totalCost.toFixed(4)}, ${Math.round((Date.now() - started) / 1000)}s`)

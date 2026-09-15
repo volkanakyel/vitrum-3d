@@ -6,11 +6,13 @@ function makeSpec(): SculptSpec {
   return {
     name: 'Orange chair bed',
     id: 'orange-chair-bed',
+    objectClass: 'convertible armchair',
+    suitability: { verdict: 'pass', reasons: [] },
+    symmetry: 'left-right',
     camera: { yaw: 25, pitch: 12, fov: 35, distance: 2.4, confidence: 0.9 },
     dimensions: { widthM: 0.8, heightM: 0.9, depthM: 0.75, source: 'estimated' },
-    symmetry: 'left-right',
-    suitability: { verdict: 'pass', reasons: [] },
     detailInventory: [],
+    notes: [],
     components: [
       {
         id: 'base',
@@ -105,7 +107,6 @@ function makeSpec(): SculptSpec {
       },
     ],
     repetition: [],
-    reviewViews: ['reference', 'front', 'side', 'top'],
     mustMatch: ['backrest sits on seat', 'red rail under front'],
     niceToHave: [],
   }

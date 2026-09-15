@@ -8,7 +8,9 @@
 
 import type { JobStatus, SculptJob } from './job'
 
-const DB_NAME = 'vitrum-sculpt'
+// v2 jobs carry a different shape from v1's pass ladder; a new database
+// rather than a migration, since v1 runs are not worth keeping.
+const DB_NAME = 'vitrum-sculpt-v2'
 const DB_VERSION = 1
 const STORE = 'jobs'
 
@@ -135,7 +137,7 @@ export async function listJobs(): Promise<JobSummary[]> {
     return (all as SculptJob[]).map(job => ({
       id: job.id,
       createdAt: job.createdAt,
-      name: job.spec?.name ?? job.intake?.name ?? 'Untitled',
+      name: job.spec?.name ?? 'Untitled',
       status: job.status,
       costUsd: job.costUsd,
       thumbnail: job.image,

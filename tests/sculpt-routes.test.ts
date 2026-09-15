@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { buildCore, intakeCore, reviewCore, specCore } from '../server/utils/sculpt/routes'
+import { buildCore, planCore, reviewCore } from '../server/utils/sculpt/routes'
 import { PROMPTS } from '../server/utils/sculpt/prompts'
 import { FORBIDDEN } from '../server/utils/sculpt/validateCode'
-import { PASSES } from '../app/utils/sculpt/types'
 import type { CallTool, ToolCall } from '../server/utils/sculpt/anthropic'
-import type { Intake, Review, SculptSpec } from '../app/utils/sculpt/types'
+import type { Review, SculptSpec } from '../app/utils/sculpt/types'
 
 /** A small, structurally valid PNG payload (header bytes are all the loader checks). */
 function pngBase64(padBytes = 64): string {
@@ -28,29 +27,21 @@ function userText(call: ToolCall<unknown>): string {
   return call.user.filter(p => p.type === 'text').map(p => (p as { text: string }).text).join('\n')
 }
 
-function makeIntake(): Intake {
-  return {
-    name: 'Orange chair bed',
-    objectClass: 'convertible armchair',
-    suitability: { verdict: 'pass', reasons: ['single object, clear silhouette'] },
-    symmetry: 'left-right',
-    camera: { yaw: 25, pitch: 12, fov: 35, distance: 2.4, confidence: 0.8 },
-    dimensions: { widthM: 0.8, heightM: 0.9, depthM: 0.75, source: 'estimated' },
-    detailInventory: [{ id: 'd1', zone: 'side', kind: 'strap', evidence: 'visible on right flank' }],
-    materialsSeen: [{ zone: 'shell', family: 'fabric', subtype: 'woven', colorHex: '#e0431c', finish: 'matte' }],
-    notes: [],
-  }
+function imageCount(call: ToolCall<unknown>): number {
+  return call.user.filter(p => p.type === 'image').length
 }
 
 function makeSpec(): SculptSpec {
   return {
     name: 'Orange chair bed',
     id: 'orange-chair-bed',
+    objectClass: 'convertible armchair',
+    suitability: { verdict: 'pass', reasons: [] },
+    symmetry: 'left-right',
     camera: { yaw: 25, pitch: 12, fov: 35, distance: 2.4, confidence: 0.8 },
     dimensions: { widthM: 0.8, heightM: 0.9, depthM: 0.75, source: 'estimated' },
-    symmetry: 'left-right',
-    suitability: { verdict: 'pass', reasons: [] },
     detailInventory: [],
+    notes: [],
     components: [
       {
         id: 'base',
@@ -84,7 +75,6 @@ function makeSpec(): SculptSpec {
       },
     ],
     repetition: [],
-    reviewViews: ['reference', 'front', 'side', 'top'],
     mustMatch: ['backrest top is 0.55 m above the seat top'],
     niceToHave: [],
   }
@@ -92,15 +82,8 @@ function makeSpec(): SculptSpec {
 
 function makeReview(over: Partial<Review> = {}): Review {
   return {
-    action: 'continue',
     fidelity: 0.85,
-    layers: {
-      silhouetteProportion: 0.8,
-      componentStructure: 0.8,
-      formDetail: 0.8,
-      materialSurface: 0.8,
-      lightingCamera: 0.8,
-    },
+    layers: { silhouetteProportion: 0.8, componentStructure: 0.8, formDetail: 0.8, materialSurface: 0.8, lightingCamera: 0.8 },
     defects: [],
     summary: 'looks right',
     ...over,
@@ -108,273 +91,165 @@ function makeReview(over: Partial<Review> = {}): Review {
 }
 
 const goodCode = 'function createModel(kit, THREE, options) {\n  return kit.root([])\n}\n'
+const bounds = [{ id: 'base', min: [-0.4, 0, -0.375], max: [0.4, 0.3, 0.375] }]
 
-describe('intakeCore', () => {
-  it('returns the intake with usage and cost', async () => {
-    const { callTool, calls } = makeFake([makeIntake()])
-    const res = await intakeCore({ image: pngBase64(), hint: 'orange chair' }, callTool)
+describe('planCore', () => {
+  it('returns the spec with usage and cost, and sends the photo', async () => {
+    const { callTool, calls } = makeFake([makeSpec()])
+    const res = await planCore({ image: pngBase64(), hint: 'a chair bed' }, callTool)
     expect(res.ok).toBe(true)
     if (!res.ok) return
-    expect(res.data.objectClass).toBe('convertible armchair')
+    expect(res.data.name).toBe('Orange chair bed')
     expect(res.usage).toEqual({ input: 10, output: 20 })
-    expect(res.costUsd).toBeCloseTo(0.5)
     expect(calls).toHaveLength(1)
-    expect(calls[0]!.user.some(p => p.type === 'image')).toBe(true)
-    expect(userText(calls[0]!)).toContain('orange chair')
+    expect(imageCount(calls[0]!)).toBe(1)
+    expect(calls[0]!.tool.name).toBe('plan')
+    expect(userText(calls[0]!)).toContain('a chair bed')
+    expect(userText(calls[0]!)).toContain('estimated')
   })
 
-  it('rejects a 5 MB image', async () => {
-    const { callTool, calls } = makeFake([makeIntake()])
-    const res = await intakeCore({ image: pngBase64(5 * 1024 * 1024) }, callTool)
+  it('passes supplied dimensions through and asks for source "user"', async () => {
+    const { callTool, calls } = makeFake([makeSpec()])
+    await planCore({ image: pngBase64(), dims: { widthMm: 800, heightMm: 900, depthMm: 750 } }, callTool)
+    expect(userText(calls[0]!)).toContain('"widthMm":800')
+    expect(userText(calls[0]!)).toContain('"user"')
+  })
+
+  it('retries once with the validation errors and sums usage', async () => {
+    const bad = { ...makeSpec(), components: [] }
+    const { callTool, calls } = makeFake([bad, makeSpec()])
+    const res = await planCore({ image: pngBase64() }, callTool)
+    expect(res.ok).toBe(true)
+    expect(calls).toHaveLength(2)
+    expect(userText(calls[1]!)).toContain('failed validation')
+    if (res.ok) expect(res.usage).toEqual({ input: 20, output: 40 })
+  })
+
+  it('fails after two invalid plans, still reporting the spend', async () => {
+    const bad = { ...makeSpec(), components: [] }
+    const { callTool } = makeFake([bad, bad])
+    const res = await planCore({ image: pngBase64() }, callTool)
     expect(res.ok).toBe(false)
-    if (res.ok) return
-    expect(res.error).toMatch(/4 MB|too large/i)
+    if (!res.ok) {
+      expect(res.error).toContain('twice')
+      expect(res.costUsd).toBe(1)
+    }
+  })
+
+  it('rejects a 5 MB image before calling the model', async () => {
+    const { callTool, calls } = makeFake([])
+    const res = await planCore({ image: pngBase64(5 * 1024 * 1024) }, callTool)
+    expect(res.ok).toBe(false)
     expect(calls).toHaveLength(0)
   })
 
   it('rejects a non-object body and a non-image payload', async () => {
     const { callTool } = makeFake([])
-    expect((await intakeCore('nope', callTool)).ok).toBe(false)
-    expect((await intakeCore({ image: 'not base64 !!!' }, callTool)).ok).toBe(false)
-    expect((await intakeCore({}, callTool)).ok).toBe(false)
-  })
-})
-
-describe('specCore', () => {
-  it('retries once with the validation errors and sums usage', async () => {
-    const bad = { ...makeSpec(), mustMatch: [] }
-    const { callTool, calls } = makeFake([bad, makeSpec()])
-    const res = await specCore({ intake: makeIntake(), image: pngBase64() }, callTool)
-    expect(res.ok).toBe(true)
-    if (!res.ok) return
-    expect(calls).toHaveLength(2)
-    const second = userText(calls[1]!)
-    expect(second).toContain('The previous spec failed validation')
-    expect(second).toContain('mustMatch')
-    expect(second).toContain('Return a corrected spec.')
-    expect(res.usage).toEqual({ input: 20, output: 40 })
-    expect(res.costUsd).toBeCloseTo(1)
-  })
-
-  it('fails after two invalid specs', async () => {
-    const bad = { ...makeSpec(), mustMatch: [] }
-    const { callTool, calls } = makeFake([bad, bad])
-    const res = await specCore({ intake: makeIntake(), image: pngBase64() }, callTool)
-    expect(res.ok).toBe(false)
-    if (res.ok) return
-    expect(res.error).toMatch(/mustMatch/)
-    expect(calls).toHaveLength(2)
-  })
-
-  it('passes a critique through to the model', async () => {
-    const { callTool, calls } = makeFake([makeSpec()])
-    await specCore({ intake: makeIntake(), image: pngBase64(), critique: 'the rail is missing' }, callTool)
-    expect(userText(calls[0]!)).toContain('the rail is missing')
+    expect((await planCore('x', callTool)).ok).toBe(false)
+    expect((await planCore({ image: 'not base64!' }, callTool)).ok).toBe(false)
   })
 })
 
 describe('buildCore', () => {
-  it('retries once when the code fails validation and sums usage', async () => {
-    const bad = { code: 'function createModel(kit, THREE, options) { return fetch("x") }', notes: [] }
-    const { callTool, calls } = makeFake([bad, { code: goodCode, notes: ['ok'] }])
-    const res = await buildCore({ spec: makeSpec(), pass: 'blockout' }, callTool)
+  it('writes the whole model from the plan and the photo', async () => {
+    const { callTool, calls } = makeFake([{ code: goodCode, notes: ['built'] }])
+    const res = await buildCore({ spec: makeSpec(), image: pngBase64() }, callTool)
     expect(res.ok).toBe(true)
-    if (!res.ok) return
+    expect(calls).toHaveLength(1)
+    const call = calls[0]!
+    expect(imageCount(call)).toBe(1)
+    expect(call.system).toBe(PROMPTS.build)
+    expect(call.maxTokens).toBe(24_000)
+    const text = userText(call)
+    expect(text).toContain('Write the finished model')
+    expect(text).toContain('"orange-chair-bed"')
+    expect(text).not.toContain('Defects')
+  })
+
+  it('retries once when the code fails validation and sums usage', async () => {
+    const { callTool, calls } = makeFake([{ code: 'function nope() {}', notes: [] }, { code: goodCode, notes: [] }])
+    const res = await buildCore({ spec: makeSpec(), image: pngBase64() }, callTool)
+    expect(res.ok).toBe(true)
     expect(calls).toHaveLength(2)
-    expect(userText(calls[1]!)).toMatch(/failed validation/i)
-    expect(userText(calls[1]!)).toContain('fetch')
-    expect(res.usage).toEqual({ input: 20, output: 40 })
-    expect(res.costUsd).toBeCloseTo(1)
+    expect(userText(calls[1]!)).toContain('failed validation')
+    if (res.ok) expect(res.usage).toEqual({ input: 20, output: 40 })
   })
 
   it('fails after two invalid programs', async () => {
-    const bad = { code: 'function nope() {}', notes: [] }
-    const { callTool } = makeFake([bad, bad])
-    const res = await buildCore({ spec: makeSpec(), pass: 'form' }, callTool)
+    const { callTool } = makeFake([{ code: 'x', notes: [] }, { code: 'y', notes: [] }])
+    const res = await buildCore({ spec: makeSpec(), image: pngBase64() }, callTool)
     expect(res.ok).toBe(false)
-    if (res.ok) return
-    // Both calls were paid for: the failure still reports the spend so the
-    // daily ceiling counts it.
-    expect(res.usage).toEqual({ input: 20, output: 40 })
-    expect(res.costUsd).toBeCloseTo(1)
+    if (!res.ok) expect(res.error).toContain('twice')
   })
 
-  it('rejects an unknown pass', async () => {
+  it('fixes: carries the previous code, the defects and the measured table', async () => {
     const { callTool, calls } = makeFake([{ code: goodCode, notes: [] }])
-    const res = await buildCore({ spec: makeSpec(), pass: 'polish' }, callTool)
-    expect(res.ok).toBe(false)
-    expect(calls).toHaveLength(0)
-  })
-
-  it('includes the pass prompt, the kit API, the previous code and the defects', async () => {
-    const { callTool, calls } = makeFake([{ code: goodCode, notes: [] }])
-    await buildCore(
-      {
-        spec: makeSpec(),
-        pass: 'material',
-        code: goodCode,
-        defects: [{ component: 'base', what: 'too thin', measured: '0.15 m vs 0.20 m', fix: 'thicken' }],
-        notes: ['keep the rail'],
-      },
-      callTool,
-    )
-    const call = calls[0]!
-    expect(call.system).toContain(PROMPTS.buildPass.material)
-    expect(call.system).toContain('## Sculpt kit API')
-    const text = userText(call)
-    expect(text).toContain('too thin')
-    expect(text).toContain('keep the rail')
-    expect(text).toContain('createModel')
-  })
-})
-
-describe('measured part bounds', () => {
-  const bounds = [
-    { id: 'slab', min: [-0.7, 0.715, -0.34], max: [0.7, 0.73, 0.34] },
-    { id: 'bracket', min: [-0.62, 0.735, 0.23], max: [-0.58, 0.835, 0.27] },
-  ]
-
-  it('reach the builder as a table on a refine, never on a fresh build', async () => {
-    const fresh = makeFake([{ code: goodCode, notes: [] }])
-    await buildCore({ spec: makeSpec(), pass: 'structural', partBounds: bounds }, fresh.callTool)
-    expect(userText(fresh.calls[0]!)).not.toContain('Measured world-space box')
-
-    const refine = makeFake([{ code: goodCode, notes: [] }])
-    await buildCore(
-      { spec: makeSpec(), pass: 'structural', code: goodCode, defects: [{ component: 'bracket', what: 'floats', measured: '', fix: '' }], partBounds: bounds },
-      refine.callTool,
-    )
-    const text = userText(refine.calls[0]!)
-    expect(text).toContain('Measured world-space box')
-    expect(text).toContain('bracket: x -0.620..-0.580  y 0.735..0.835')
-    expect(text).toContain('size 1.400 × 0.015 × 0.680')
-  })
-
-  it('reach the reviewer and drop malformed entries', async () => {
-    const { callTool, calls } = makeFake([makeReview()])
-    await reviewCore(
-      { spec: makeSpec(), pass: 'structural', sheet: pngBase64(), image: pngBase64(), fixesLeft: 1, partBounds: [...bounds, { id: 'bad', min: [1, 2], max: 'x' }, 7] },
-      callTool,
-    )
+    const defects = [{ component: 'base', what: 'too short', measured: '0.30 m', fix: 'raise to 0.35' }]
+    await buildCore({ spec: makeSpec(), image: pngBase64(), code: 'function createModel(kit, THREE, options) { return kit.root([]) }', defects, partBounds: bounds }, callTool)
     const text = userText(calls[0]!)
-    expect(text).toContain('slab: x -0.700..0.700')
-    expect(text).toContain('bracket: x')
-    expect(text).not.toContain('bad:')
-    expect(text).toContain('ground truth for structure')
+    expect(text).toContain('Fix the model')
+    expect(text).toContain('The current file')
+    expect(text).toContain('too short')
+    expect(text).toContain('base: x -0.400..0.400')
+  })
+
+  it('never shows a table on a fresh build, and drops malformed entries on a fix', async () => {
+    const { callTool, calls } = makeFake([{ code: goodCode, notes: [] }, { code: goodCode, notes: [] }])
+    await buildCore({ spec: makeSpec(), image: pngBase64(), partBounds: bounds }, callTool)
+    expect(userText(calls[0]!)).not.toContain('Measured world-space box')
+    await buildCore({ spec: makeSpec(), image: pngBase64(), code: goodCode, defects: [], partBounds: [...bounds, { id: 'junk', min: [0, 0], max: 'x' }] }, callTool)
+    const text = userText(calls[1]!)
+    expect(text).toContain('base: x')
+    expect(text).not.toContain('junk')
+  })
+
+  it('rejects an invalid spec and a missing image', async () => {
+    const { callTool, calls } = makeFake([])
+    expect((await buildCore({ spec: { nope: true }, image: pngBase64() }, callTool)).ok).toBe(false)
+    expect((await buildCore({ spec: makeSpec() }, callTool)).ok).toBe(false)
+    expect(calls).toHaveLength(0)
   })
 })
 
 describe('reviewCore', () => {
-  it('labels each image and sends the photo before the sheet', async () => {
+  it('sends only the sheet, with the plan and the measured table', async () => {
     const { callTool, calls } = makeFake([makeReview()])
-    const res = await reviewCore(
-      { spec: makeSpec(), pass: 'surface', sheet: pngBase64(), image: pngBase64(), fixesLeft: 2 },
-      callTool,
-    )
+    const res = await reviewCore({ spec: makeSpec(), sheet: pngBase64(), partBounds: bounds }, callTool)
     expect(res.ok).toBe(true)
-    const parts = calls[0]!.user
-    expect(parts.map(p => p.type)).toEqual(['text', 'image', 'text', 'image', 'text'])
-    expect((parts[0] as { text: string }).text).toBe('Image 1 — the reference photograph:')
-    expect((parts[2] as { text: string }).text).toContain('Image 2 — the comparison sheet')
-    expect((parts[2] as { text: string }).text).toContain('front/side/top renders')
-    expect((parts[4] as { text: string }).text).toContain('Fixes left in the budget: 2')
+    const call = calls[0]!
+    expect(imageCount(call)).toBe(1)
+    expect(call.maxTokens).toBe(4_000)
+    expect(call.tool.name).toBe('review')
+    const text = userText(call)
+    expect(text).toContain('comparison sheet')
+    expect(text).toContain('base: x -0.400..0.400')
   })
 
-  it('downgrades continue at fidelity 0.6 to refine-code while fixes remain', async () => {
-    const { callTool } = makeFake([makeReview({ action: 'continue', fidelity: 0.6, defects: [{ component: 'base', what: 'thin', measured: 'x', fix: 'y' }] })])
-    const res = await reviewCore(
-      { spec: makeSpec(), pass: 'blockout', sheet: pngBase64(), image: pngBase64(), fixesLeft: 2 },
-      callTool,
-    )
+  it('caps the defect list at eight', async () => {
+    const defects = Array.from({ length: 12 }, (_, i) => ({ component: `p${i}`, what: 'w', measured: 'm', fix: 'f' }))
+    const { callTool } = makeFake([makeReview({ fidelity: 0.5, defects })])
+    const res = await reviewCore({ spec: makeSpec(), sheet: pngBase64() }, callTool)
     expect(res.ok).toBe(true)
-    if (!res.ok) return
-    expect(res.data.action).toBe('refine-code')
+    if (res.ok) expect(res.data.defects).toHaveLength(8)
   })
 
-  it('lets a weak pass continue when no fixes remain, so later passes still run', async () => {
-    const { callTool } = makeFake([makeReview({ action: 'continue', fidelity: 0.6 })])
-    const res = await reviewCore(
-      { spec: makeSpec(), pass: 'blockout', sheet: pngBase64(), image: pngBase64(), fixesLeft: 0 },
-      callTool,
-    )
-    expect(res.ok).toBe(true)
-    if (!res.ok) return
-    expect(res.data.action).toBe('continue')
-  })
-
-  it('turns a recognisable stop before the surface pass into continue', async () => {
-    const { callTool } = makeFake([makeReview({ action: 'stop', fidelity: 0.5 })])
-    const res = await reviewCore(
-      { spec: makeSpec(), pass: 'structural', sheet: pngBase64(), image: pngBase64(), fixesLeft: 0 },
-      callTool,
-    )
-    expect(res.ok).toBe(true)
-    if (!res.ok) return
-    expect(res.data.action).toBe('continue')
-  })
-
-  it('honours stop for a hopeless object and at the surface pass', async () => {
-    const hopeless = makeFake([makeReview({ action: 'stop', fidelity: 0.2 })])
-    const a = await reviewCore(
-      { spec: makeSpec(), pass: 'blockout', sheet: pngBase64(), image: pngBase64(), fixesLeft: 2 },
-      hopeless.callTool,
-    )
-    expect(a.ok && a.data.action).toBe('stop')
-    const last = makeFake([makeReview({ action: 'stop', fidelity: 0.6 })])
-    const b = await reviewCore(
-      { spec: makeSpec(), pass: 'surface', sheet: pngBase64(), image: pngBase64(), fixesLeft: 0 },
-      last.callTool,
-    )
-    expect(b.ok && b.data.action).toBe('stop')
-  })
-
-  it('turns a defect-free refine-code into continue', async () => {
-    const { callTool } = makeFake([makeReview({ action: 'refine-code', fidelity: 0.82, defects: [] })])
-    const res = await reviewCore(
-      { spec: makeSpec(), pass: 'form', sheet: pngBase64(), image: pngBase64(), fixesLeft: 3 },
-      callTool,
-    )
-    expect(res.ok).toBe(true)
-    if (!res.ok) return
-    expect(res.data.action).toBe('continue')
-  })
-
-  it('leaves a high-fidelity continue alone', async () => {
-    const { callTool } = makeFake([makeReview({ action: 'continue', fidelity: 0.85 })])
-    const res = await reviewCore(
-      { spec: makeSpec(), pass: 'form', sheet: pngBase64(), image: pngBase64(), fixesLeft: 3 },
-      callTool,
-    )
-    expect(res.ok).toBe(true)
-    if (!res.ok) return
-    expect(res.data.action).toBe('continue')
-  })
-
-  it('rejects a missing sheet', async () => {
-    const { callTool, calls } = makeFake([makeReview()])
-    const res = await reviewCore(
-      { spec: makeSpec(), pass: 'form', image: pngBase64(), fixesLeft: 1 },
-      callTool,
-    )
+  it('rejects a missing sheet and a malformed review', async () => {
+    const { callTool } = makeFake([{ fidelity: 'high' }])
+    expect((await reviewCore({ spec: makeSpec() }, callTool)).ok).toBe(false)
+    const res = await reviewCore({ spec: makeSpec(), sheet: pngBase64() }, callTool)
     expect(res.ok).toBe(false)
-    expect(calls).toHaveLength(0)
+    if (!res.ok) expect(res.error).toContain('validation')
   })
 })
 
 describe('prompts', () => {
-  it('ships a non-empty document for every stage', () => {
-    for (const [name, text] of Object.entries(PROMPTS)) {
-      if (name === 'buildPass') continue
-      expect(typeof text, name).toBe('string')
-      expect((text as string).trim().length, name).toBeGreaterThan(400)
+  it('ships a non-empty document for every call', () => {
+    for (const key of ['plan', 'build', 'review', 'kitApi'] as const) {
+      expect(PROMPTS[key].length, key).toBeGreaterThan(200)
     }
-  })
-
-  it('has a prompt for all five passes', () => {
-    expect(Object.keys(PROMPTS.buildPass).sort()).toEqual([...PASSES].sort())
-    for (const pass of PASSES) {
-      expect(PROMPTS.buildPass[pass].trim().length, pass).toBeGreaterThan(200)
-    }
+    expect(PROMPTS.plan).toContain('detailInventory')
+    expect(PROMPTS.plan).toContain('mustMatch')
+    expect(PROMPTS.review).toContain('one round of fixes')
   })
 
   it('states the build contract and every forbidden identifier', () => {
@@ -387,6 +262,7 @@ describe('prompts', () => {
     expect(build).toContain('40 kB')
     expect(build).toContain('+Y up')
     expect(build).toContain('+Z front')
+    expect(build).toContain('finished model in one sitting')
     for (const name of FORBIDDEN) {
       expect(build, name).toContain(name)
     }

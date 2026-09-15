@@ -1,20 +1,10 @@
 export interface Dims { widthMm: number; heightMm: number; depthMm: number }
 export interface View { name: string; yaw: number; pitch: number; fov: number; distance: number }
-export type PassId = 'blockout' | 'structural' | 'form' | 'material' | 'surface'
-export const PASSES: readonly PassId[] = ['blockout', 'structural', 'form', 'material', 'surface']
-export type ReviewAction = 'continue' | 'refine-code' | 'refine-spec' | 'request-input' | 'stop'
 
-export interface Intake {
-  name: string
-  objectClass: string
-  suitability: { verdict: 'pass' | 'conditional' | 'reject'; reasons: string[] }
-  symmetry: 'left-right' | 'none'
-  camera: { yaw: number; pitch: number; fov: number; distance: number; confidence: number }
-  dimensions: { widthM: number; heightM: number; depthM: number; source: 'user' | 'estimated' }
-  detailInventory: { id: string; zone: string; kind: string; evidence: string }[]
-  materialsSeen: { zone: string; family: string; subtype: string; colorHex: string; finish: string }[]
-  notes: string[]
-}
+/** The photographer's orbit around the object's centre: degrees, and distance in bounding radii. */
+export interface Camera { yaw: number; pitch: number; fov: number; distance: number; confidence: number }
+export interface Dimensions { widthM: number; heightM: number; depthM: number; source: 'user' | 'estimated' }
+export interface DetailEntry { id: string; zone: string; kind: string; evidence: string }
 
 export interface SculptComponent {
   id: string
@@ -47,29 +37,34 @@ export interface SculptMaterial {
   wear: { edge: number; dirt: number }
 }
 
+/**
+ * The plan: what the photo shows and how to build it, in one document. The
+ * builder sees the photo too, but every number it needs is here in metres.
+ */
 export interface SculptSpec {
   name: string
   id: string
-  camera: Intake['camera']
-  dimensions: Intake['dimensions']
-  symmetry: Intake['symmetry']
-  suitability: Intake['suitability']
-  detailInventory: Intake['detailInventory']
+  objectClass: string
+  suitability: { verdict: 'pass' | 'conditional' | 'reject'; reasons: string[] }
+  symmetry: 'left-right' | 'none'
+  camera: Camera
+  dimensions: Dimensions
+  detailInventory: DetailEntry[]
+  /** Inferences and things the single view cannot show. */
+  notes: string[]
   components: SculptComponent[]
   materials: SculptMaterial[]
   repetition: { id: string; kind: 'mirror' | 'linear'; count: number; pitch: number; axis: 'x' | 'y' | 'z'; target: string }[]
-  reviewViews: ('reference' | 'front' | 'side' | 'top')[]
   mustMatch: string[]
   niceToHave: string[]
 }
 
+export interface Defect { component: string; what: string; measured: string; fix: string }
+
 export interface Review {
-  action: ReviewAction
   fidelity: number
   layers: { silhouetteProportion: number; componentStructure: number; formDetail: number; materialSurface: number; lightingCamera: number }
-  defects: { component: string; what: string; measured: string; fix: string }[]
-  cameraAdjust?: { yaw: number; pitch: number; fov: number; distance: number }
-  question?: string
+  defects: Defect[]
   summary: string
 }
 

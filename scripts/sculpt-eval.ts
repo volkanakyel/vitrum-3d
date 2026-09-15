@@ -5,8 +5,8 @@
  * `eval/photos` it opens `/studio/product`, imports the photo through the file
  * input, waits for the carve to settle, then calls the dev-only hook
  * `window.__vitrum.sculpt.start(hint, dims, { quality })` and polls the job
- * until it settles. Everything the run produced — spec, intake, generated code,
- * comparison sheets, reviews, the GLB and a viewer render — lands in
+ * until it settles. Everything the run produced — spec, generated code,
+ * comparison sheets, the review, the GLB and a viewer render — lands in
  * `eval/out/<name>/`, and one row per run is appended to `eval/out/summary.md`.
  * The prompts and the kit are tuned against that table.
  *
@@ -31,9 +31,6 @@ const OUT_DIR = join(ROOT, 'eval/out')
 const DIMS_PATH = join(ROOT, 'eval/dims.json')
 const PHOTO_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp'])
 
-/** Pass order, mirrored from `app/utils/sculpt/types.ts` (this script runs outside the Nuxt tsconfig). */
-const PASSES = ['blockout', 'structural', 'form', 'material', 'surface'] as const
-type PassId = (typeof PASSES)[number]
 type Quality = 'draft' | 'standard' | 'hero'
 
 /** Chromium in a headless shell has no GPU; WebGL comes from ANGLE on SwiftShader. Kept in step with `playwright.config.ts`. */
@@ -48,7 +45,7 @@ const CHROMIUM_ARGS = [
 ]
 
 const POLL_MS = 2_000
-const DEFAULT_RUN_TIMEOUT_MS = 45 * 60_000
+const DEFAULT_RUN_TIMEOUT_MS = 15 * 60_000
 const SERVER_TIMEOUT_MS = 180_000
 /** The carve's hull is nice to have in `final.png` but not worth failing a run over. */
 const HULL_WAIT_MS = 120_000
@@ -65,7 +62,7 @@ const MAX_RETRIES = 1
 
 interface Options {
   only: string[]
-  passes: PassId[] | null
+  polish: boolean
   quality: Quality
   headed: boolean
   base: string | null
@@ -73,7 +70,7 @@ interface Options {
 }
 
 function parseArgs(argv: string[]): Options {
-  const opts: Options = { only: [], passes: null, quality: 'standard', headed: false, base: null, timeoutMs: DEFAULT_RUN_TIMEOUT_MS }
+  const opts: Options = { only: [], polish: true, quality: 'standard', headed: false, base: null, timeoutMs: DEFAULT_RUN_TIMEOUT_MS }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     const next = () => {
@@ -83,14 +80,7 @@ function parseArgs(argv: string[]): Options {
     }
     switch (arg) {
       case '--only': opts.only.push(...next().split(',').map(s => s.trim()).filter(Boolean)); break
-      case '--passes': {
-        const names = next().split(',').map(s => s.trim()).filter(Boolean)
-        for (const n of names) {
-          if (!(PASSES as readonly string[]).includes(n)) throw new Error(`unknown pass "${n}" (expected ${PASSES.join(', ')})`)
-        }
-        opts.passes = names as PassId[]
-        break
-      }
+      case '--no-polish': opts.polish = false; break
       case '--quality': {
         const q = next()
         if (q !== 'draft' && q !== 'standard' && q !== 'hero') throw new Error(`unknown quality "${q}" (expected draft, standard or hero)`)
@@ -112,9 +102,7 @@ function usage() {
   console.log(`pnpm eval [flags]
 
   --only <name[,name]>   Only these photos (file name without the extension).
-  --passes <a,b>         Stop once the run moves past the last named pass
-                         (${PASSES.join(', ')}) — for cheap prompt iteration.
-                         A run stopped this way counts as a success.
+  --no-polish            Plan and build only: no review, no fix (two calls).
   --quality <q>          Sandbox render quality: draft | standard | hero (default standard).
   --headed               Show the browser.
   --base <url>           Use a dev server already running here instead of starting one.
@@ -260,14 +248,14 @@ function installShutdownHandlers() {
 interface JobStatusSnapshot {
   id: string
   status: string
-  currentPass: PassId | null
-  fixesTotal: number
+  fixed: boolean
+  draft: boolean
+  hasGlb: boolean
   usage: { input: number, output: number }
   costUsd: number
   error: string | null
-  question: string | null
   quality: string | null
-  passes: { id: PassId, fixes: number, reviews: number, sheets: number }[]
+  sheets: number
 }
 
 interface ReviewLayers {
@@ -277,9 +265,8 @@ interface ReviewLayers {
   materialSurface: number
   lightingCamera: number
 }
-interface ReviewLike { fidelity: number, layers: ReviewLayers, action: string, summary: string }
-interface PassDump { id: PassId, code: string, notes: string[], sheets: string[], reviews: ReviewLike[], fixes: number }
-interface JobDump extends JobStatusSnapshot { intake: unknown, spec: unknown, dump: PassDump[] }
+interface ReviewLike { fidelity: number, layers: ReviewLayers, summary: string }
+interface JobDump extends JobStatusSnapshot { spec: unknown, code: string, notes: string[], sheetUrls: string[], review: ReviewLike | null }
 
 /** Shape of the dev hook, for the in-page callbacks; erased at runtime. */
 interface EvalWindow {
@@ -288,7 +275,7 @@ interface EvalWindow {
       job: { value: Record<string, unknown> | null }
       /** False when the server has no `NUXT_ANTHROPIC_KEY`: the studio hides the panel. */
       available: { value: boolean }
-      start: (hint: string, dims: unknown, opts?: { quality?: Quality }) => Promise<void>
+      start: (hint: string, dims: unknown, opts?: { quality?: Quality, polish?: boolean }) => Promise<void>
       cancel: () => void
       clear: () => void
       reopen: (id: string) => Promise<void>
@@ -308,13 +295,13 @@ interface Diagnostics { pageErrors: string[] }
 
 interface RunReport {
   name: string
-  /** `done`, `failed`, `cancelled`, `stopped-after:<pass>` (a deliberate `--passes` stop) or `harness-error`. */
+  /** `done`, `failed`, `cancelled` or `harness-error`. */
   status: string
   quality: string | null
   error: string | null
-  fidelityByPass: Record<string, number>
+  fidelity: number | null
   layers: ReviewLayers | null
-  fixes: number
+  fixed: boolean
   tokens: { input: number, output: number }
   costUsd: number
   seconds: number
@@ -322,7 +309,7 @@ interface RunReport {
 
 /** A run that ended the way it was asked to — the exit code must not call these failures. */
 function succeeded(report: RunReport): boolean {
-  return report.status === 'done' || report.status.startsWith('stopped-after:')
+  return report.status === 'done'
 }
 
 function dataUrlToBuffer(dataUrl: string): { buffer: Buffer, ext: string } {
@@ -408,19 +395,14 @@ async function importPhoto(page: Page, base: string, file: string, diag: Diagnos
 interface PollResult {
   snapshot: JobStatusSnapshot
   seconds: number
-  /** The run was cancelled on purpose because `--passes` was satisfied. */
-  stoppedAfter: PassId | null
 }
 
 /** Watch the job until it settles, cancelling it when there is nothing left worth paying for. */
 async function pollJob(page: Page, opts: Options, started: number): Promise<PollResult> {
-  const lastPassIndex = opts.passes ? Math.max(...opts.passes.map(p => PASSES.indexOf(p))) : PASSES.length - 1
-  const lastPass = PASSES[lastPassIndex] ?? null
   const terminal = new Set(['done', 'failed', 'cancelled'])
   const deadline = started + opts.timeoutMs
   let snapshot: JobStatusSnapshot | null = null
   let cancels = 0
-  let stoppedAfter: PassId | null = null
   let lastLine = ''
   let jobId: string | null = null
   let recoveries = 0
@@ -429,7 +411,7 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
   // A dev-server full reload (Nuxt regenerating its virtual modules, Vite
   // re-optimising a dependency) wipes the page and the runner with it. The
   // job itself survives in IndexedDB, so the harness reopens it and resumes
-  // from the last pass that was paid for.
+  // from the last step that was paid for.
   const recover = async () => {
     if (!jobId || recoveries >= MAX_RECOVERIES) return false
     recoveries++
@@ -456,18 +438,17 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
     snapshot = await page.evaluate(() => {
       const j = (window as unknown as EvalWindow).__vitrum?.sculpt.job.value
       if (!j) return null
-      const passes = (j.passes ?? []) as { id: string, fixes: number, reviews: unknown[], sheets: unknown[] }[]
       return {
         id: j.id as string,
         status: j.status as string,
-        currentPass: (j.currentPass ?? null) as PassId | null,
-        fixesTotal: (j.fixesTotal ?? 0) as number,
+        fixed: !!j.fixed,
+        draft: !!j.draft,
+        hasGlb: !!j.glb,
         usage: (j.usage ?? { input: 0, output: 0 }) as { input: number, output: number },
         costUsd: (j.costUsd ?? 0) as number,
         error: (j.error ?? null) as string | null,
-        question: (j.question ?? null) as string | null,
         quality: (j.quality ?? null) as string | null,
-        passes: passes.map(p => ({ id: p.id as PassId, fixes: p.fixes, reviews: p.reviews.length, sheets: p.sheets.length })),
+        sheets: ((j.sheets ?? []) as unknown[]).length,
       }
     })
 
@@ -481,14 +462,14 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
     }
     jobId = snapshot.id
 
-    const line = `${Math.round((Date.now() - started) / 1000)}s · ${snapshot.status}${snapshot.currentPass ? ` · ${snapshot.currentPass}` : ''} · ${snapshot.fixesTotal} fixes · $${snapshot.costUsd.toFixed(2)}`
+    const line = `${Math.round((Date.now() - started) / 1000)}s · ${snapshot.status}${snapshot.hasGlb ? ' · on stage' : ''}${snapshot.fixed ? ' · fixed' : ''} · $${snapshot.costUsd.toFixed(2)}`
     if (line !== lastLine) {
       console.log(`[eval]   ${line}`)
       lastLine = line
     }
 
     if (snapshot.status === 'failed' && retries < MAX_RETRIES && Date.now() < deadline) {
-      // A failed run resumes from its last completed pass; nothing already
+      // A failed run resumes from its last completed step; nothing already
       // paid for is redone, so one more attempt is cheap insurance against a
       // dropped upstream stream.
       retries++
@@ -499,16 +480,6 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
     if (terminal.has(snapshot.status)) break
 
     const outOfTime = Date.now() > deadline
-    if (snapshot.status === 'waiting-input') {
-      // Nobody is at the keyboard: an unanswered question ends the run.
-      if (!await cancel(`question: ${snapshot.question ?? '(none)'}`) || outOfTime) break
-      continue
-    }
-    if (!stoppedAfter && snapshot.currentPass && PASSES.indexOf(snapshot.currentPass) > lastPassIndex) {
-      if (await cancel(`past --passes (${lastPass})`)) stoppedAfter = lastPass
-      else break
-      continue
-    }
     if (outOfTime) {
       if (!await cancel('out of time')) break
       continue
@@ -516,7 +487,7 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
   }
 
   if (!snapshot) throw new Error('the run never produced a job')
-  return { snapshot, seconds: Math.round((Date.now() - started) / 1000), stoppedAfter }
+  return { snapshot, seconds: Math.round((Date.now() - started) / 1000) }
 }
 
 /** Pull everything the run made out of the page and onto disk. */
@@ -525,53 +496,41 @@ async function writeOutputs(page: Page, name: string, poll: PollResult): Promise
   const dump = await page.evaluate((): JobDump | null => {
     const j = (window as unknown as EvalWindow).__vitrum?.sculpt.job.value
     if (!j) return null
-    const passes = (j.passes ?? []) as PassDump[]
     return {
       id: j.id as string,
       status: j.status as string,
-      currentPass: (j.currentPass ?? null) as PassId | null,
-      fixesTotal: (j.fixesTotal ?? 0) as number,
+      fixed: !!j.fixed,
+      draft: !!j.draft,
+      hasGlb: !!j.glb,
       usage: (j.usage ?? { input: 0, output: 0 }) as { input: number, output: number },
       costUsd: (j.costUsd ?? 0) as number,
       error: (j.error ?? null) as string | null,
-      question: (j.question ?? null) as string | null,
       quality: (j.quality ?? null) as string | null,
-      passes: passes.map(p => ({ id: p.id, fixes: p.fixes, reviews: p.reviews.length, sheets: p.sheets.length })),
-      intake: j.intake ?? null,
+      sheets: ((j.sheets ?? []) as unknown[]).length,
       spec: j.spec ?? null,
-      dump: passes.map(p => ({ id: p.id, code: p.code, notes: p.notes, sheets: p.sheets, reviews: p.reviews, fixes: p.fixes })),
+      code: (j.code ?? '') as string,
+      notes: (j.notes ?? []) as string[],
+      sheetUrls: (j.sheets ?? []) as string[],
+      review: (j.review ?? null) as ReviewLike | null,
     }
   })
   if (!dump) throw new Error('the job vanished before it could be read')
 
   const dir = join(OUT_DIR, name)
   mkdirSync(dir, { recursive: true })
-  if (dump.intake) writeFileSync(join(dir, 'intake.json'), JSON.stringify(dump.intake, null, 2))
   if (dump.spec) writeFileSync(join(dir, 'spec.json'), JSON.stringify(dump.spec, null, 2))
-
-  const fidelityByPass: Record<string, number> = {}
-  let lastLayers: ReviewLayers | null = null
-  for (const pass of dump.dump) {
-    if (pass.code) writeFileSync(join(dir, `code-${pass.id}.js`), pass.code)
-    if (pass.notes.length) writeFileSync(join(dir, `notes-${pass.id}.json`), JSON.stringify(pass.notes, null, 2))
-    pass.sheets.forEach((sheet, n) => {
-      try {
-        const { buffer, ext } = dataUrlToBuffer(sheet)
-        writeFileSync(join(dir, `sheet-${pass.id}-${n + 1}.${ext}`), buffer)
-      }
-      catch (e) {
-        console.log(`[eval]   could not save sheet ${pass.id}-${n + 1}: ${(e as Error).message}`)
-      }
-    })
-    pass.reviews.forEach((review, n) => {
-      writeFileSync(join(dir, `review-${pass.id}-${n + 1}.json`), JSON.stringify(review, null, 2))
-    })
-    const last = pass.reviews.at(-1)
-    if (last) {
-      fidelityByPass[pass.id] = last.fidelity
-      lastLayers = last.layers
+  if (dump.code) writeFileSync(join(dir, 'code.js'), dump.code)
+  if (dump.notes.length) writeFileSync(join(dir, 'notes.json'), JSON.stringify(dump.notes, null, 2))
+  dump.sheetUrls.forEach((sheet, n) => {
+    try {
+      const { buffer, ext } = dataUrlToBuffer(sheet)
+      writeFileSync(join(dir, `sheet-${n + 1}.${ext}`), buffer)
     }
-  }
+    catch (e) {
+      console.log(`[eval]   could not save sheet ${n + 1}: ${(e as Error).message}`)
+    }
+  })
+  if (dump.review) writeFileSync(join(dir, 'review.json'), JSON.stringify(dump.review, null, 2))
 
   // `job.glb` is an ArrayBuffer; base64 is the only way out of the page.
   const glbBase64 = await page.evaluate(() => {
@@ -595,13 +554,12 @@ async function writeOutputs(page: Page, name: string, poll: PollResult): Promise
 
   const report: RunReport = {
     name,
-    // A `--passes` stop is a cancel the harness asked for, not a failure.
-    status: poll.stoppedAfter ? `stopped-after:${poll.stoppedAfter}` : dump.status,
+    status: dump.status,
     quality: dump.quality,
     error: dump.error,
-    fidelityByPass,
-    layers: lastLayers,
-    fixes: dump.fixesTotal,
+    fidelity: dump.review?.fidelity ?? null,
+    layers: dump.review?.layers ?? null,
+    fixed: dump.fixed,
     tokens: dump.usage,
     costUsd: dump.costUsd,
     seconds: poll.seconds,
@@ -624,11 +582,11 @@ async function runPhoto(page: Page, base: string, file: string, opts: Options, d
   const started = Date.now()
   // Fire and forget: `start` only settles when the whole run does, and the
   // poll is what reports on it.
-  await page.evaluate(([h, d, q]) => {
+  await page.evaluate(([h, d, q, polish]) => {
     const api = (window as unknown as EvalWindow).__vitrum?.sculpt
     if (!api) throw new Error('window.__vitrum.sculpt is missing — is this a dev build?')
-    void api.start(h as string, d, { quality: q as Quality })
-  }, [hint, size, opts.quality] as const)
+    void api.start(h as string, d, { quality: q as Quality, polish: polish as boolean })
+  }, [hint, size, opts.quality, opts.polish] as const)
 
   const poll = await pollJob(page, opts, started)
   const report = await writeOutputs(page, name, poll)
@@ -641,7 +599,7 @@ async function runPhoto(page: Page, base: string, file: string, opts: Options, d
 
 const SUMMARY_HEADER = `# Sculpt eval runs
 
-| name | quality | final fidelity | silhouette/structure/form/material/lighting | fixes | tokens | $ | s |
+| name | quality | fidelity | silhouette/structure/form/material/lighting | fixed | tokens | $ | s |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 `
 
@@ -650,8 +608,7 @@ function appendSummary(report: RunReport, renderQuality: Quality) {
   mkdirSync(OUT_DIR, { recursive: true })
   if (!existsSync(path)) writeFileSync(path, SUMMARY_HEADER)
   const n = (v: number | undefined) => (typeof v === 'number' ? v.toFixed(2) : '—')
-  const fidelities = Object.values(report.fidelityByPass)
-  const finalFidelity = fidelities.length ? n(fidelities.at(-1)) : '—'
+  const finalFidelity = n(report.fidelity ?? undefined)
   const l = report.layers
   const layers = l
     ? [l.silhouetteProportion, l.componentStructure, l.formDetail, l.materialSurface, l.lightingCamera].map(v => n(v)).join('/')
@@ -659,7 +616,7 @@ function appendSummary(report: RunReport, renderQuality: Quality) {
   const quality = report.status === 'done'
     ? (report.quality ?? '—')
     : `${report.status}${report.error ? `: ${report.error.replace(/\|/g, '/').replace(/\s+/g, ' ').slice(0, 160)}` : ''}`
-  const row = `| ${report.name} | ${renderQuality} · ${quality} | ${finalFidelity} | ${layers} | ${report.fixes} | ${report.tokens.input}/${report.tokens.output} | ${report.costUsd.toFixed(2)} | ${report.seconds} |\n`
+  const row = `| ${report.name} | ${renderQuality} · ${quality} | ${finalFidelity} | ${layers} | ${report.fixed ? 'yes' : 'no'} | ${report.tokens.input}/${report.tokens.output} | ${report.costUsd.toFixed(2)} | ${report.seconds} |\n`
   appendFileSync(path, row)
 }
 
@@ -708,7 +665,7 @@ async function main() {
       }
       catch (e) {
         console.error(`[eval] ${photo} could not be run: ${(e as Error).message}`)
-        const failed: RunReport = { name: basename(photo, extname(photo)), status: 'harness-error', quality: null, error: (e as Error).message, fidelityByPass: {}, layers: null, fixes: 0, tokens: { input: 0, output: 0 }, costUsd: 0, seconds: 0 }
+        const failed: RunReport = { name: basename(photo, extname(photo)), status: 'harness-error', quality: null, error: (e as Error).message, fidelity: null, layers: null, fixed: false, tokens: { input: 0, output: 0 }, costUsd: 0, seconds: 0 }
         reports.push(failed)
         appendSummary(failed, opts.quality)
       }

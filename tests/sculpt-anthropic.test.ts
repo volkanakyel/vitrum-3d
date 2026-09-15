@@ -85,8 +85,10 @@ describe('makeCallTool', () => {
     expect(sent.max_tokens).toBe(16_000)
     // Forced tool choice is rejected alongside the models' default thinking.
     expect(sent.tool_choice).toEqual({ type: 'auto' })
-    expect(sent.system).toContain('be precise')
-    expect(sent.system).toContain('Always answer by calling the `intake` tool')
+    const system = (sent.system as { text: string, cache_control: unknown }[])[0]!
+    expect(system.text).toContain('be precise')
+    expect(system.text).toContain('Always answer by calling the `intake` tool')
+    expect(system.cache_control).toEqual({ type: 'ephemeral' })
     const content = (sent.messages as { content: Record<string, unknown>[] }[])[0]!.content
     expect(content[1]).toEqual({
       type: 'image',

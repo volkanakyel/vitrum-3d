@@ -84,22 +84,24 @@ export const DEFAULT_GLASS_PARAMS: GlassParams = {
   weave: 0,
   soften: 0,
   widthMm: 100,
-  depthMm: 12,
+  depthMm: 14,
   bevelMm: 3.2,
   bevelSegments: 10,
   ior: 1.52,
   dispersion: 0.08,
   roughness: 0.08,
   clearcoat: 1,
-  edgeChroma: 0.3,
-  tir: 0.85,
+  edgeChroma: 0.45,
+  tir: 1,
   clarity: 1,
   blur: 0.15,
   tint: '#ffffff',
   attenuationMm: 400,
-  envIntensity: 1.5,
-  background: '#f8f9fb',
-  vignette: 0.2,
+  envIntensity: 2.2,
+  // A mid-grey wall with a real vignette: clear glass on a white wall is invisible, on this it
+  // shows its rims, its dispersion and the room it refracts.
+  background: '#e6e9ef',
+  vignette: 0.5,
   exposure: 1,
   fov: 28,
   autoRotate: true,
@@ -116,7 +118,7 @@ export interface MaterialPreset {
 }
 
 const glass = (v: Partial<GlassParams>): Partial<GlassParams> => ({
-  finish: 'glass', ior: 1.52, dispersion: 0.08, roughness: 0.08, clearcoat: 1, edgeChroma: 0.3, tir: 0.85,
+  finish: 'glass', ior: 1.52, dispersion: 0.08, roughness: 0.08, clearcoat: 1, edgeChroma: 0.45, tir: 1,
   clarity: 1, blur: 0.15, tint: '#ffffff', attenuationMm: 400, ...v,
 })
 const metal = (v: Partial<GlassParams>): Partial<GlassParams> => ({

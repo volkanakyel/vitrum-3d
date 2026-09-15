@@ -47,7 +47,7 @@ const props = defineProps<{
   busy: boolean
   error: string
   mode?: StudioMode
-  /** Product mode only: the sculpt run behind the "Rebuild as parts" panel. */
+  /** Product mode only: the sculpt run behind the "Parts model" card. */
   sculpt?: SculptApi
   /** A finished parts model stands on the stage: the carve's controls do not describe it. */
   sculpted?: boolean
@@ -164,7 +164,7 @@ const metalSwatches = [
   '#c0392b',
 ]
 const bgSwatches = [
-  '#f8f9fb',
+  '#e6e9ef',
   '#ffffff',
   '#eceef2',
   '#e6e9f0',
@@ -387,13 +387,29 @@ const dimInput =
                    Outside the numbered sections — it is not one of the carve's controls. -->
               <section
                 v-if="mode === 'product' && sculpt && trace"
-                class="flex flex-col gap-5 py-6 first:pt-1"
+                class="parts-card -mx-1 mb-6 flex flex-col gap-4 rounded-[18px] px-4 pt-4 pb-4"
               >
-                <header class="flex h-6 items-center">
-                  <span class="text-[12px] font-medium tracking-[-0.005em] text-foreground">Parts model</span>
+                <header class="flex items-center justify-between">
+                  <span class="flex items-center gap-2 text-[12.5px] font-semibold tracking-[-0.005em] text-foreground">
+                    <Icon
+                      name="cuboid"
+                      :size="14"
+                      class="text-ice"
+                    />
+                    Parts model
+                  </span>
+                  <span class="index text-ink-3">CLAUDE</span>
                 </header>
                 <SculptPanel :sculpt="sculpt" />
               </section>
+
+              <header
+                v-if="mode === 'product' && sculpt && trace"
+                class="flex h-6 items-center justify-between pb-4"
+              >
+                <span class="text-[12px] font-medium tracking-[-0.005em] text-foreground">Silhouette carve</span>
+                <span class="text-[11px] text-ink-3">{{ sculpted ? 'Off while a parts model stands' : 'On your device, no upload' }}</span>
+              </header>
 
               <p
                 v-if="sculpted"
@@ -1334,6 +1350,14 @@ const dimInput =
 </template>
 
 <style scoped>
+.parts-card {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(238, 242, 248, 0.9));
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 0 0 1px var(--hairline),
+    0 12px 28px -20px rgba(3, 7, 18, 0.35);
+}
+
 @reference "~/assets/main.css";
 
 /* Content fades under the header and footer edges; scrollbar is a hairline that only appears

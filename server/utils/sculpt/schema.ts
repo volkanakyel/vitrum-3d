@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { BuildOutput, Intake, Review, SculptSpec } from '../../../app/utils/sculpt/types'
+import type { BuildOutput, Review, SculptSpec } from '../../../app/utils/sculpt/types'
 
 const suitabilitySchema = z.strictObject({
   verdict: z.enum(['pass', 'conditional', 'reject']),
@@ -26,26 +26,6 @@ const detailInventorySchema = z.strictObject({
   zone: z.string(),
   kind: z.string(),
   evidence: z.string(),
-})
-
-const materialsSeenSchema = z.strictObject({
-  zone: z.string(),
-  family: z.string(),
-  subtype: z.string(),
-  colorHex: z.string(),
-  finish: z.string(),
-})
-
-export const intakeSchema: z.ZodType<Intake> = z.strictObject({
-  name: z.string(),
-  objectClass: z.string(),
-  suitability: suitabilitySchema,
-  symmetry: z.enum(['left-right', 'none']),
-  camera: cameraSchema,
-  dimensions: dimensionsIntakeSchema,
-  detailInventory: z.array(detailInventorySchema),
-  materialsSeen: z.array(materialsSeenSchema),
-  notes: z.array(z.string()),
 })
 
 const componentDimensionsSchema = z.strictObject({
@@ -133,15 +113,16 @@ const repetitionSchema = z.strictObject({
 export const specSchema: z.ZodType<SculptSpec> = z.strictObject({
   name: z.string(),
   id: z.string(),
+  objectClass: z.string(),
+  suitability: suitabilitySchema,
+  symmetry: z.enum(['left-right', 'none']),
   camera: cameraSchema,
   dimensions: dimensionsIntakeSchema,
-  symmetry: z.enum(['left-right', 'none']),
-  suitability: suitabilitySchema,
   detailInventory: z.array(detailInventorySchema),
+  notes: z.array(z.string()),
   components: z.array(componentSchema),
   materials: z.array(materialSchema),
   repetition: z.array(repetitionSchema),
-  reviewViews: z.array(z.enum(['reference', 'front', 'side', 'top'])),
   mustMatch: z.array(z.string()),
   niceToHave: z.array(z.string()),
 })
@@ -161,20 +142,10 @@ const defectSchema = z.strictObject({
   fix: z.string(),
 })
 
-const cameraAdjustSchema = z.strictObject({
-  yaw: z.number(),
-  pitch: z.number(),
-  fov: z.number(),
-  distance: z.number(),
-})
-
 export const reviewSchema: z.ZodType<Review> = z.strictObject({
-  action: z.enum(['continue', 'refine-code', 'refine-spec', 'request-input', 'stop']),
   fidelity: z.number(),
   layers: layersSchema,
   defects: z.array(defectSchema),
-  cameraAdjust: cameraAdjustSchema.optional(),
-  question: z.string().optional(),
   summary: z.string(),
 })
 

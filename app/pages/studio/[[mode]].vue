@@ -146,7 +146,7 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
                     :size="13"
                     class="relative"
                   />
-                  <span class="relative">{{ m.label }}</span>
+                  <span class="relative">{{ m.title }}</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent>{{ m.hint }}</TooltipContent>
@@ -379,7 +379,7 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
                     Turn an icon into solid glass
                   </template>
                   <template v-else>
-                    Turn a product photo into a solid
+                    Turn a product photo into a parts model
                   </template>
                 </h1>
                 <p class="mx-auto mb-7 max-w-[34ch] text-[13px] leading-relaxed text-ink-2">
@@ -391,7 +391,7 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
                   <template v-else>
                     <span class="pointer-coarse:hidden">Drop or paste a picture of a chair, a bottle, a sneaker.</span>
                     <span class="hidden pointer-coarse:inline">Pick a picture of a chair, a bottle, a sneaker.</span>
-                    Its silhouette is inflated into a volume that keeps every colour.
+                    Claude rebuilds it part by part in its own materials, on a turntable. Or carve its silhouette on your device.
                   </template>
                 </p>
                 <div class="flex justify-center gap-2">

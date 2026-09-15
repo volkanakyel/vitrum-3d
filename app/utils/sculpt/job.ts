@@ -1,29 +1,27 @@
 /**
  * Sculpt job orchestrator.
  *
- * `JobRunner` walks a `SculptJob` through intake → spec → the five build
- * passes → export, driving injected `Transport` (the `/api/sculpt/*`
+ * `JobRunner` walks a `SculptJob` through plan → build → render → (review →
+ * fix → render) → done, driving injected `Transport` (the `/api/sculpt/*`
  * routes) and `Renderer` (the sandbox) implementations so the whole thing is
  * unit-testable without a browser or a network.
  *
- * Resume is deliberately coarse: `run()` looks only at `job.intake`,
- * `job.spec` and `job.currentPass` to decide where to start — intake/spec
- * are skipped once present, and the pass loop starts at `currentPass` (or
- * the first pass). A pass that was interrupted mid-flight simply repeats its
- * build/render/review loop from the top the next time `run()` is called;
- * this is also how `answer()` resumes a `waiting-input` job — it just
- * re-enters `run()` on the same `currentPass` with the answer carried as a
- * build note.
+ * The loop is bounded by construction: at most four model calls (plan, build,
+ * review, one fix), and the model is on the stage — `deps.onModel` — as soon
+ * as the first build renders, before the review has even started. A fix that
+ * fails leaves the draft standing.
+ *
+ * Resume is coarse: `run()` looks at what the job already holds — a spec
+ * skips the plan, code skips the build, a review skips the review — so a
+ * failed run picks up from the last paid step.
  */
 
-import type { ApiResult, BuildOutput, Dims, Intake, PartBounds, PassId, Review, SculptSpec, Usage, View } from './types'
-import { PASSES } from './types'
+import type { ApiResult, BuildOutput, Defect, Dims, PartBounds, Review, SculptSpec, Usage, View } from './types'
 
 export interface Transport {
-  intake: (req: { image: string, hint?: string, dims?: Dims }, signal: AbortSignal) => Promise<ApiResult<Intake>>
-  spec: (req: { intake: Intake, image: string, critique?: string }, signal: AbortSignal) => Promise<ApiResult<SculptSpec>>
-  build: (req: { spec: SculptSpec, pass: PassId, code?: string, defects?: Review['defects'], notes?: string[], partBounds?: PartBounds[] }, signal: AbortSignal) => Promise<ApiResult<BuildOutput>>
-  review: (req: { spec: SculptSpec, pass: PassId, sheet: string, image: string, fixesLeft: number, partBounds?: PartBounds[] }, signal: AbortSignal) => Promise<ApiResult<Review>>
+  plan: (req: { image: string, hint?: string, dims?: Dims }, signal: AbortSignal) => Promise<ApiResult<SculptSpec>>
+  build: (req: { spec: SculptSpec, image: string, code?: string, defects?: Defect[], partBounds?: PartBounds[] }, signal: AbortSignal) => Promise<ApiResult<BuildOutput>>
+  review: (req: { spec: SculptSpec, sheet: string, partBounds?: PartBounds[] }, signal: AbortSignal) => Promise<ApiResult<Review>>
 }
 
 /** Sandbox + sheet, injected so the runner is testable. */
@@ -35,29 +33,14 @@ export interface Renderer {
 
 export type JobStatus =
   | 'idle'
-  | 'intake'
-  | 'spec'
+  | 'planning'
   | 'building'
   | 'rendering'
   | 'reviewing'
-  | 'waiting-input'
-  | 'exporting'
+  | 'fixing'
   | 'done'
   | 'failed'
   | 'cancelled'
-
-export interface PassRecord {
-  id: PassId
-  code: string
-  /** `BuildOutput.notes` from this pass's latest build; carried into the next build request. */
-  notes: string[]
-  /** data URLs */
-  sheets: string[]
-  reviews: Review[]
-  fixes: number
-  /** Measured world boxes from this pass's latest load; absent on jobs stored before the field existed. */
-  partBounds?: PartBounds[]
-}
 
 export interface SculptJob {
   id: string
@@ -66,18 +49,28 @@ export interface SculptJob {
   image: string
   hint: string
   dims: Dims | null
-  intake: Intake | null
+  /** Review and fix after the first build; off is one build and done. */
+  polish: boolean
   spec: SculptSpec | null
-  passes: PassRecord[]
-  currentPass: PassId | null
-  fixesTotal: number
+  /** The latest factory file: the first build, or the fix. */
+  code: string
+  notes: string[]
+  /** Measured world boxes from the latest successful load. */
+  partBounds: PartBounds[]
+  /** data URLs, one per render: the draft, then the fix. */
+  sheets: string[]
+  review: Review | null
+  /** The fix call has been spent (whether or not its code loaded). */
+  fixed: boolean
   usage: Usage
   costUsd: number
   status: JobStatus
+  /** 'good' when the last review scored >= GOOD_FIDELITY; 'approximate' otherwise or unreviewed. */
   quality: 'good' | 'approximate' | null
   error: string | null
-  question: string | null
   glb: ArrayBuffer | null
+  /** The glb is the first build's, and a review or fix may still replace it. */
+  draft: boolean
 }
 
 export interface JobRunnerDeps {
@@ -86,32 +79,35 @@ export interface JobRunnerDeps {
   sheet: (ref: string, renders: { name: string, blob: Blob }[]) => Promise<string>
   save: (job: SculptJob) => Promise<void>
   onChange: (job: SculptJob) => void
+  /** A model is ready for the stage: first the draft, then (maybe) the fix. */
+  onModel: (glb: ArrayBuffer, job: SculptJob) => void
 }
 
-/** Per-pass fix budget. */
-const PASS_FIX_BUDGET = 2
-/** Job-wide fix budget shared across all passes. */
-const TOTAL_FIX_BUDGET = 8
+/** A review at or above this has nothing worth another opus call. */
+export const GOOD_FIDELITY = 0.85
 
-export function createJob(image: string, hint: string, dims: Dims | null): SculptJob {
+export function createJob(image: string, hint: string, dims: Dims | null, polish = true): SculptJob {
   return {
     id: crypto.randomUUID(),
     createdAt: Date.now(),
     image,
     hint,
     dims,
-    intake: null,
+    polish,
     spec: null,
-    passes: [],
-    currentPass: null,
-    fixesTotal: 0,
+    code: '',
+    notes: [],
+    partBounds: [],
+    sheets: [],
+    review: null,
+    fixed: false,
     usage: { input: 0, output: 0 },
     costUsd: 0,
     status: 'idle',
     quality: null,
     error: null,
-    question: null,
     glb: null,
+    draft: false,
   }
 }
 
@@ -133,8 +129,7 @@ function clonePlain<T>(value: T): T {
  * through JSON (which strips Vue reactive proxies, getters, class instances,
  * etc. down to plain data IndexedDB's structured-clone algorithm can never
  * choke on), while `glb` — an `ArrayBuffer`, which structured clone already
- * supports natively — is passed through by reference rather than JSON-cloned
- * (JSON cannot represent an `ArrayBuffer` at all).
+ * supports natively — is passed through by reference.
  */
 export function plainJob(job: SculptJob): SculptJob {
   return {
@@ -143,27 +138,26 @@ export function plainJob(job: SculptJob): SculptJob {
     image: job.image,
     hint: job.hint,
     dims: job.dims ? clonePlain(job.dims) : null,
-    intake: job.intake ? clonePlain(job.intake) : null,
+    polish: job.polish,
     spec: job.spec ? clonePlain(job.spec) : null,
-    passes: job.passes.map(p => ({
-      id: p.id,
-      code: p.code,
-      notes: [...p.notes],
-      sheets: [...p.sheets],
-      reviews: clonePlain(p.reviews),
-      fixes: p.fixes,
-    })),
-    currentPass: job.currentPass,
-    fixesTotal: job.fixesTotal,
+    code: job.code,
+    notes: [...job.notes],
+    partBounds: clonePlain(job.partBounds),
+    sheets: [...job.sheets],
+    review: job.review ? clonePlain(job.review) : null,
+    fixed: job.fixed,
     usage: { ...job.usage },
     costUsd: job.costUsd,
     status: job.status,
     quality: job.quality,
     error: job.error,
-    question: job.question,
     glb: job.glb,
+    draft: job.draft,
   }
 }
+
+/** Thrown by `load` so the runner can turn a broken file into a fix request. */
+class LoadError extends Error {}
 
 export class JobRunner {
   readonly job: SculptJob
@@ -171,17 +165,6 @@ export class JobRunner {
   private cancelled = false
   private running = false
   private controller: AbortController | null = null
-  private pendingNotes: string[] | undefined
-  /** Whether the most recent `renderer.load` call (across the whole run) succeeded. */
-  private lastLoadOk = false
-
-  /**
-   * Not part of the required interface: `answer()` is `void` per the brief,
-   * but it triggers an async resume internally, and `run()` itself is now
-   * re-entrancy-guarded and may just hand back an in-flight run. Tests (and
-   * callers that care) can await this to know when the current run/resume
-   * has settled.
-   */
   lastRun: Promise<SculptJob>
 
   constructor(job: SculptJob, deps: JobRunnerDeps) {
@@ -196,10 +179,9 @@ export class JobRunner {
 
   /**
    * Persists (as a plain, non-reactive copy) then notifies; returns `false`
-   * if a cancellation landed while the save was in flight. Callers MUST bail
-   * out immediately when this returns `false` — no further transport/render
-   * calls, and no further `status` mutation, so a cancellation can never be
-   * silently overwritten by whatever step was about to run next.
+   * if a cancellation landed while the save was in flight. Callers bail out
+   * immediately on `false` so a cancellation is never overwritten by the step
+   * that was about to run.
    */
   private async commit(): Promise<boolean> {
     await this.deps.save(plainJob(this.job))
@@ -207,20 +189,13 @@ export class JobRunner {
     return !this.cancelled
   }
 
-  /**
-   * Used only on the failure/cancel paths: must never throw (a broken
-   * `save` must not turn a reported failure into a rejected `run()`), and
-   * must always notify so the failure is observable even if persistence
-   * itself failed.
-   */
+  /** Failure/cancel paths: never throws, always notifies. */
   private async commitBestEffort(): Promise<void> {
     try {
       await this.deps.save(plainJob(this.job))
     }
     catch {
-      // Persistence failed on the way to reporting a terminal state; the
-      // in-memory job and this onChange are the only remaining source of
-      // truth for it.
+      // The in-memory job and this onChange are the remaining source of truth.
     }
     finally {
       this.deps.onChange({ ...this.job })
@@ -232,11 +207,15 @@ export class JobRunner {
     this.job.costUsd += costUsd
   }
 
-  private async call<T>(fn: (signal: AbortSignal) => Promise<ApiResult<T>>): Promise<ApiResult<T>> {
+  private async call<T>(fn: (signal: AbortSignal) => Promise<ApiResult<T>>): Promise<T> {
     const controller = new AbortController()
     this.controller = controller
     try {
-      return await fn(controller.signal)
+      const res = await fn(controller.signal)
+      // A failed route may still have paid for a call; count it before throwing.
+      if (res.usage) this.addUsage(res.usage, res.costUsd ?? 0)
+      if (!res.ok) throw new Error(res.error)
+      return res.data
     }
     finally {
       if (this.controller === controller) this.controller = null
@@ -244,10 +223,8 @@ export class JobRunner {
   }
 
   /**
-   * Resumes from `job.status`/`job.currentPass`. Re-entrant: a call while
-   * already running just returns the same in-flight promise (not merely an
-   * equal one — deliberately not `async`, so the promise identity survives);
-   * a `done` job is a no-op.
+   * Resumes from what the job holds. Re-entrant: a call while already running
+   * returns the same in-flight promise; a `done` job is a no-op.
    */
   run(): Promise<SculptJob> {
     if (this.job.status === 'done') return Promise.resolve(this.snapshot())
@@ -259,208 +236,114 @@ export class JobRunner {
     return promise
   }
 
+  /** Loads, renders and exports the current code; puts the model on the stage. */
+  private async stage(status: 'rendering'): Promise<void> {
+    const job = this.job
+    job.status = status
+    if (!(await this.commit())) return
+    let loaded: Awaited<ReturnType<Renderer['load']>>
+    try {
+      loaded = await this.deps.renderer.load(job.code)
+    }
+    catch (err) {
+      throw new LoadError(err instanceof Error ? err.message : String(err))
+    }
+    if (this.cancelled) return
+    job.partBounds = loaded.partBounds ?? []
+    // The model reaches the stage before the sheet is even drawn: a review
+    // and a fix are refinements of something the user can already orbit.
+    job.glb = await this.deps.renderer.exportGLB()
+    if (this.cancelled) return
+    this.deps.onModel(job.glb, { ...job })
+    const renders = await this.deps.renderer.render(viewsFor(job.spec!))
+    if (this.cancelled) return
+    job.sheets.push(await this.deps.sheet(job.image, renders))
+  }
+
   private async execute(): Promise<SculptJob> {
     const job = this.job
-
     try {
-      if (!job.intake) {
-        job.status = 'intake'
+      if (!job.spec) {
+        job.status = 'planning'
         if (!(await this.commit())) return this.snapshot()
-        const res = await this.call(signal => this.deps.transport.intake(
+        job.spec = await this.call(signal => this.deps.transport.plan(
           { image: job.image, hint: job.hint || undefined, dims: job.dims ?? undefined },
           signal,
         ))
         if (this.cancelled) return this.snapshot()
-        if (!res.ok) throw new Error(res.error)
-        job.intake = res.data
-        this.addUsage(res.usage, res.costUsd)
         if (!(await this.commit())) return this.snapshot()
       }
 
-      if (!job.spec) {
-        job.status = 'spec'
+      if (!job.code) {
+        job.status = 'building'
         if (!(await this.commit())) return this.snapshot()
-        const res = await this.call(signal => this.deps.transport.spec(
-          { intake: job.intake!, image: job.image },
+        const built = await this.call(signal => this.deps.transport.build({ spec: job.spec!, image: job.image }, signal))
+        if (this.cancelled) return this.snapshot()
+        job.code = built.code
+        job.notes = built.notes
+        if (!(await this.commit())) return this.snapshot()
+      }
+
+      // The first build reaches the stage as a draft. A file that does not
+      // even load spends the fix on the error; a second failure is the end.
+      let defects: Defect[] | null = null
+      if (job.sheets.length === 0) {
+        job.draft = true
+        try {
+          await this.stage('rendering')
+          if (this.cancelled) return this.snapshot()
+        }
+        catch (err) {
+          if (!(err instanceof LoadError) || job.fixed) throw err
+          defects = [{ component: '*', what: err.message, measured: 'runtime error on load', fix: 'fix the runtime error' }]
+        }
+        if (!(await this.commit())) return this.snapshot()
+      }
+
+      if (job.polish && !defects && !job.review && job.sheets.length > 0) {
+        job.status = 'reviewing'
+        if (!(await this.commit())) return this.snapshot()
+        job.review = await this.call(signal => this.deps.transport.review(
+          { spec: job.spec!, sheet: job.sheets[job.sheets.length - 1]!, partBounds: job.partBounds.length ? job.partBounds : undefined },
           signal,
         ))
         if (this.cancelled) return this.snapshot()
-        if (!res.ok) throw new Error(res.error)
-        job.spec = res.data
-        this.addUsage(res.usage, res.costUsd)
         if (!(await this.commit())) return this.snapshot()
       }
 
-      let stopped = false
-      const firstPass = PASSES[0]!
-      const startIndex = Math.max(0, PASSES.indexOf(job.currentPass ?? firstPass))
-
-      for (let i = startIndex; i < PASSES.length; i++) {
-        const pass = PASSES[i]!
-        job.currentPass = pass
-
-        let rec = job.passes.find(p => p.id === pass)
-        if (!rec) {
-          rec = { id: pass, code: '', notes: [], sheets: [], reviews: [], fixes: 0 }
-          job.passes.push(rec)
-        }
-        const record = rec
-
-        // The pass prompts are written as edits of "the current file", so a
-        // fresh pass (no code of its own yet) must chain from the previous
-        // pass's final code rather than starting from an empty file. A pass
-        // that already has its own code (mid-pass resume, or answer()
-        // resuming a waiting-input pass) keeps building on that instead.
-        let prevCode: string | undefined = record.code || undefined
-        let carriedNotes: string[] = record.code ? (record.notes ?? []) : []
-        if (!prevCode && i > 0) {
-          const prevRec = job.passes.find(p => p.id === PASSES[i - 1]!)
-          if (prevRec) {
-            prevCode = prevRec.code || undefined
-            if (carriedNotes.length === 0) carriedNotes = prevRec.notes ?? []
-          }
-        }
-
-        let defects: Review['defects'] | undefined
-        let answerNotes: string[] | undefined = this.pendingNotes
-        this.pendingNotes = undefined
-
-        while (true) {
-          const spec: SculptSpec = job.spec!
-          const notes = [...carriedNotes, ...(answerNotes ?? [])]
-          answerNotes = undefined
-
-          job.status = 'building'
-          if (!(await this.commit())) return this.snapshot()
-          // The measured boxes describe the code being revised: only a
-          // refine-code rebuild (same file, same numbers) can use them.
-          const measured = prevCode && prevCode === record.code && record.partBounds?.length ? record.partBounds : undefined
-          const buildRes: ApiResult<BuildOutput> = await this.call<BuildOutput>(signal => this.deps.transport.build(
-            { spec, pass, code: prevCode, defects, notes: notes.length > 0 ? notes : undefined, partBounds: measured },
-            signal,
-          ))
-          if (this.cancelled) return this.snapshot()
-          if (!buildRes.ok) throw new Error(buildRes.error)
-          record.code = buildRes.data.code
-          record.notes = buildRes.data.notes ?? []
-          carriedNotes = record.notes
-          this.addUsage(buildRes.usage, buildRes.costUsd)
-          if (!(await this.commit())) return this.snapshot()
-
-          job.status = 'rendering'
-          if (!(await this.commit())) return this.snapshot()
-
-          this.lastLoadOk = false
-          try {
-            const loaded = await this.deps.renderer.load(record.code)
-            record.partBounds = loaded.partBounds ?? []
-            this.lastLoadOk = true
-          }
-          catch (err) {
-            if (this.cancelled) return this.snapshot()
-            const fixesLeft = Math.min(PASS_FIX_BUDGET - record.fixes, TOTAL_FIX_BUDGET - job.fixesTotal)
-            if (fixesLeft <= 0) break
-            record.fixes += 1
-            job.fixesTotal += 1
-            const message = err instanceof Error ? err.message : String(err)
-            defects = [{ component: '*', what: message, measured: 'runtime error', fix: 'fix the runtime error' }]
-            prevCode = record.code
-            if (!(await this.commit())) return this.snapshot()
-            continue
-          }
-          if (this.cancelled) return this.snapshot()
-
-          const renders = await this.deps.renderer.render(viewsFor(spec))
-          if (this.cancelled) return this.snapshot()
-          const sheetUrl = await this.deps.sheet(job.image, renders)
-          if (this.cancelled) return this.snapshot()
-          record.sheets.push(sheetUrl)
-          if (!(await this.commit())) return this.snapshot()
-
-          job.status = 'reviewing'
-          if (!(await this.commit())) return this.snapshot()
-
-          const fixesLeft = Math.min(PASS_FIX_BUDGET - record.fixes, TOTAL_FIX_BUDGET - job.fixesTotal)
-          const reviewRes: ApiResult<Review> = await this.call<Review>(signal => this.deps.transport.review(
-            { spec, pass, sheet: sheetUrl, image: job.image, fixesLeft, partBounds: record.partBounds?.length ? record.partBounds : undefined },
-            signal,
-          ))
-          if (this.cancelled) return this.snapshot()
-          if (!reviewRes.ok) throw new Error(reviewRes.error)
-          const review: Review = reviewRes.data
-          record.reviews.push(review)
-          this.addUsage(reviewRes.usage, reviewRes.costUsd)
-          if (!(await this.commit())) return this.snapshot()
-
-          if (review.action === 'continue') {
-            break
-          }
-          else if (review.action === 'refine-code') {
-            if (fixesLeft <= 0) break
-            record.fixes += 1
-            job.fixesTotal += 1
-            defects = review.defects
-            prevCode = record.code
-            if (!(await this.commit())) return this.snapshot()
-            continue
-          }
-          else if (review.action === 'refine-spec') {
-            if (fixesLeft <= 0) break
-            const critique: string = `${review.summary}\n${JSON.stringify(review.defects)}`
-            const specRes: ApiResult<SculptSpec> = await this.call<SculptSpec>(signal => this.deps.transport.spec(
-              { intake: job.intake!, image: job.image, critique },
-              signal,
-            ))
-            if (this.cancelled) return this.snapshot()
-            if (!specRes.ok) throw new Error(specRes.error)
-            job.spec = specRes.data
-            this.addUsage(specRes.usage, specRes.costUsd)
-            record.fixes += 1
-            job.fixesTotal += 1
-            prevCode = undefined
-            defects = undefined
-            if (!(await this.commit())) return this.snapshot()
-            continue
-          }
-          else if (review.action === 'request-input') {
-            job.status = 'waiting-input'
-            job.question = review.question ?? ''
-            // Best-effort: this pass is paid for and the question is on
-            // screen either way; a full store must not turn it into a
-            // rejected run().
-            await this.commitBestEffort()
-            return this.snapshot()
-          }
-          else {
-            // 'stop': finish after this pass.
-            stopped = true
-            break
-          }
-        }
-
-        if (stopped) break
+      if (!defects && job.review && job.review.defects.length > 0 && job.review.fidelity < GOOD_FIDELITY) {
+        defects = job.review.defects
       }
 
-      job.status = 'exporting'
-      if (!(await this.commit())) return this.snapshot()
-
-      if (this.lastLoadOk) {
-        const glb = await this.deps.renderer.exportGLB()
+      if (defects && !job.fixed) {
+        job.status = 'fixing'
+        job.fixed = true
+        if (!(await this.commit())) return this.snapshot()
+        const fixedBuild = await this.call(signal => this.deps.transport.build(
+          { spec: job.spec!, image: job.image, code: job.code, defects, partBounds: job.partBounds.length ? job.partBounds : undefined },
+          signal,
+        ))
         if (this.cancelled) return this.snapshot()
-        job.glb = glb
-        job.quality = this.finalQuality()
+        const draftCode = job.code
+        job.code = fixedBuild.code
+        job.notes = fixedBuild.notes
+        if (!(await this.commit())) return this.snapshot()
+        try {
+          await this.stage('rendering')
+          if (this.cancelled) return this.snapshot()
+        }
+        catch (err) {
+          if (!(err instanceof LoadError)) throw err
+          // The fix broke the file: the draft that already stands is the result.
+          if (!job.glb) throw err
+          job.code = draftCode
+          job.notes = [...job.notes, `fix discarded: ${err.message}`]
+        }
       }
-      else {
-        // The last renderer.load never succeeded (the pass advanced only
-        // because its fix budget ran out) — there is nothing renderable to
-        // export.
-        job.glb = null
-        job.quality = 'approximate'
-      }
+
+      job.draft = false
+      job.quality = job.review && job.review.fidelity >= GOOD_FIDELITY ? 'good' : 'approximate'
       job.status = 'done'
-      // The run is finished and the GLB is in hand; a save that fails here
-      // costs the cached copy, not the result, so it must not be reported as
-      // a failed run.
       await this.commitBestEffort()
       return this.snapshot()
     }
@@ -473,29 +356,11 @@ export class JobRunner {
     }
   }
 
-  /** 'good' only when the surface pass's last review has fidelity >= 0.8; any early stop or a missing surface pass is 'approximate'. */
-  private finalQuality(): 'good' | 'approximate' {
-    const surfaceRec = this.job.passes.find(p => p.id === 'surface')
-    if (!surfaceRec || surfaceRec.reviews.length === 0) return 'approximate'
-    const lastReview = surfaceRec.reviews[surfaceRec.reviews.length - 1]!
-    return lastReview.fidelity >= 0.8 ? 'good' : 'approximate'
-  }
-
   cancel(): void {
     if (this.job.status === 'done' || this.job.status === 'failed' || this.job.status === 'cancelled') return
     this.cancelled = true
     this.controller?.abort()
     this.job.status = 'cancelled'
     this.lastRun = this.commitBestEffort().then(() => this.snapshot())
-  }
-
-  /** Only valid in `waiting-input`; resumes the current pass with the answer as a build note. */
-  answer(text: string): void {
-    if (this.job.status !== 'waiting-input') return
-    this.job.hint = `${this.job.hint}\n\nUser answer: ${text}`
-    this.job.question = null
-    this.job.status = 'building'
-    this.pendingNotes = [text]
-    this.lastRun = this.run()
   }
 }

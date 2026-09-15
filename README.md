@@ -94,19 +94,27 @@ image the new way. Every geometry, finish and scene control stays available in b
 ## Sculpt (parts model)
 
 Everything above runs in the browser and nothing leaves it. Sculpt is the one exception, and it is
-opt-in per press: in product mode, **Rebuild as parts** sends the imported photo to Anthropic's API
-and asks Claude to rebuild the object as a *parts model* — a chair with a seat, a back, four legs
-and its own materials, instead of one carved blob wearing the photo.
+opt-in per press: in the product studio, **Build the parts model** sends the imported photo to
+Anthropic's API and asks Claude to rebuild the object as a *parts model* — a chair with a seat, a
+back, four legs and its own materials, instead of one carved blob wearing the photo.
 
-The loop: Claude reads the photo (intake), writes a `SculptSpec` (components, dimensions,
-materials, what must match), then writes procedural three.js against an in-repo kit
-(`app/utils/sculpt/kit/`) in five passes — blockout, structural, form, material, surface. Each
-pass's code runs in an opaque-origin `<iframe sandbox="allow-scripts">` (`/sandbox`), which renders
-four views; those are pasted into one comparison sheet next to the photo, and Claude reviews the
-sheet and either continues, orders a fix, revises the spec, or asks a question. The finished model
-is exported as a GLB and replaces the carved hull on the stage; scene controls, GLB/STL/PNG export
-and the size fields all work on it unchanged. The run (spec, code, sheets, GLB) is cached in
-IndexedDB and can be reopened without paying again. Expect 3–6 minutes and $1–3 per run.
+The loop is four model calls at most, and the model is on the stage after the second:
+
+1. **Plan.** Claude reads the photo and writes a `SculptSpec`: components, dimensions, materials,
+   what must match.
+2. **Build.** Claude writes the whole model as one file of procedural three.js against an in-repo
+   kit (`app/utils/sculpt/kit/`), looking at the photo as it writes. The file runs in an
+   opaque-origin `<iframe sandbox="allow-scripts">` (`/sandbox`), is exported as a GLB and
+   **lands on the stage as a draft**, on the turntable, about a minute in.
+3. **Review** (with *Polish* on, the default). The sandbox renders four views, pasted into one
+   comparison sheet next to the photo; a cheaper model scores it and lists measured defects.
+4. **Fix** (only when the review scored under 0.85 with defects). One rebuild of the same file,
+   with the defects and the measured box of every part; it replaces the draft. A fix that will not
+   load leaves the draft standing.
+
+Scene controls, GLB/STL/PNG export and the size fields all work on the model unchanged. The run
+(spec, code, sheets, review, GLB) is cached in IndexedDB and can be reopened without paying again.
+Expect 1–4 minutes and $0.30–0.90 per run.
 
 **The photo goes to Anthropic.** The panel says so, and only this button does it: tracing, carving
 and depth all still stay in the browser.
@@ -136,7 +144,7 @@ The routes also need a long function timeout (`maxDuration: 300`, set in `nuxt.c
 on Vercel means a Pro plan; Hobby caps functions at 60 s and a run will be cut off mid-file.
 
 Further reading: [`eval/README.md`](eval/README.md) for the quality harness, and
-[`docs/superpowers/specs/2026-09-15-sculpt-design.md`](docs/superpowers/specs/2026-09-15-sculpt-design.md)
+[`docs/superpowers/specs/2026-09-16-sculpt-v2-design.md`](docs/superpowers/specs/2026-09-16-sculpt-v2-design.md)
 for the design.
 
 ## Files
@@ -158,8 +166,8 @@ for the design.
 | `app/utils/sculpt/{job,sandbox,sandboxRuntime,sheet,store,transport,glb}.ts` | job state machine, the sandbox host and its page-side runtime, comparison sheets, IndexedDB cache, route client, GLB safety check |
 | `app/composables/useSculpt.ts` | Vue glue for a sculpt run: reactive job, start/cancel/answer/reopen |
 | `server/utils/sculpt/*` | route cores, zod schemas, the Anthropic client, `validateCode`, the CSP strings, the rate-limit/budget guard |
-| `server/utils/sculpt/prompts/*.md` | the intake, spec, per-pass build and review prompts; `kit-api.md` is generated |
-| `server/api/sculpt/*` | `intake`, `spec`, `build`, `review` (POST) and `status` (GET) |
+| `server/utils/sculpt/prompts/*.md` | the plan, build and review prompts; `kit-api.md` is generated, `exemplar.md` is the kit fixture |
+| `server/api/sculpt/*` | `plan`, `build`, `review` (POST) and `status` (GET) |
 | `app/components/studio/*` | control panel, viewer, loader, fields |
 | `app/components/site/*` | navigation and footer |
 | `app/components/ui/*` | generated shadcn-vue primitives |

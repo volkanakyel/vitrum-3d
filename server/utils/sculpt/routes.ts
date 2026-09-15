@@ -1,12 +1,11 @@
-import { PASSES } from '../../../app/utils/sculpt/types'
-import type { ApiResult, BuildOutput, Intake, PartBounds, PassId, Review, SculptSpec, Usage } from '../../../app/utils/sculpt/types'
-import { buildSchema, intakeSchema, reviewSchema, specSchema, toolSchema, validateSpec } from './schema'
+import type { ApiResult, BuildOutput, Defect, PartBounds, Review, SculptSpec, Usage } from '../../../app/utils/sculpt/types'
+import { buildSchema, reviewSchema, specSchema, toolSchema, validateSpec } from './schema'
 import { validateCode } from './validateCode'
 import { PROMPTS } from './prompts'
 import type { CallTool, ImageMediaType, ToolResult, UserPart } from './anthropic'
 
 export interface RouteCfg {
-  /** Model that writes the intake, the spec and the code. */
+  /** Model that writes the plan and the code. */
   modelAuthor: string
   /** Model that reviews the renders. */
   modelReview: string
@@ -26,8 +25,17 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024
  * any line breaks.
  */
 const MAX_IMAGE_BASE64_CHARS = Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 1024
-/** Below this a reviewer's `stop` is honoured before the surface pass. */
-const HOPELESS_FIDELITY = 0.35
+/**
+ * Output ceilings. The plan is a JSON document of at most 24 components; the
+ * build is a file capped at 40 kB by the validator (~12k tokens), so a ceiling
+ * twice that leaves room for the tool-call envelope and is never the limit a
+ * healthy answer hits. The review is a short scored list.
+ */
+const PLAN_MAX_TOKENS = 12_000
+const BUILD_MAX_TOKENS = 24_000
+const REVIEW_MAX_TOKENS = 4_000
+/** Defects past this many are noise; the review prompt says eight. */
+const MAX_DEFECTS = 8
 
 /** A tally that grows across the retries of one request. */
 class Tally {
@@ -90,10 +98,6 @@ function parseImage(value: unknown, label: string): { ok: true, part: UserPart }
   return { ok: true, part: { type: 'image', base64, mediaType } }
 }
 
-function isPass(value: unknown): value is PassId {
-  return typeof value === 'string' && (PASSES as readonly string[]).includes(value)
-}
-
 const MAX_PART_BOUNDS = 400
 
 function isVec3(value: unknown): value is [number, number, number] {
@@ -126,14 +130,14 @@ function partBoundsTable(bounds: PartBounds[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// intake
+// plan
 // ---------------------------------------------------------------------------
 
-export async function intakeCore(
+export async function planCore(
   body: unknown,
   callTool: CallTool,
   cfg: RouteCfg = DEFAULT_ROUTE_CFG,
-): Promise<ApiResult<Intake>> {
+): Promise<ApiResult<SculptSpec>> {
   if (!isRecord(body)) return fail('request body must be an object')
 
   const image = parseImage(body.image, 'image')
@@ -142,58 +146,13 @@ export async function intakeCore(
   const hint = typeof body.hint === 'string' ? body.hint.slice(0, 2000) : ''
   const dims = isRecord(body.dims) ? body.dims : null
 
-  const lines = ['Analyse this photograph and return the intake.']
-  if (hint) lines.push(`What the owner says it is: ${hint}`)
+  const base = ['Read this photograph and write the SculptSpec.']
+  if (hint) base.push(`What the owner says it is: ${hint}`)
   if (dims) {
-    lines.push(`Measured dimensions supplied by the owner (millimetres): ${JSON.stringify(dims)}. Use them and set dimensions.source to "user".`)
+    base.push(`Measured dimensions supplied by the owner (millimetres): ${JSON.stringify(dims)}. Convert to metres, use them exactly and set dimensions.source to "user".`)
   }
   else {
-    lines.push('No dimensions were supplied: estimate them in metres and set dimensions.source to "estimated".')
-  }
-
-  const tally = new Tally()
-  const raw = tally.add(await callTool<unknown>({
-    system: PROMPTS.intake,
-    user: [image.part, { type: 'text', text: lines.join('\n\n') }],
-    tool: {
-      name: 'intake',
-      description: 'Report the eight-layer analysis of the photographed object.',
-      schema: toolSchema(intakeSchema),
-    },
-    model: cfg.modelAuthor,
-    maxTokens: 16_000,
-  }))
-
-  const parsed = intakeSchema.safeParse(raw)
-  if (!parsed.success) {
-    return tally.fail(`intake failed validation: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
-  }
-  return tally.ok(parsed.data)
-}
-
-// ---------------------------------------------------------------------------
-// spec
-// ---------------------------------------------------------------------------
-
-export async function specCore(
-  body: unknown,
-  callTool: CallTool,
-  cfg: RouteCfg = DEFAULT_ROUTE_CFG,
-): Promise<ApiResult<SculptSpec>> {
-  if (!isRecord(body)) return fail('request body must be an object')
-  if (!isRecord(body.intake)) return fail('intake must be an object')
-
-  const image = parseImage(body.image, 'image')
-  if (!image.ok) return fail(image.error)
-
-  const critique = typeof body.critique === 'string' ? body.critique.slice(0, 8000) : ''
-
-  const base = [
-    'Author the SculptSpec for the photographed object.',
-    `Intake analysis:\n\`\`\`json\n${JSON.stringify(body.intake, null, 2)}\n\`\`\``,
-  ]
-  if (critique) {
-    base.push(`A reviewer asked for the spec to be revised:\n${critique}\n\nAddress every point.`)
+    base.push('No dimensions were supplied: estimate them in metres and set dimensions.source to "estimated".')
   }
 
   const tally = new Tally()
@@ -202,20 +161,21 @@ export async function specCore(
   for (let attempt = 0; attempt < 2; attempt++) {
     const text = attempt === 0
       ? base.join('\n\n')
-      : `${base.join('\n\n')}\n\nThe previous spec failed validation:\n${errors.map(e => `- ${e}`).join('\n')}\n\nReturn a corrected spec.`
+      : `${base.join('\n\n')}\n\nThe previous plan failed validation:\n${errors.map(e => `- ${e}`).join('\n')}\n\nReturn a corrected plan.`
 
     const raw = tally.add(await callTool<unknown>({
-      system: PROMPTS.spec,
+      system: PROMPTS.plan,
       user: [image.part, { type: 'text', text }],
       tool: {
-        name: 'spec',
-        description: 'Author the buildable SculptSpec for the photographed object.',
+        name: 'plan',
+        description: 'Report the reading of the photographed object and the buildable plan for it.',
         schema: toolSchema(specSchema),
         // The spec grammar is too large for strict mode; zod plus one retry covers it.
         strict: false,
       },
       model: cfg.modelAuthor,
-      maxTokens: 16_000,
+      maxTokens: PLAN_MAX_TOKENS,
+      effort: 'medium',
     }))
 
     const result = validateSpec(raw)
@@ -223,47 +183,58 @@ export async function specCore(
     errors = result.errors
   }
 
-  return tally.fail(`spec failed validation twice: ${errors.join('; ')}`)
+  return tally.fail(`plan failed validation twice: ${errors.join('; ')}`)
 }
 
 // ---------------------------------------------------------------------------
 // build
 // ---------------------------------------------------------------------------
 
+function parseDefects(value: unknown): Defect[] {
+  if (!Array.isArray(value)) return []
+  const out: Defect[] = []
+  for (const entry of value.slice(0, MAX_DEFECTS)) {
+    if (!isRecord(entry)) continue
+    const s = (v: unknown) => (typeof v === 'string' ? v.slice(0, 600) : '')
+    out.push({ component: s(entry.component), what: s(entry.what), measured: s(entry.measured), fix: s(entry.fix) })
+  }
+  return out
+}
+
+/**
+ * One route, two jobs: without `code` it writes the whole model from the plan
+ * and the photo; with `code` and `defects` it fixes exactly those defects in
+ * that file. The photo travels both times — the author is meant to look at it.
+ */
 export async function buildCore(
   body: unknown,
   callTool: CallTool,
   cfg: RouteCfg = DEFAULT_ROUTE_CFG,
 ): Promise<ApiResult<BuildOutput>> {
   if (!isRecord(body)) return fail('request body must be an object')
-  if (!isPass(body.pass)) return fail(`unknown pass: ${String(body.pass)}`)
   const spec = validateSpec(body.spec)
   if (!spec.ok) return fail(`spec failed validation: ${spec.errors.join('; ')}`)
+  const image = parseImage(body.image, 'image')
+  if (!image.ok) return fail(image.error)
 
-  const pass = body.pass
   const previous = typeof body.code === 'string' ? body.code : ''
-  const defects = Array.isArray(body.defects) ? body.defects : []
-  const notes = Array.isArray(body.notes) ? body.notes.filter(n => typeof n === 'string') : []
+  const defects = parseDefects(body.defects)
+  const measured = parsePartBounds(body.partBounds)
 
   const base = [
-    `Write the factory for the "${pass}" pass.`,
-    `Spec:\n\`\`\`json\n${JSON.stringify(spec.spec, null, 2)}\n\`\`\``,
+    previous ? 'Fix the model.' : 'Write the finished model.',
+    `Plan:\n\`\`\`json\n${JSON.stringify(spec.spec, null, 2)}\n\`\`\``,
   ]
   if (previous) {
     base.push(`The current file, which you are revising:\n\`\`\`js\n${previous}\n\`\`\``)
-  }
-  if (defects.length > 0) {
-    base.push(`Defects the reviewer measured — fix exactly these and nothing else:\n\`\`\`json\n${JSON.stringify(defects, null, 2)}\n\`\`\``)
-  }
-  const measured = parsePartBounds(body.partBounds)
-  if (previous && measured.length > 0) {
-    base.push(`${partBoundsTable(measured)}\n\nUse this table to locate each defect exactly: a part whose box does not touch its parent's box is floating, a part whose box crosses a face it should sit under is poking through, a part that is missing from the table was never added to the root. Fix the numbers, not the guess.`)
-  }
-  if (notes.length > 0) {
-    base.push(`Notes carried from the previous pass:\n${notes.map(n => `- ${n}`).join('\n')}`)
+    if (defects.length > 0) {
+      base.push(`Defects the reviewer measured — fix exactly these and nothing else:\n\`\`\`json\n${JSON.stringify(defects, null, 2)}\n\`\`\``)
+    }
+    if (measured.length > 0) {
+      base.push(`${partBoundsTable(measured)}\n\nUse this table to locate each defect exactly: a part whose box does not touch its parent's box is floating, a part whose box crosses a face it should sit under is poking through, a part that is missing from the table was never added to the root. Fix the numbers, not the guess.`)
+    }
   }
 
-  const system = `${PROMPTS.build}\n\n${PROMPTS.buildPass[pass]}`
   const tally = new Tally()
   let errors: string[] = []
 
@@ -273,15 +244,18 @@ export async function buildCore(
       : `${base.join('\n\n')}\n\nThe code you returned failed validation:\n${errors.map(e => `- ${e}`).join('\n')}\n\nReturn the whole corrected file.`
 
     const raw = tally.add(await callTool<unknown>({
-      system,
-      user: [{ type: 'text', text }],
+      system: PROMPTS.build,
+      user: [image.part, { type: 'text', text }],
       tool: {
         name: 'build',
-        description: 'Return the complete createModel factory file for this pass.',
+        description: 'Return the complete createModel factory file.',
         schema: toolSchema(buildSchema),
       },
       model: cfg.modelAuthor,
-      maxTokens: 64_000,
+      maxTokens: BUILD_MAX_TOKENS,
+      // The file is a few hundred lines against a small kit: medium effort
+      // writes it as well as high and spends a third of the thinking tokens.
+      effort: 'medium',
     }))
 
     const parsed = buildSchema.safeParse(raw)
@@ -301,81 +275,53 @@ export async function buildCore(
 // review
 // ---------------------------------------------------------------------------
 
+/**
+ * The sheet already carries the photograph on its right-hand panel, so it is
+ * the only image sent: a second copy of the photo would double the image
+ * tokens for nothing the reviewer cannot already see.
+ */
 export async function reviewCore(
   body: unknown,
   callTool: CallTool,
   cfg: RouteCfg = DEFAULT_ROUTE_CFG,
 ): Promise<ApiResult<Review>> {
   if (!isRecord(body)) return fail('request body must be an object')
-  if (!isPass(body.pass)) return fail(`unknown pass: ${String(body.pass)}`)
   const spec = validateSpec(body.spec)
   if (!spec.ok) return fail(`spec failed validation: ${spec.errors.join('; ')}`)
-
-  const photo = parseImage(body.image, 'image')
-  if (!photo.ok) return fail(photo.error)
   const sheet = parseImage(body.sheet, 'sheet')
   if (!sheet.ok) return fail(sheet.error)
 
-  const fixesLeft = typeof body.fixesLeft === 'number' && Number.isFinite(body.fixesLeft)
-    ? Math.max(0, Math.floor(body.fixesLeft))
-    : 0
-
   const measured = parsePartBounds(body.partBounds)
   const text = [
-    `Review the "${body.pass}" pass.`,
-    `Fixes left in the budget: ${fixesLeft}.`,
-    `Spec:\n\`\`\`json\n${JSON.stringify(spec.spec, null, 2)}\n\`\`\``,
+    'Review the finished model.',
+    `Plan:\n\`\`\`json\n${JSON.stringify(spec.spec, null, 2)}\n\`\`\``,
     ...(measured.length > 0
-      ? [`${partBoundsTable(measured)}\n\nThe table is ground truth for structure: a part listed here exists even when the render hides it, a part absent from it was never built, two parts whose boxes overlap or touch are attached, and a gap between a part and the one it should rest on is a floating part. Quote the numbers in \`measured\` when you report a structural defect.`]
+      ? [`${partBoundsTable(measured)}\n\nThe table is ground truth for structure. Quote the numbers in \`measured\` when you report a structural defect.`]
       : []),
   ].join('\n\n')
 
   const tally = new Tally()
   const raw = tally.add(await callTool<unknown>({
     system: PROMPTS.review,
-    // Each image is introduced by its own label, so "image 1" and "image 2" in the
-    // system prompt refer to something the model can actually see named.
     user: [
-      { type: 'text', text: 'Image 1 — the reference photograph:' },
-      photo.part,
-      { type: 'text', text: 'Image 2 — the comparison sheet (left: render from the estimated reference camera; right: the photo; below: front/side/top renders):' },
+      { type: 'text', text: 'The comparison sheet (left: render from the estimated reference camera; right: the photograph; below: front/side/top renders):' },
       sheet.part,
       { type: 'text', text },
     ],
     tool: {
       name: 'review',
-      description: 'Score the render against the reference and choose the next action.',
+      description: 'Score the render against the photograph and list the defects one round of fixes should close.',
       schema: toolSchema(reviewSchema),
     },
     model: cfg.modelReview,
-    maxTokens: 16_000,
+    maxTokens: REVIEW_MAX_TOKENS,
+    effort: 'low',
   }))
 
   const parsed = reviewSchema.safeParse(raw)
   if (!parsed.success) {
     return tally.fail(`review failed validation: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
   }
-
-  const review = { ...parsed.data }
-
-  // `refine-code` with nothing to fix is an empty work order; treat it as a pass.
-  if (review.action === 'refine-code' && review.defects.length === 0) {
-    review.action = 'continue'
-  }
-  // A reviewer that waves a weak render through is the most expensive failure in
-  // the loop, so a low-fidelity `continue` is spent on another fix instead.
-  // With no fixes left the pass moves on anyway: an imperfect structure with
-  // real materials beats a stopped job with placeholder colours.
-  if (review.action === 'continue' && review.fidelity < 0.7 && fixesLeft > 0) {
-    review.action = 'refine-code'
-  }
-  // `stop` ends the whole job. Before the surface pass that leaves an
-  // unfinished, unmaterialised model, so it is honoured only when the object
-  // is hopeless; otherwise the remaining passes run and the job ends
-  // 'approximate'.
-  if (review.action === 'stop' && body.pass !== 'surface' && review.fidelity >= HOPELESS_FIDELITY) {
-    review.action = 'continue'
-  }
-
-  return tally.ok(review)
+  const review = parsed.data
+  return tally.ok({ ...review, defects: review.defects.slice(0, MAX_DEFECTS) })
 }

@@ -18,9 +18,9 @@ import type { DepthDevice } from '~/workers/depth.worker'
  * The mode sets what a fresh import opens as; every control stays available afterwards.
  */
 export type StudioMode = 'icon' | 'product'
-export const STUDIO_MODES: { id: StudioMode; label: string; hint: string; sample: string; icon: 'gem' | 'cuboid' }[] = [
-  { id: 'icon', label: 'Icon', hint: 'Logos, icons and type as crisp glass or metal, shot on a wall', sample: 'vitrum', icon: 'gem' },
-  { id: 'product', label: '3D product', hint: 'An object photo as a volume in its own colours, standing on a floor', sample: 'armchair', icon: 'cuboid' },
+export const STUDIO_MODES: { id: StudioMode; label: string; title: string; hint: string; sample: string; icon: 'gem' | 'cuboid' }[] = [
+  { id: 'icon', label: 'Icon', title: 'Icon studio', hint: 'Logos, icons and type as crisp glass or metal, shot on a wall', sample: 'vitrum', icon: 'gem' },
+  { id: 'product', label: 'Product', title: 'Product studio', hint: 'A product photo rebuilt as a parts model you can walk around', sample: 'armchair', icon: 'cuboid' },
 ]
 
 /**
@@ -158,15 +158,27 @@ export function useStudio(initialMode: StudioMode = 'icon') {
 
   /**
    * The size a sculpt run is told to build to. Only a size the user set counts: every import
-   * opens at the default width, and a guess passed as a measurement would mislead the intake.
+   * opens at the default width, and a guess passed as a measurement would mislead the planner.
    */
   function sculptDims(): Dims | null {
     if (glass.widthMm === DEFAULT_GLASS_PARAMS.widthMm) return null
     return { widthMm: glass.widthMm, heightMm: heightMm.value, depthMm: glass.depthMm }
   }
-  const sculpt = useSculpt({ image, dims: sculptDims, viewer, notify })
-  /** A finished parts model stands on the stage: the carve controls no longer describe it. */
-  const sculpted = computed(() => sculpt.job.value?.status === 'done')
+  const sculpt = useSculpt({
+    image,
+    dims: sculptDims,
+    viewer,
+    notify,
+    // A parts model is a thing to walk around: it lands on the turntable, and the view
+    // resets to the three-quarter angle the reference camera roughly shares.
+    onLanded: () => {
+      glass.autoRotate = true
+      setView('angle')
+      viewer.value?.frame()
+    },
+  })
+  /** A parts model (draft or finished) stands on the stage: the carve controls no longer describe it. */
+  const sculpted = computed(() => !!sculpt.job.value?.glb && sculpt.job.value.status !== 'cancelled')
 
   function thumbnail(img: HTMLImageElement, size = 160): string {
     const iw = img.naturalWidth || img.width

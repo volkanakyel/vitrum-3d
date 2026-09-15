@@ -35,10 +35,12 @@ export interface SculptDeps {
   dims: () => Dims | null
   viewer: Ref<SculptViewer | null>
   notify: (message: string) => void
+  /** A parts model just landed on the stage (the draft, then the fix). */
+  onLanded?: (job: SculptJob) => void
 }
 
-/** Statuses that mean the runner is working; `waiting-input` is the user's turn, not the runner's. */
-const RUNNING_STATUSES: JobStatus[] = ['intake', 'spec', 'building', 'rendering', 'reviewing', 'exporting']
+/** Statuses that mean the runner is working. */
+const RUNNING_STATUSES: JobStatus[] = ['planning', 'building', 'rendering', 'reviewing', 'fixing']
 
 export function useSculpt(deps: SculptDeps) {
   const job = shallowRef<SculptJob | null>(null)
@@ -107,6 +109,14 @@ export function useSculpt(deps: SculptDeps) {
       // studio has moved off that job (cleared, or another run reopened) those
       // updates are not ours to show.
       onChange: (j) => { if (j.id === job.value?.id) job.value = { ...j } },
+      // The draft goes up the moment it renders, long before the run is over.
+      onModel: (glb, j) => {
+        if (j.id !== job.value?.id) return
+        void showModel(glb).then(() => {
+          deps.onLanded?.(j)
+          deps.notify(j.draft ? 'Draft on the stage; polishing' : 'Parts model ready')
+        }).catch((e: Error) => deps.notify(`Could not open the parts model: ${e.message}`))
+      },
     })
   }
 
@@ -135,21 +145,15 @@ export function useSculpt(deps: SculptDeps) {
     }
     job.value = { ...result }
     await refreshJobs()
-    if (result.status === 'done' && result.glb) {
-      try {
-        await showModel(result.glb)
-        deps.notify('Parts model ready')
-      }
-      catch (e) {
-        deps.notify(`Could not open the parts model: ${(e as Error).message}`)
-      }
+    if (result.status === 'done' && !result.glb) {
+      deps.notify('The run finished without a model')
     }
     else if (result.status === 'failed') {
-      deps.notify(result.error ?? 'Sculpt failed')
+      deps.notify(result.glb ? `Kept the draft: ${result.error}` : (result.error ?? 'Sculpt failed'))
     }
   }
 
-  async function start(hint: string, dims: Dims | null = deps.dims(), opts: { quality?: SculptQuality } = {}) {
+  async function start(hint: string, dims: Dims | null = deps.dims(), opts: { quality?: SculptQuality, polish?: boolean } = {}) {
     if (!available.value || running.value) return
     const img = deps.image.value
     if (!img) {
@@ -159,7 +163,7 @@ export function useSculpt(deps: SculptDeps) {
     inFlight.value = true
     let fresh: SculptJob | null = null
     try {
-      fresh = createJob(toApiImage(img), hint.trim(), dims)
+      fresh = createJob(toApiImage(img), hint.trim(), dims, opts.polish ?? true)
       job.value = fresh
       runner = runnerFor(fresh, opts.quality)
       await finish(await runner.run())
@@ -174,7 +178,7 @@ export function useSculpt(deps: SculptDeps) {
       // goes. But once a pass has been paid for, throwing the job away throws
       // away work the user could resume from — that one is reported as a
       // failed run instead.
-      const started = !!mine && (mine.passes.length > 0 || !!mine.intake || !!mine.spec)
+      const started = !!mine && !!mine.spec
       if (mine && !started) {
         job.value = null
         deps.notify(`Could not start the run: ${message}`)
@@ -193,17 +197,7 @@ export function useSculpt(deps: SculptDeps) {
     runner?.cancel()
   }
 
-  function answer(text: string) {
-    const current = job.value
-    if (!current || current.status !== 'waiting-input') return
-    // A job reopened from the store has no runner of its own; one over the
-    // stored state resumes the pass it stopped in.
-    const active = runner ?? (runner = runnerFor(current))
-    active.answer(text)
-    void active.lastRun.then(finish)
-  }
-
-  /** A failed job resumes from its last completed pass; nothing already paid for is redone.
+  /** A failed job resumes from its last completed step; nothing already paid for is redone.
    * A job reopened from the store may still carry a running status from the
    * page that lost it; with no runner attached that status is stale and the
    * job resumes the same way. */
@@ -247,6 +241,7 @@ export function useSculpt(deps: SculptDeps) {
     if (stored.glb) {
       try {
         await showModel(stored.glb)
+        deps.onLanded?.(stored)
       }
       catch (e) {
         deps.notify(`Could not open the parts model: ${(e as Error).message}`)
@@ -263,7 +258,7 @@ export function useSculpt(deps: SculptDeps) {
     job.value = null
   }
 
-  const api = { job, jobs, available, running, start, cancel, answer, retry, reopen, clear, refreshJobs }
+  const api = { job, jobs, available, running, start, cancel, retry, reopen, clear, refreshJobs }
 
   onMounted(() => { void refreshJobs() })
   onScopeDispose(() => {

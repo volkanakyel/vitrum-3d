@@ -19,6 +19,13 @@ export interface ToolCall<T> {
   }
   model: string
   maxTokens: number
+  /**
+   * How hard the model thinks before it answers. Thinking is on by default on
+   * the current models and its tokens are billed as output, so this is the
+   * cost lever: `low` for a scored review, `medium` for a plan or a targeted
+   * fix, `high` (the API default) for the one call that writes the model.
+   */
+  effort?: 'low' | 'medium' | 'high'
   /** Present only to keep `T` load-bearing at call sites. */
   readonly _result?: T
 }
@@ -26,7 +33,7 @@ export interface ToolCall<T> {
 /** The slice of an API message this module reads — the seam the tests stub. */
 export interface MessageLike {
   content: { type: string, input?: unknown }[]
-  usage: { input_tokens?: number, output_tokens?: number }
+  usage: { input_tokens?: number, output_tokens?: number, cache_read_input_tokens?: number, cache_creation_input_tokens?: number }
   stop_reason?: string | null
 }
 
@@ -141,8 +148,13 @@ export function makeCallTool(cfg: CallToolConfig): CallTool {
       const message = await stream({
         model: call.model,
         max_tokens: call.maxTokens,
-        system,
+        // The system prompt is the same for every call of a kind (the build
+        // one carries the kit doc and the exemplar, ~20k tokens), so it is
+        // cached: the fix call and every run in the next five minutes read it
+        // at a tenth of the price.
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content }],
+        ...(call.effort ? { output_config: { effort: call.effort } } : {}),
         tools: [{
           name: call.tool.name,
           description: call.tool.description,
@@ -161,8 +173,13 @@ export function makeCallTool(cfg: CallToolConfig): CallTool {
       const block = message.content.find(b => b.type === 'tool_use')
       if (!block) throw new NoToolCallError()
 
+      // Cached reads are billed at a tenth and cache writes at 1.25×; both
+      // are folded into the input figure at their real weight so the tally
+      // the user sees is what the run actually cost.
+      const cacheRead = message.usage.cache_read_input_tokens ?? 0
+      const cacheWrite = message.usage.cache_creation_input_tokens ?? 0
       const usage: Usage = {
-        input: message.usage.input_tokens ?? 0,
+        input: Math.round((message.usage.input_tokens ?? 0) + cacheRead * 0.1 + cacheWrite * 1.25),
         output: message.usage.output_tokens ?? 0,
       }
       return {

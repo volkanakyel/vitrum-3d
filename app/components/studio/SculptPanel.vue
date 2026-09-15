@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import type { SculptApi } from '~/composables/useSculpt'
 import type { JobStatus } from '~/utils/sculpt/job'
-import { PASSES, type PassId } from '~/utils/sculpt/types'
 
 const props = defineProps<{ sculpt: SculptApi }>()
 
 const job = computed(() => props.sculpt.job.value)
 const status = computed<JobStatus | 'none'>(() => job.value?.status ?? 'none')
+const running = computed(() => props.sculpt.running.value)
 
 const hint = ref('')
-const reply = ref('')
+const polish = ref(true)
 /** The sheet opened full size, if any. */
 const zoomed = ref('')
 /** How many previous runs the list shows: each carries a full-size data-URL thumbnail. */
@@ -29,28 +30,34 @@ watch(zoomed, (open, was) => {
 })
 onScopeDispose(() => window.removeEventListener('keydown', onKey))
 
-/** The run's stages in order, with the two that come before the build passes. */
-const STAGES: { id: 'intake' | 'spec' | PassId, label: string }[] = [
-  { id: 'intake', label: 'Reading the photo' },
-  { id: 'spec', label: 'Planning the parts' },
-  ...PASSES.map(id => ({ id, label: { blockout: 'Blockout', structural: 'Structure', form: 'Form', material: 'Materials', surface: 'Surface' }[id] })),
+/**
+ * The run's four steps. Rendering belongs to the build (the model lands on the
+ * stage at the end of it) and to the fix; neither gets its own row.
+ */
+const STEPS: { id: 'plan' | 'build' | 'review' | 'fix', label: string }[] = [
+  { id: 'plan', label: 'Reading the photo' },
+  { id: 'build', label: 'Building the model' },
+  { id: 'review', label: 'Comparing to the photo' },
+  { id: 'fix', label: 'Fixing what differs' },
 ]
-
-/** Which stage the runner is in now; everything before it is done. */
-const activeStage = computed(() => {
+const stepIndex: Partial<Record<JobStatus, number>> = { planning: 0, building: 1, rendering: 1, reviewing: 2, fixing: 3 }
+const activeStep = computed(() => {
   const j = job.value
   if (!j) return -1
-  if (j.status === 'intake') return 0
-  if (j.status === 'spec') return 1
-  const pass = j.currentPass
-  return pass ? 2 + PASSES.indexOf(pass) : j.intake ? 1 : 0
+  const i = stepIndex[j.status]
+  if (i !== undefined) return j.status === 'rendering' && j.fixed ? 3 : i
+  return -1
 })
-// Only ever read while the run is in flight, so there is no finished case here.
-const stageState = (index: number) =>
-  index < activeStage.value ? 'done' : index === activeStage.value ? 'active' : 'todo'
+const steps = computed(() => {
+  const j = job.value
+  const active = activeStep.value
+  return STEPS.filter(s => j?.polish || (s.id !== 'review' && s.id !== 'fix')).map((s, i) => ({
+    ...s,
+    state: i < active ? 'done' : i === active ? 'active' : 'todo',
+  }))
+})
 
-const running = computed(() => props.sculpt.running.value)
-const sheets = computed(() => (job.value?.passes.flatMap(p => p.sheets) ?? []).slice(-3).reverse())
+const sheet = computed(() => job.value?.sheets.at(-1) ?? '')
 const tokens = computed(() => {
   const u = job.value?.usage
   const total = u ? u.input + u.output : 0
@@ -58,44 +65,40 @@ const tokens = computed(() => {
 })
 const cost = computed(() => `$${(job.value?.costUsd ?? 0).toFixed(2)}`)
 
-/**
- * How long the run took. A job only carries its start, so the finish is taken
- * when it lands here; a run reopened from the history has none and shows none.
- */
-const finishedAt = ref(0)
-watch(status, (now, before) => {
-  if (now === 'done' && before && before !== 'done') finishedAt.value = Date.now()
-  if (now === 'none') { finishedAt.value = 0; reply.value = '' }
-})
+/** Seconds since the run started, ticking while it runs; frozen when it settles. */
+const now = ref(Date.now())
+let ticker: ReturnType<typeof setInterval> | null = null
+watch(running, (on) => {
+  if (on && !ticker) ticker = setInterval(() => { now.value = Date.now() }, 1000)
+  else if (!on && ticker) { clearInterval(ticker); ticker = null; now.value = Date.now() }
+}, { immediate: true })
+onScopeDispose(() => { if (ticker) clearInterval(ticker) })
 const elapsed = computed(() => {
   const j = job.value
-  if (!j || !finishedAt.value) return ''
-  const s = Math.max(0, Math.round((finishedAt.value - j.createdAt) / 1000))
-  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`
+  if (!j) return ''
+  const s = Math.max(0, Math.round((now.value - j.createdAt) / 1000))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 })
 
 const statusLabel: Record<JobStatus, string> = {
   'idle': 'Starting',
-  'intake': 'Reading the photo',
-  'spec': 'Planning the parts',
-  'building': 'Writing the code',
+  'planning': 'Reading the photo',
+  'building': 'Writing the model',
   'rendering': 'Rendering',
-  'reviewing': 'Reviewing',
-  'waiting-input': 'Waiting for you',
-  'exporting': 'Exporting',
+  'reviewing': 'Comparing',
+  'fixing': 'Fixing',
   'done': 'Done',
   'failed': 'Failed',
   'cancelled': 'Cancelled',
 }
 
+const fidelity = computed(() => {
+  const f = job.value?.review?.fidelity
+  return f === undefined ? '' : `${Math.round(f * 100)}% match`
+})
+
 function start() {
-  void props.sculpt.start(hint.value)
-}
-function send() {
-  const text = reply.value.trim()
-  if (!text) return
-  reply.value = ''
-  props.sculpt.answer(text)
+  void props.sculpt.start(hint.value, undefined, { polish: polish.value })
 }
 function openJob(id: string) {
   void props.sculpt.reopen(id)
@@ -107,7 +110,7 @@ function when(ms: number) {
 
 <template>
   <div class="flex flex-col gap-3">
-    <!-- Idle, cancelled or reopened-without-a-model: the run can be started. -->
+    <!-- Idle or cancelled: the run can be started. -->
     <template v-if="!job || status === 'cancelled'">
       <Button
         class="h-9 w-full rounded-lg text-[12.5px]"
@@ -118,7 +121,7 @@ function when(ms: number) {
           name="sparkle"
           :size="14"
         />
-        Rebuild as parts
+        Build the parts model
       </Button>
       <p
         v-if="!sculpt.available.value"
@@ -129,12 +132,20 @@ function when(ms: number) {
       <template v-else>
         <Input
           v-model="hint"
-          placeholder="Anything worth knowing (optional)"
+          placeholder="What it is, if the photo is unclear (optional)"
           class="h-8 rounded-lg text-[12px]"
         />
+        <label class="flex items-center justify-between gap-3 text-[12px] text-foreground">
+          <span class="flex flex-col">
+            <span>Polish</span>
+            <span class="text-[11px] text-ink-3">One compare-and-fix round after the draft</span>
+          </span>
+          <Switch v-model="polish" />
+        </label>
         <p class="text-[11.5px] leading-relaxed text-ink-3">
-          Claude reads the photo, plans the parts and writes the model. Uses W/H/D from the size
-          section when set.
+          Claude reads the photo, plans the parts and writes the model in one go: a draft stands
+          on the stage in about a minute. {{ polish ? 'Polish adds one review and one fix.' : '' }}
+          Uses W/H/D from the size section when set. Four calls at most, about $0.30–0.90.
         </p>
       </template>
       <p class="text-[11.5px] leading-relaxed text-ink-3">
@@ -168,85 +179,71 @@ function when(ms: number) {
       </div>
     </template>
 
-    <!-- A run in flight: the stages, the latest sheets, what it has cost so far. -->
-    <template v-else-if="running || status === 'idle' || status === 'waiting-input'">
+    <!-- A run in flight: the steps, the latest sheet, what it has cost so far. -->
+    <template v-else-if="running || status === 'idle'">
       <ol class="flex flex-col gap-1.5">
         <li
-          v-for="(stage, i) in STAGES"
-          :key="stage.id"
+          v-for="step in steps"
+          :key="step.id"
           class="flex items-center gap-2 text-[12px]"
-          :class="stageState(i) === 'todo' ? 'text-ink-3' : 'text-foreground'"
+          :class="step.state === 'todo' ? 'text-ink-3' : 'text-foreground'"
         >
           <span
             class="size-1.5 shrink-0 rounded-full"
             :class="{
-              'bg-ice shadow-[0_0_0_3px_var(--ice-glow)] animate-pulse': stageState(i) === 'active',
-              'bg-ice': stageState(i) === 'done',
-              'bg-ink-3/40': stageState(i) === 'todo',
+              'bg-ice shadow-[0_0_0_3px_var(--ice-glow)] animate-pulse': step.state === 'active',
+              'bg-ice': step.state === 'done',
+              'bg-ink-3/40': step.state === 'todo',
             }"
           />
-          {{ stage.label }}
+          {{ step.label }}
         </li>
       </ol>
 
-      <div
-        v-if="sheets.length"
-        class="flex gap-1.5"
+      <p
+        v-if="job?.glb"
+        class="text-[11.5px] leading-relaxed text-ink-3"
       >
-        <button
-          v-for="(sheet, i) in sheets"
-          :key="i"
-          type="button"
-          class="min-w-0 flex-1 overflow-hidden rounded-md bg-well"
-          aria-label="Open the comparison sheet"
-          @click="zoomed = sheet"
-        >
-          <img
-            :src="sheet"
-            alt=""
-            class="h-14 w-full object-cover"
-          >
-        </button>
-      </div>
-
-      <p class="text-[11.5px] text-ink-3 tabular-nums">
-        {{ statusLabel[status as JobStatus] }} · {{ tokens }} tokens · {{ cost }}
+        The draft is on the stage. Orbit it while the polish runs.
       </p>
 
-      <template v-if="status === 'waiting-input'">
-        <p class="text-[12px] leading-relaxed text-foreground">
-          {{ job?.question }}
-        </p>
-        <div class="flex gap-1.5">
-          <Input
-            v-model="reply"
-            placeholder="Your answer"
-            class="h-8 flex-1 rounded-lg text-[12px]"
-            @keydown.enter.prevent="send"
-          />
-          <Button
-            class="h-8 rounded-lg px-3 text-[12px]"
-            :disabled="!reply.trim()"
-            @click="send"
-          >
-            Send
-          </Button>
-        </div>
-      </template>
+      <button
+        v-if="sheet"
+        type="button"
+        class="overflow-hidden rounded-md bg-well"
+        aria-label="Open the comparison sheet"
+        @click="zoomed = sheet"
+      >
+        <img
+          :src="sheet"
+          alt=""
+          class="h-20 w-full object-cover"
+        >
+      </button>
+
+      <p class="text-[11.5px] text-ink-3 tabular-nums">
+        {{ statusLabel[status as JobStatus] }} · {{ elapsed }} · {{ tokens }} tokens · {{ cost }}
+      </p>
+
       <Button
-        v-else
         variant="ghost"
         class="h-8 w-full rounded-lg text-[12px]"
         @click="sculpt.cancel()"
       >
-        Cancel
+        {{ job?.glb ? 'Keep the draft' : 'Cancel' }}
       </Button>
     </template>
 
     <!-- Finished: the parts model is on the stage. -->
     <template v-else-if="status === 'done'">
       <p class="text-[12px] text-foreground tabular-nums">
-        Parts model · {{ job?.quality ?? 'approximate' }} · {{ cost }}<template v-if="elapsed"> · {{ elapsed }}</template>
+        Parts model<template v-if="fidelity"> · {{ fidelity }}</template> · {{ cost }} · {{ elapsed }}
+      </p>
+      <p
+        v-if="job?.review?.summary"
+        class="text-[11.5px] leading-relaxed text-ink-3"
+      >
+        {{ job.review.summary }}
       </p>
       <p
         v-if="!job?.glb"
@@ -254,16 +251,29 @@ function when(ms: number) {
       >
         The run finished without a model that could be exported.
       </p>
+      <button
+        v-if="sheet"
+        type="button"
+        class="overflow-hidden rounded-md bg-well"
+        aria-label="Open the comparison sheet"
+        @click="zoomed = sheet"
+      >
+        <img
+          :src="sheet"
+          alt=""
+          class="h-20 w-full object-cover"
+        >
+      </button>
       <Button
         variant="ghost"
         class="h-8 w-full rounded-lg text-[12px]"
         @click="sculpt.clear()"
       >
-        Back to carve
+        Back to the carve
       </Button>
     </template>
 
-    <!-- Failed: the studio kept the carve; a retry resumes from the last completed pass. -->
+    <!-- Failed: whatever landed stays on the stage; a retry resumes from the last paid step. -->
     <template v-else>
       <p class="text-[11.5px] leading-relaxed text-destructive">
         {{ job?.error || 'Sculpt failed' }}
@@ -281,7 +291,7 @@ function when(ms: number) {
           class="h-8 rounded-lg px-3 text-[12px]"
           @click="sculpt.clear()"
         >
-          Back to carve
+          Back to the carve
         </Button>
       </div>
     </template>
