@@ -481,7 +481,7 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
     }
     jobId = snapshot.id
 
-    const line = `${snapshot.status}${snapshot.currentPass ? ` · ${snapshot.currentPass}` : ''} · ${snapshot.fixesTotal} fixes · $${snapshot.costUsd.toFixed(2)}`
+    const line = `${Math.round((Date.now() - started) / 1000)}s · ${snapshot.status}${snapshot.currentPass ? ` · ${snapshot.currentPass}` : ''} · ${snapshot.fixesTotal} fixes · $${snapshot.costUsd.toFixed(2)}`
     if (line !== lastLine) {
       console.log(`[eval]   ${line}`)
       lastLine = line
