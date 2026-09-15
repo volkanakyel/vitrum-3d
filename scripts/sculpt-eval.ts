@@ -56,6 +56,8 @@ const IMPORT_TIMEOUT_MS = 180_000
 const HOOK_TIMEOUT_MS = 60_000
 /** A cancel the runner ignores must not turn into an endless loop of cancels. */
 const MAX_CANCELS = 3
+/** Page reloads survived per run before giving up. */
+const MAX_RECOVERIES = 2
 
 // ---------------------------------------------------------------- arguments
 
@@ -287,6 +289,8 @@ interface EvalWindow {
       start: (hint: string, dims: unknown, opts?: { quality?: Quality }) => Promise<void>
       cancel: () => void
       clear: () => void
+      reopen: (id: string) => Promise<void>
+      retry: () => Promise<void>
     }
     studio?: {
       state: () => { hasTrace: boolean, hasHull: boolean, busy: boolean, importing: boolean, error: string, size: { widthMm: number, heightMm: number, depthMm: number } }
@@ -416,6 +420,25 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
   let cancels = 0
   let stoppedAfter: PassId | null = null
   let lastLine = ''
+  let jobId: string | null = null
+  let recoveries = 0
+
+  // A dev-server full reload (Nuxt regenerating its virtual modules, Vite
+  // re-optimising a dependency) wipes the page and the runner with it. The
+  // job itself survives in IndexedDB, so the harness reopens it and resumes
+  // from the last pass that was paid for.
+  const recover = async () => {
+    if (!jobId || recoveries >= MAX_RECOVERIES) return false
+    recoveries++
+    console.log(`[eval]   the page lost the job — reopening and resuming (attempt ${recoveries})`)
+    await page.waitForFunction(() => !!(window as unknown as EvalWindow).__vitrum?.sculpt, null, { timeout: HOOK_TIMEOUT_MS })
+    await page.evaluate(async (id) => {
+      const sculpt = (window as unknown as EvalWindow).__vitrum!.sculpt
+      await sculpt.reopen(id)
+      void sculpt.retry()
+    }, jobId)
+    return true
+  }
 
   const cancel = async (why: string) => {
     if (cancels >= MAX_CANCELS) return false
@@ -446,9 +469,14 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
     })
 
     if (!snapshot) {
+      if (jobId) {
+        if (await recover()) continue
+        throw new Error('the page lost the job and it could not be resumed')
+      }
       if (Date.now() > started + 30_000) throw new Error('the run never produced a job')
       continue
     }
+    jobId = snapshot.id
 
     const line = `${snapshot.status}${snapshot.currentPass ? ` · ${snapshot.currentPass}` : ''} · ${snapshot.fixesTotal} fixes · $${snapshot.costUsd.toFixed(2)}`
     if (line !== lastLine) {

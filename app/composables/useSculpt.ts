@@ -203,10 +203,13 @@ export function useSculpt(deps: SculptDeps) {
     void active.lastRun.then(finish)
   }
 
-  /** A failed job resumes from its last completed pass; nothing already paid for is redone. */
+  /** A failed job resumes from its last completed pass; nothing already paid for is redone.
+   * A job reopened from the store may still carry a running status from the
+   * page that lost it; with no runner attached that status is stale and the
+   * job resumes the same way. */
   async function retry() {
     const current = job.value
-    if (!current || !available.value || running.value) return
+    if (!current || !available.value || inFlight.value || (runner && running.value)) return
     inFlight.value = true
     try {
       const resumed: SculptJob = { ...current, error: null }
