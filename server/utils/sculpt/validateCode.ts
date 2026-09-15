@@ -2,6 +2,21 @@ import { parse } from 'acorn'
 import { full } from 'acorn-walk'
 import type { Node } from 'acorn'
 
+/**
+ * What this is, and what it is not.
+ *
+ * This is a QUALITY GATE. It keeps the model honest: code that reaches for the
+ * DOM, the network or a way back to a compiler is code that has misunderstood
+ * the job, and catching it here turns a confusing runtime failure into one
+ * clear retry with the violation quoted back.
+ *
+ * It is NOT the security boundary. The security boundary is the sandboxed
+ * iframe: `/sandbox` is loaded as `<iframe sandbox="allow-scripts">`, so
+ * generated code runs on an opaque origin with no cookies, no app API, no
+ * parent DOM and (in production) `connect-src 'none'`. Treat any hole in the
+ * list below as a bug worth fixing, never as an exploit — nothing downstream
+ * of here is trusting it.
+ */
 export const FORBIDDEN = [
   'fetch',
   'XMLHttpRequest',
@@ -23,7 +38,19 @@ export const FORBIDDEN = [
   'indexedDB',
   'postMessage',
   'Worker',
+  // Routes back to a compiler or to another object's internals:
+  // `({}).constructor.constructor('…')` is `Function`, and the three
+  // prototype names are how generated code would reach a shared object every
+  // later part of the page also sees.
+  'constructor',
+  'Reflect',
+  'Proxy',
+  '__proto__',
+  'prototype',
 ] as const
+
+/** Object-literal keys that set or read a prototype, which the walker does not visit as identifiers. */
+const FORBIDDEN_KEYS = ['__proto__', 'constructor', 'prototype'] as const
 
 export const MAX_CODE_BYTES = 40_000
 
@@ -56,6 +83,7 @@ export function validateCode(code: string): { ok: true } | { ok: false; errors: 
   }
 
   const forbiddenHits = new Set<string>()
+  let computedKeys = 0
 
   let createModelCount = 0
   for (const stmt of (ast as unknown as { body: Node[] }).body) {
@@ -83,10 +111,30 @@ export function validateCode(code: string): { ok: true } | { ok: false; errors: 
         const name = property.name as string
         if ((FORBIDDEN as readonly string[]).includes(name)) forbiddenHits.add(name)
       }
-      if (computed && property.type === 'Literal' && typeof property.value === 'string') {
-        const value = property.value
-        if ((FORBIDDEN as readonly string[]).includes(value)) forbiddenHits.add(value)
+      if (computed) {
+        // A computed key is only allowed when it is a plain string or number
+        // literal, because that is the only form this validator can read. Any
+        // expression — `a[b]`, `a['con' + 'structor']`, a template literal —
+        // is a key whose value is decided at runtime, which would make every
+        // name check above decorative. Index with `for (const x of xs)` or an
+        // array method instead of `xs[i]`.
+        const isLiteralKey = property.type === 'Literal'
+          && (typeof property.value === 'string' || typeof property.value === 'number')
+        if (!isLiteralKey) {
+          computedKeys += 1
+        }
+        else if (typeof property.value === 'string' && (FORBIDDEN as readonly string[]).includes(property.value)) {
+          forbiddenHits.add(property.value)
+        }
       }
+    }
+
+    if (n.type === 'Property' && n.computed !== true) {
+      const key = n.key as Record<string, unknown> | undefined
+      const name = key?.type === 'Identifier'
+        ? key.name as string
+        : key?.type === 'Literal' && typeof key.value === 'string' ? key.value : ''
+      if ((FORBIDDEN_KEYS as readonly string[]).includes(name)) forbiddenHits.add(name)
     }
 
     if (n.type === 'ImportDeclaration' || n.type === 'ImportExpression') {
@@ -115,6 +163,13 @@ export function validateCode(code: string): { ok: true } | { ok: false; errors: 
 
   for (const name of forbiddenHits) {
     errors.push(`forbidden identifier used: ${name}`)
+  }
+
+  if (computedKeys > 0) {
+    errors.push(
+      `computed member access must use a string or number literal key (${computedKeys} do not): `
+      + 'write `a.b` or `a[0]`, and iterate with `for (const x of xs)` or an array method instead of `xs[i]`',
+    )
   }
 
   if (errors.length > 0) return { ok: false, errors }

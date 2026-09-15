@@ -1,4 +1,12 @@
 import tailwindcss from '@tailwindcss/vite'
+import { sandboxCsp, studioCsp } from './server/utils/sculpt/csp'
+
+/**
+ * Decided once, at config time, the same way `vite.server.cors` below is: the
+ * dev-only relaxations (Vite's eval-based HMR client and its WebSocket) must
+ * never be baked into a production build.
+ */
+const IS_DEV = process.env.NODE_ENV !== 'production'
 
 /** Installed inline, ahead of the app bundle; a no-op wherever storage works. */
 const STORAGE_SHIM = `(function(){try{window.localStorage;return}catch(e){}
@@ -18,26 +26,22 @@ export default defineNuxtConfig({
     // The landing page is static HTML with a WebGL layer on top; the studio is a WebGL editor
     // with nothing worth rendering on the server.
     '/': { prerender: true },
-    '/studio/**': { ssr: false },
+    // The studio parses a GLB the sandbox exported — untrusted geometry run
+    // through three's loader on our own origin — and runs the depth model.
+    // See `studioCsp` for what every source in the policy is for.
+    '/studio/**': {
+      ssr: false,
+      headers: { 'content-security-policy': studioCsp(IS_DEV) },
+    },
     // The sandbox runs generated code in an opaque-origin iframe; there is
     // nothing to render on the server, and its dev-only host page is the same.
     // The CSP travels as a response header, not a meta tag: `frame-ancestors`
     // is header-only, and it is what stops another site embedding this page
     // WITHOUT the sandbox attribute — which would run generated code on our
-    // own origin. `ws:` only matters to the dev client and is inert in a build.
+    // own origin.
     '/sandbox': {
       ssr: false,
-      headers: {
-        'content-security-policy': [
-          'default-src \'none\'',
-          // 'unsafe-eval' is the point of this page: generated code runs in new Function().
-          'script-src \'self\' \'unsafe-eval\' \'unsafe-inline\'',
-          'style-src \'self\' \'unsafe-inline\'',
-          'img-src data: blob:',
-          'connect-src \'self\' ws: wss:',
-          'frame-ancestors \'self\'',
-        ].join('; '),
-      },
+      headers: { 'content-security-policy': sandboxCsp(IS_DEV) },
     },
     '/sandbox-host': { ssr: false },
   },
@@ -92,6 +96,14 @@ export default defineNuxtConfig({
   },
   // A sculpt run is a chain of long tool calls; the platform default (10 s / 60 s)
   // cuts the author model off mid-file.
+  //
+  // This is deliberately global. Only `/api/sculpt/**` needs it, but Nitro
+  // 2.13's `NitroRouteConfig` has no `vercel` key, so there is no supported
+  // per-route way to say it from here — the alternative would be hand-writing
+  // `functions` into `.vercel/output/config.json` after the build. Two things
+  // follow: a 300 s duration requires a Vercel Pro plan (Hobby caps at 60 s),
+  // and every other function in this app inherits the same ceiling even though
+  // none of them runs for more than a moment.
   nitro: {
     vercel: { functions: { maxDuration: 300 } },
     rollupConfig: {
@@ -117,6 +129,13 @@ export default defineNuxtConfig({
     anthropicKey: '',
     /** Only needed when the key is not itself scoped to a workspace (NUXT_ANTHROPIC_WORKSPACE_ID). */
     anthropicWorkspaceId: '',
+    /**
+     * Ceiling on what the sculpt routes may spend in one UTC day, in USD
+     * (NUXT_SCULPT_DAILY_BUDGET_USD). Counted in this process's memory — see
+     * `server/utils/sculpt/guard.ts` for what that does and does not buy. 0
+     * disables the ceiling.
+     */
+    sculptDailyBudgetUsd: 25,
     public: {
       /** Depth model id on the Hugging Face hub, or a path under `/models/` when self-hosted. */
       depthModel: 'onnx-community/depth-anything-v2-small',
@@ -129,8 +148,15 @@ export default defineNuxtConfig({
         opus: { input: 5, output: 25 },
         sonnet: { input: 2, output: 10 },
       },
-      /** The studio hides the sculpt panel when the server has no key. */
-      sculptEnabled: !!process.env.NUXT_ANTHROPIC_KEY,
+      /**
+       * The studio hides the sculpt panel when the server has no key. This is
+       * a runtime flag (NUXT_PUBLIC_SCULPT_ENABLED), false by default: the key
+       * is server-only and a build machine's environment says nothing about
+       * the deploy's. Leaving it false is the ordinary case — the client also
+       * asks `/api/sculpt/status`, which reports the key the server actually
+       * has, and either source being true enables the panel.
+       */
+      sculptEnabled: false,
     },
   },
 })

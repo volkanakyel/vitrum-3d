@@ -56,6 +56,11 @@ const MAX_RENDER_SIZE = 4096
  * The host's nonce, learned from its first request and kept in module scope:
  * generated code runs inside `new Function` and has no way to reach this
  * binding, so it cannot forge a reply the host will accept.
+ *
+ * This — the sandboxed iframe's opaque origin and the nonce that travels
+ * inside it — is the security boundary for generated code. The server-side
+ * `validateCode` is a quality gate that keeps the model honest, not a second
+ * line of defence: nothing here assumes the code it is handed was screened.
  */
 let sessionNonce: string | null = null
 

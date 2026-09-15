@@ -6,8 +6,8 @@ const fixtureCode = readFileSync(
   fileURLToPath(new URL('./fixtures/orange-chair.kit.js', import.meta.url)),
   'utf8',
 )
+/** Every artefact this spec writes lands here — a gitignored directory, not the notes tree. */
 const resultDir = fileURLToPath(new URL('../test-results/', import.meta.url))
-const reportDir = fileURLToPath(new URL('../.superpowers/sdd/2026-09-15-sculpt/', import.meta.url))
 
 interface SandboxApi {
   ready(): Promise<void>
@@ -41,6 +41,17 @@ test.describe('sculpt sandbox', () => {
     expect(csp).toBeTruthy()
     expect(csp).toContain('frame-ancestors \'self\'')
     expect(csp).toContain('default-src \'none\'')
+    expect(csp).toContain('base-uri \'none\'')
+    expect(csp).toContain('form-action \'none\'')
+    // The outbound-socket rule is the one that differs between dev and a
+    // build, so assert on what this server actually serves. `csp.test.ts`
+    // covers both strings without needing a production server.
+    if (process.env.NODE_ENV === 'production') {
+      expect(csp).toContain('connect-src \'none\'')
+    }
+    else {
+      expect(csp).toContain('connect-src \'self\' ws: wss:')
+    }
   })
 
   test('loads, renders and exports the fixture, and survives bad code', async ({ page }) => {
@@ -78,8 +89,6 @@ test.describe('sculpt sandbox', () => {
     const png = Buffer.from(rendered[0]!.bytes)
     mkdirSync(resultDir, { recursive: true })
     writeFileSync(`${resultDir}sculpt-fixture-ref.png`, png)
-    mkdirSync(reportDir, { recursive: true })
-    writeFileSync(`${reportDir}task-3-fixture-ref.png`, png)
 
     // export
     const magic = await page.evaluate(async () => {
@@ -171,5 +180,47 @@ test.describe('sculpt sandbox', () => {
     // A real rejection, not a missing probe: the CSP must be what stopped it.
     expect(probe.ok).toBe(false)
     expect(probe.message).toMatch(/TypeError|Failed to fetch/i)
+  })
+
+  test('blocks an outbound WebSocket from generated code', async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.goto('/sandbox-host')
+    await page.waitForFunction(() => Boolean(window.__sandbox), null, { timeout: 30_000 })
+
+    // A blocked WebSocket constructor throws synchronously with a
+    // SecurityError, so the factory can report it in its own return path.
+    const socketCode = `
+      function createModel(kit, THREE, options) {
+        var outcome = 'opened'
+        try { new WebSocket('wss://example.invalid/') }
+        catch (e) { outcome = String(e && e.name) + ': ' + String(e && e.message) }
+        parent.postMessage({ __probe: true, ok: outcome === 'opened', message: outcome }, '*')
+        return kit.root([kit.part('block', kit.box(0.2, 0.2, 0.2), kit.plastic({ color: '#888888' }), { position: [0, 0.1, 0] })])
+      }
+    `
+    const probe = await page.evaluate(async (code) => {
+      const seen = new Promise<{ ok: boolean, message: string }>((resolve) => {
+        window.addEventListener('message', (event) => {
+          const data = event.data as { __probe?: boolean, ok: boolean, message: string }
+          if (data && data.__probe) resolve({ ok: data.ok, message: data.message })
+        })
+      })
+      await window.__sandbox.load(code, 'draft', 1)
+      const timeout = new Promise<{ ok: boolean, message: string }>(resolve =>
+        setTimeout(() => resolve({ ok: false, message: 'no probe message' }), 10_000))
+      return Promise.race([seen, timeout])
+    }, socketCode)
+
+    if (process.env.NODE_ENV === 'production') {
+      expect(probe.ok).toBe(false)
+      expect(probe.message).toMatch(/SecurityError|Content Security Policy/i)
+    }
+    else {
+      // The dev policy has to allow `ws:`/`wss:` for Vite's HMR client, so the
+      // constructor is permitted here; this asserts the known dev gap rather
+      // than pretending the production rule is in force. The production
+      // string itself is covered by `tests/sculpt-csp.test.ts`.
+      expect(probe.message).not.toMatch(/no probe message/)
+    }
   })
 })
