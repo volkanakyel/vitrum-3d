@@ -11,7 +11,8 @@
     "preview": "nuxt preview",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "kit-api": "tsx scripts/kit-api.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
@@ -38,6 +39,7 @@
     "@types/d3-contour": "^3.0.6",
     "@types/three": "^0.185.4",
     "shadcn-nuxt": "^2.8.2",
+    "tsx": "^4.23.13",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4",
     "vue-tsc": "^3.3.11"
