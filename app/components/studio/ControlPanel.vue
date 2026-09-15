@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { SegmentOption } from '~/components/studio/SegmentedControl.vue'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DEFAULT_VIEW_OPTIONS, STUDIO_MODES, type DepthState, type StudioMode, type StudioView, type ViewAxis, type ViewOptions } from '~/composables/useStudio'
+import type { SculptApi } from '~/composables/useSculpt'
 import type { HullData } from '~/utils/hull'
 import { DEFAULT_GLASS_PARAMS, type GlassParams, type Geometry } from '~/utils/glassScene'
 import { DEFAULT_RELIEF_OPTIONS, type HeightSource, type ReliefOptions } from '~/utils/relief'
@@ -46,6 +47,10 @@ const props = defineProps<{
   busy: boolean
   error: string
   mode?: StudioMode
+  /** Product mode only: the sculpt run behind the "Rebuild as parts" panel. */
+  sculpt?: SculptApi
+  /** A finished parts model stands on the stage: the carve's controls do not describe it. */
+  sculpted?: boolean
 }>()
 const emit = defineEmits<{ pick: [Event]; sample: []; clear: []; 'set-height': [number]; mode: [StudioMode]; 'pick-view': [ViewAxis, Event]; 'remove-view': [ViewAxis]; 'flip-view': [ViewAxis] }>()
 const viewSlots: { axis: ViewAxis; label: string; hint: string; flipHint: string }[] = [
@@ -378,8 +383,29 @@ const dimInput =
               value="shape"
               class="mt-0 flex flex-col divide-y divide-hairline"
             >
+              <!-- The headline action for a product photo: let Claude rebuild it out of parts.
+                   Outside the numbered sections — it is not one of the carve's controls. -->
+              <section
+                v-if="mode === 'product' && sculpt && trace"
+                class="flex flex-col gap-5 py-6 first:pt-1"
+              >
+                <header class="flex h-6 items-center">
+                  <span class="text-[12px] font-medium tracking-[-0.005em] text-foreground">Parts model</span>
+                </header>
+                <SculptPanel :sculpt="sculpt" />
+              </section>
+
+              <p
+                v-if="sculpted"
+                class="py-6 text-[11.5px] leading-relaxed text-ink-3"
+              >
+                The parts model brings its own shape: the carve's controls are off. Size and Scene
+                still apply.
+              </p>
+
               <AnimatePresence :initial="false">
               <SectionGroup
+                v-if="!sculpted"
                 key="geometry"
                 :index="0"
                 title="Geometry"
@@ -411,7 +437,7 @@ const dimInput =
               </SectionGroup>
 
               <SectionGroup
-                v-if="isStack"
+                v-if="isStack && !sculpted"
                 key="stack"
                 :index="1"
                 title="Layers"
@@ -459,7 +485,7 @@ const dimInput =
               </SectionGroup>
 
               <SectionGroup
-                v-if="isInflate"
+                v-if="isInflate && !sculpted"
                 key="inflate"
                 :index="1"
                 title="Volume"
@@ -505,7 +531,7 @@ const dimInput =
               </SectionGroup>
 
               <SectionGroup
-                v-if="isInflate"
+                v-if="isInflate && !sculpted"
                 key="views"
                 :index="2"
                 title="Views"
@@ -646,7 +672,7 @@ const dimInput =
               </SectionGroup>
 
               <SectionGroup
-                v-if="isRelief"
+                v-if="isRelief && !sculpted"
                 key="relief"
                 :index="1"
                 title="Relief"
@@ -754,7 +780,7 @@ const dimInput =
               </SectionGroup>
 
               <SectionGroup
-                v-if="!isRelief || reliefOpts.cutout"
+                v-if="!sculpted && (!isRelief || reliefOpts.cutout)"
                 key="trace"
                 :index="isInflate ? 3 : isRelief || isStack ? 2 : 1"
                 title="Outline"
@@ -910,13 +936,21 @@ const dimInput =
               value="material"
               class="mt-0 flex flex-col divide-y divide-hairline"
             >
+              <p
+                v-if="sculpted"
+                class="py-6 text-[11.5px] leading-relaxed text-ink-3"
+              >
+                Materials come with the parts model.
+              </p>
               <SectionGroup
+                v-if="!sculpted"
                 :index="0"
                 title="Finish"
               >
                 <MaterialPicker :glass="glass" />
               </SectionGroup>
               <SectionGroup
+                v-if="!sculpted"
                 :index="1"
                 :title="isGlass ? 'Optics' : 'Surface'"
                 resettable
@@ -1086,7 +1120,7 @@ const dimInput =
               </SectionGroup>
               <AnimatePresence :initial="false">
               <SectionGroup
-                v-if="isGlass"
+                v-if="isGlass && !sculpted"
                 key="edges"
                 :index="2"
                 title="Edges & tint"

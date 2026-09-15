@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type * as THREE from 'three'
 import { GlassStudio, type GlassParams, type HullSources, type ModelDimensions } from '~/utils/glassScene'
 import type { HullData } from '~/utils/hull'
 import type { ReliefData } from '~/utils/relief'
@@ -43,6 +44,8 @@ defineExpose({
   /** Set parameters without easing; `applyNow` false when a new trace is about to rebuild. */
   snap: (p: Partial<GlassParams>, applyNow = true) => studio?.snapParams(p, applyNow),
   frame: () => studio?.frame(),
+  /** Stand a model built elsewhere (the sculpt parts model) on the stage; `null` restores the carve. */
+  setExternalModel: (group: THREE.Group | null) => studio?.setExternalModel(group),
   setView: (v: 'angle' | 'front' | 'side' | 'top') => studio?.setView(v),
   exportGLB: async (name = 'vitrum') => { if (studio) download(await studio.exportGLB(), `${name}.glb`) },
   exportSTL: (name = 'vitrum') => { if (studio) download(studio.exportSTL(), `${name}.stl`) },

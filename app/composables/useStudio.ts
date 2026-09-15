@@ -1,3 +1,4 @@
+import type * as THREE from 'three'
 import type { ImportPhase } from '~/components/studio/StageLoader.vue'
 import type { HullSources, ModelDimensions, ViewName } from '~/utils/glassScene'
 import { estimateCameraSide, type HullData, type HullView } from '~/utils/hull'
@@ -8,6 +9,7 @@ import { DEFAULT_TRACE_OPTIONS, loadImage, rasterize, type TraceOptions, type Tr
 import { Tracer } from '~/utils/tracer'
 import { Depther } from '~/utils/depther'
 import type { DepthMap } from '~/utils/depth'
+import type { Dims } from '~/utils/sculpt/types'
 import type { DepthDevice } from '~/workers/depth.worker'
 
 /**
@@ -94,6 +96,7 @@ export interface ViewerHandle {
   frame: () => void
   setView: (v: ViewName) => void
   snap: (p: Partial<GlassParams>, applyNow?: boolean) => void
+  setExternalModel: (group: THREE.Group | null) => void
 }
 
 const IMPORT_MIN_MS = 1400
@@ -151,6 +154,18 @@ export function useStudio(initialMode: StudioMode = 'icon') {
     viewer.value?.setView(v)
   }
 
+  /**
+   * The size a sculpt run is told to build to. Only a size the user set counts: every import
+   * opens at the default width, and a guess passed as a measurement would mislead the intake.
+   */
+  function sculptDims(): Dims | null {
+    if (glass.widthMm === DEFAULT_GLASS_PARAMS.widthMm) return null
+    return { widthMm: glass.widthMm, heightMm: heightMm.value, depthMm: glass.depthMm }
+  }
+  const sculpt = useSculpt({ image, dims: sculptDims, viewer, notify })
+  /** A finished parts model stands on the stage: the carve controls no longer describe it. */
+  const sculpted = computed(() => sculpt.job.value?.status === 'done')
+
   function thumbnail(img: HTMLImageElement, size = 160): string {
     const iw = img.naturalWidth || img.width
     const ih = img.naturalHeight || img.height
@@ -173,6 +188,9 @@ export function useStudio(initialMode: StudioMode = 'icon') {
     const started = performance.now()
     importing.value = { phase: 'read', preview: '', name: file.name }
     busy.value = true
+    // A new object: the last run's parts model is not this one's. The run itself stays in the
+    // history and can be reopened.
+    sculpt.clear()
     trace.value = null
     relief.value = null
     // A new object: its side and top photos are not this one's.
@@ -497,6 +515,8 @@ export function useStudio(initialMode: StudioMode = 'icon') {
   watch(() => glass.depthMm, (d) => { if (glass.bevelMm > d / 2) glass.bevelMm = Math.max(0, +(d / 2).toFixed(1)) })
 
   function clearImage() {
+    // The parts model was built from this photo: it goes with it.
+    sculpt.clear()
     image.value = null
     tracer.setSource(null)
     trace.value = null
@@ -597,7 +617,7 @@ export function useStudio(initialMode: StudioMode = 'icon') {
 
   return {
     mode, image, fileName, trace, traceOpts, reliefOpts, relief, views, viewOpts, cameraSide, hull, depthState, depthProgress, depthDevice, hullSources, glass, dims, busy, importing, error,
-    dragging, exporting, toast, view, viewer, heightMm,
+    dragging, exporting, toast, view, viewer, heightMm, sculpt, sculpted,
     setView, setMode, useFile, clearImage, onDrop, onPick, onPickView, removeView, flipView, loadSample, doExport, setHeight, notify,
   }
 }

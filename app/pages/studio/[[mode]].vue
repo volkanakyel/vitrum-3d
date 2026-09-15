@@ -19,7 +19,7 @@ if (requested && requested !== initial) void router.replace('/studio/icon')
 const studio = useStudio(initial)
 const {
   mode, image, fileName, trace, traceOpts, reliefOpts, relief, views, viewOpts, cameraSide, hull, depthState, depthProgress, depthDevice, hullSources, glass, dims, busy, importing, error,
-  dragging, exporting, toast, view, viewer, heightMm,
+  dragging, exporting, toast, view, viewer, heightMm, sculpt, sculpted,
   setView, clearImage, onDrop, onPick, onPickView, removeView, flipView, loadSample, doExport, setHeight,
 } = studio
 
@@ -67,6 +67,8 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
         :busy="busy"
         :error="error"
         :mode="mode"
+        :sculpt="sculpt"
+        :sculpted="sculpted"
         @pick="onPick"
         @sample="loadSample()"
         @clear="clearImage"

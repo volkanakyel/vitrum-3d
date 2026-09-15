@@ -8,6 +8,7 @@ import type { TraceResult } from './trace'
 import { DEFAULT_GLASS_PARAMS, type Finish, type Geometry, type GlassParams } from './presets'
 export * from './presets'
 import { buildExtrudeGeometry } from './extrude'
+import { fitExternal } from './externalFit'
 import { buildPrintTexture, buildCropTexture, padSilhouette } from './printTexture'
 import { buildReliefGeometry, reliefScale, type ReliefData } from './relief'
 import { buildSurfaceCanvases, softenCanvas } from './surface'
@@ -91,6 +92,12 @@ export class GlassStudio {
   private fboBack: THREE.WebGLRenderTarget
   private timer = new THREE.Timer()
   private mesh: THREE.Mesh | null = null
+  /** A model built elsewhere (the sculpt parts model) standing in for the carve. */
+  private external: THREE.Group | null = null
+  /** The external group's own box, in its own metres, before the studio's fit. */
+  private externalBox = new THREE.Box3()
+  /** The same box after the fit: the millimetres the stage, HUD and camera work in. */
+  private externalStageBox = new THREE.Box3()
   private trace: TraceResult | null = null
   /** Values the UI asked for. */
   private target: GlassParams = { ...DEFAULT_GLASS_PARAMS }
@@ -593,12 +600,14 @@ export class GlassStudio {
    * Floor off: the blurred silhouette on the wall behind, and the full orbit.
    */
   private setFloor(on: boolean) {
-    const has = !!this.mesh
+    const has = !!this.mesh || !!this.external
     this.setStage(on ? 'floor' : 'wall')
     this.key.castShadow = on
     this.floor.visible = on && has
-    this.shadowPlane.visible = !on && has
+    // The external model brings its own shapes: the painted silhouette behind it would be wrong.
+    this.shadowPlane.visible = !on && has && !this.external
     if (this.mesh) { this.mesh.castShadow = on; this.mesh.receiveShadow = on }
+    this.external?.traverse((o) => { o.castShadow = on; o.receiveShadow = on })
     this.controls.maxPolarAngle = on ? Math.PI / 2 - 0.04 : Math.PI - 0.03
   }
 
@@ -732,13 +741,11 @@ export class GlassStudio {
 
   /** Floor under the model's lowest point; key light and its shadow camera fitted to the model. */
   private placeFloor() {
-    const mesh = this.mesh
-    if (!mesh) { this.floor.visible = false; return }
-    const geo = mesh.geometry
-    if (!geo.boundingBox) geo.computeBoundingBox()
-    const r = geo.boundingBox!.getSize(new THREE.Vector3()).length() / 2
+    const box = this.modelBox()
+    if (!box) { this.floor.visible = false; return }
+    const r = box.getSize(new THREE.Vector3()).length() / 2
     this.floor.scale.setScalar(r * 14)
-    this.floor.position.y = geo.boundingBox!.min.y - r * 0.002
+    this.floor.position.y = box.min.y - r * 0.002
     this.keyDistance = r * 5
     const rig = this.params.floor ? GlassStudio.RIGS.floor : GlassStudio.RIGS.wall
     this.key.position.copy(rig.keyDir).multiplyScalar(this.keyDistance)
@@ -1092,7 +1099,92 @@ export class GlassStudio {
     this.backdrop.lookAt(this.camera.position)
   }
 
+  /** The box the stage, the HUD and the camera measure: the carved geometry, or the placed external group. */
+  private modelBox(): THREE.Box3 | null {
+    if (this.external) return this.externalStageBox
+    const mesh = this.mesh
+    if (!mesh) return null
+    const geo = mesh.geometry
+    if (!geo.boundingBox) geo.computeBoundingBox()
+    return geo.boundingBox
+  }
+
+  /**
+   * Stand a model built elsewhere (the sculpt parts model, in metres) on the
+   * stage in place of the carve, scaled to `widthMm`. `null` disposes it and
+   * rebuilds the carved mesh.
+   */
+  setExternalModel(group: THREE.Group | null) {
+    if (this.external) {
+      this.scene.remove(this.external)
+      this.disposeExternal(this.external)
+      this.external = null
+    }
+    if (!group) {
+      // `built` was left alone while the external model stood, so this rebuilds
+      // exactly the mesh the carve controls describe.
+      this.rebuild()
+      this.frame()
+      return
+    }
+    if (this.mesh) {
+      this.scene.remove(this.mesh)
+      this.mesh.geometry.dispose()
+      this.mesh = null
+    }
+    this.shadowPlane.visible = false
+    this.external = group
+    group.scale.setScalar(1)
+    group.position.set(0, 0, 0)
+    group.updateMatrixWorld(true)
+    this.externalBox = new THREE.Box3().setFromObject(group)
+    this.fitExternalModel()
+    this.scene.add(group)
+    this.placeFloor()
+    this.frame()
+    this.onRebuild?.()
+  }
+
+  /** Scale and place the external group for the current `widthMm`. */
+  private fitExternalModel() {
+    const group = this.external
+    if (!group) return
+    const { scale, offset } = fitExternal(this.externalBox, this.params.widthMm)
+    group.scale.setScalar(scale)
+    group.position.copy(offset)
+    group.updateMatrixWorld(true)
+    this.externalStageBox = this.externalBox.clone()
+      .applyMatrix4(new THREE.Matrix4().makeScale(scale, scale, scale))
+      .translate(offset)
+  }
+
+  private disposeExternal(group: THREE.Group) {
+    group.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      if (!mesh.isMesh) return
+      mesh.geometry.dispose()
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        for (const value of Object.values(m as unknown as Record<string, unknown>)) {
+          // The studio's own environment maps are shared and outlive any model.
+          if (value instanceof THREE.Texture && value !== this.envRoom && value !== this.envStudio) value.dispose()
+        }
+        m.dispose()
+      }
+    })
+  }
+
   getDimensions(): ModelDimensions | null {
+    if (this.external) {
+      const size = this.externalStageBox.getSize(new THREE.Vector3())
+      let triangles = 0
+      this.external.traverse((o) => {
+        const mesh = o as THREE.Mesh
+        if (!mesh.isMesh) return
+        const index = mesh.geometry.getIndex()
+        triangles += index ? index.count / 3 : mesh.geometry.getAttribute('position').count / 3
+      })
+      return { widthMm: size.x, heightMm: size.y, depthMm: size.z, triangles }
+    }
     if (!this.mesh || !this.trace) return null
     // The geometry's own box: the pop animation scales the mesh and must not show in the HUD.
     const geo = this.mesh.geometry
@@ -1105,6 +1197,16 @@ export class GlassStudio {
 
   /** Build the solid at exact millimetre size: an extruded silhouette or a relief of the picture. */
   private rebuild() {
+    if (this.external) {
+      // The carve is not rebuilt while a parts model stands; only its size follows the width.
+      this.fitExternalModel()
+      const p = this.params
+      // Keep `built` level with the parameters so `apply()` does not ask again every frame.
+      this.built = { ...this.built, widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: p.bevelMm, bevelSegments: p.bevelSegments, reliefMm: p.reliefMm, layerMm: p.layerMm, geometry: this.activeGeometry(), relief: this.relief, hull: this.hull }
+      this.placeFloor()
+      this.onRebuild?.()
+      return
+    }
     if (this.mesh) {
       this.scene.remove(this.mesh)
       this.mesh.geometry.dispose()
@@ -1279,27 +1381,45 @@ export class GlassStudio {
    * `named` snaps to the last named view (Angle, Front, Side, Top) instead.
    */
   frame(named = false) {
-    if (!this.mesh) return
-    const geo = this.mesh.geometry
-    if (!geo.boundingBox) geo.computeBoundingBox()
-    const size = geo.boundingBox!.getSize(new THREE.Vector3())
+    const box = this.modelBox()
+    if (!box) return
+    const size = box.getSize(new THREE.Vector3())
     const tanV = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))
     const tanH = tanV * this.camera.aspect
     // Fit both axes with a margin for the HUD above and the view dock below.
     const dist = Math.max(size.y / 2 / tanV, size.x / 2 / tanH, size.z) * 2.3
-    const dir = !named && this.camera.position.lengthSq() >= 1 ? this.camera.position.clone().normalize() : this.viewDir()
-    const goal = dir.multiplyScalar(dist)
+    // A carved mesh is centred on the origin; a parts model stands on the floor, so the camera
+    // looks at the middle of its box rather than at its feet.
+    const target = this.external ? box.getCenter(new THREE.Vector3()) : new THREE.Vector3()
+    const eye = this.camera.position.clone().sub(this.controls.target)
+    // No camera yet (the studio starts at the target): place it, do not glide.
+    const placed = eye.lengthSq() >= 1
+    const dir = !named && placed ? eye.normalize() : this.viewDir()
+    const goal = target.clone().add(dir.multiplyScalar(dist))
     this.zoomGoal = 0
-    if (this.camera.position.lengthSq() < 1 || !this.mesh) this.camera.position.copy(goal)
+    if (!placed) this.camera.position.copy(goal)
     else this.camGoal = goal
     this.camera.near = Math.max(0.1, dist / 100)
     this.camera.far = dist * 20
     this.camera.updateProjectionMatrix()
-    this.controls.target.set(0, 0, 0)
+    this.controls.target.copy(target)
     this.placeBackdrop()
   }
 
   async exportGLB(): Promise<Blob> {
+    if (this.external) {
+      // glTF is already this model's own unit: export it in metres, at 1:1, with its own
+      // materials. The clone shares geometries and materials; only the transform differs.
+      const wrapper = new THREE.Group()
+      wrapper.name = this.external.name || 'parts'
+      const clone = this.external.clone(true)
+      clone.scale.setScalar(1)
+      clone.position.set(0, 0, 0)
+      wrapper.add(clone)
+      const exporter = new GLTFExporter()
+      const result = await exporter.parseAsync(wrapper, { binary: true })
+      return new Blob([result as ArrayBuffer], { type: 'model/gltf-binary' })
+    }
     if (!this.mesh) throw new Error('Nothing to export')
     // glTF uses metres; scale the millimetre mesh down on a wrapper.
     const wrapper = new THREE.Group()
@@ -1349,6 +1469,14 @@ export class GlassStudio {
   }
 
   exportSTL(): Blob {
+    if (this.external) {
+      // STL carries no units: the studio's millimetres, as the carved mesh exports them. The
+      // exporter reads each mesh's world matrix, which already holds the fit to `widthMm`.
+      const exporter = new STLExporter()
+      this.external.updateMatrixWorld(true)
+      const data = exporter.parse(this.external, { binary: true }) as DataView<ArrayBuffer>
+      return new Blob([data], { type: 'model/stl' })
+    }
     if (!this.mesh) throw new Error('Nothing to export')
     const exporter = new STLExporter()
     // The pop animation scales the mesh; the file must carry the true millimetres.
@@ -1388,6 +1516,7 @@ export class GlassStudio {
     clearTimeout(this.interactTimer)
     this.canvas.removeEventListener('wheel', this.onWheel, { capture: true })
     this.controls.dispose()
+    if (this.external) { this.disposeExternal(this.external); this.external = null }
     this.mesh?.geometry.dispose()
     this.backdrop.geometry.dispose()
     this.backdrop.material.map?.dispose()
