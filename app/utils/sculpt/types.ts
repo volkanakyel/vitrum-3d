@@ -74,6 +74,8 @@ export interface Review {
 }
 
 export interface BuildOutput { code: string; notes: string[] }
+/** World-space box of one part after the last load, metres, root already centred. */
+export interface PartBounds { id: string; min: [number, number, number]; max: [number, number, number] }
 export interface Usage { input: number; output: number }
 export interface ApiOk<T> { ok: true; data: T; usage: Usage; costUsd: number }
 export interface ApiErr {

@@ -53,6 +53,23 @@ function isFinitePositive(value: unknown): value is number {
 
 const MALFORMED = 'malformed sandbox response'
 
+const MAX_PART_BOUNDS = 400
+const MAX_PART_ID = 120
+
+function isVec3(value: unknown): value is [number, number, number] {
+  return Array.isArray(value) && value.length === 3 && value.every(n => typeof n === 'number' && Number.isFinite(n))
+}
+
+function isPartBounds(value: unknown): boolean {
+  const p = value as { id?: unknown, min?: unknown, max?: unknown } | null
+  return Boolean(p)
+    && typeof p!.id === 'string'
+    && p!.id.length > 0
+    && p!.id.length <= MAX_PART_ID
+    && isVec3(p!.min)
+    && isVec3(p!.max)
+}
+
 /** Nothing from the frame is trusted until it has been through here. */
 function validate(message: SandboxResponse): boolean {
   switch (message.type) {
@@ -65,6 +82,9 @@ function validate(message: SandboxResponse): boolean {
         && isFinitePositive(message.bounds.w)
         && isFinitePositive(message.bounds.h)
         && isFinitePositive(message.bounds.d)
+        && Array.isArray(message.partBounds)
+        && message.partBounds.length <= MAX_PART_BOUNDS
+        && message.partBounds.every(isPartBounds)
     case 'rendered':
       return Array.isArray(message.views)
         && message.views.every(view =>

@@ -827,3 +827,45 @@ describe('JobRunner', () => {
     expect(result.status).toBe('done')
   })
 })
+
+describe('measured part bounds', () => {
+  it('are recorded from each load, sent to the reviewer, and to a refine-code rebuild only', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    let loads = 0
+    renderer.load.mockImplementation(async () => {
+      loads += 1
+      return { parts: ['slab'], triangles: 10, partBounds: [{ id: 'slab', min: [0, loads, 0], max: [1, loads + 1, 1] }] }
+    })
+    const deps = makeDeps(fake.transport, renderer)
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake()))
+    fake.queues.spec.push(ok(baseSpec()))
+    // blockout: draft -> refine-code -> final -> continue
+    fake.queues.build.push(ok(buildOutput('blockout-draft')))
+    fake.queues.review.push(ok(refineCodeReview()))
+    fake.queues.build.push(ok(buildOutput('blockout-final')))
+    fake.queues.review.push(ok(continueReview()))
+    // the remaining passes go straight through
+    for (let i = 0; i < 4; i++) {
+      fake.queues.build.push(ok(buildOutput(`pass-${i}`)))
+      fake.queues.review.push(ok(continueReview()))
+    }
+
+    const result = await runner.run()
+    expect(result.status).toBe('done')
+
+    // The first review saw the first load's boxes.
+    expect(fake.calls.review[0]!.partBounds).toEqual([{ id: 'slab', min: [0, 1, 0], max: [1, 2, 1] }])
+    // A fresh build carries no boxes; the refine-code rebuild carries the draft's.
+    expect(fake.calls.build[0]!.partBounds).toBeUndefined()
+    expect(fake.calls.build[1]!.partBounds).toEqual([{ id: 'slab', min: [0, 1, 0], max: [1, 2, 1] }])
+    // The next pass is a fresh file against the previous pass's code: no boxes.
+    expect(fake.calls.build[2]!.partBounds).toBeUndefined()
+    // The record keeps the latest load's boxes.
+    const blockout = result.passes.find(p => p.id === 'blockout')!
+    expect(blockout.partBounds).toEqual([{ id: 'slab', min: [0, 2, 0], max: [1, 3, 1] }])
+  })
+})

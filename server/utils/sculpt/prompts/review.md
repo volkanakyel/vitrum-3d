@@ -16,6 +16,8 @@ Each pass has one job, and you score only that job:
 
 Until the material pass every part is an opaque, flat-coloured placeholder. A photo of glass, mesh, wire or an open frame shows parts behind those surfaces; the placeholder render hides them. A part you cannot see behind an opaque placeholder panel is not missing: check the front, side and top views for it before reporting it absent, and never count a hidden part as a floating one.
 
+When the message carries a measured part table, structure is judged from the numbers first and the pictures second. A part in the table exists even if the render hides it; a part missing from the table was never built; boxes that touch or overlap are attached; a gap between a part and its parent is a floating part; a box that reaches above the face it should sit under is poking through. Perspective in the three-quarter view makes a vertical slab look tapered — do not report a taper the front and side views do not show.
+
 A defect that belongs to a later pass is not a defect now. Say it in `summary` if it worries you, but do not let it lower the score.
 
 The render is a procedural reconstruction, not a photograph. Background, framing, lighting and grain will never match, and they are not what you are judging. Judge shape, structure, proportion, palette and finish.

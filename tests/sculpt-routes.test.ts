@@ -228,6 +228,42 @@ describe('buildCore', () => {
   })
 })
 
+describe('measured part bounds', () => {
+  const bounds = [
+    { id: 'slab', min: [-0.7, 0.715, -0.34], max: [0.7, 0.73, 0.34] },
+    { id: 'bracket', min: [-0.62, 0.735, 0.23], max: [-0.58, 0.835, 0.27] },
+  ]
+
+  it('reach the builder as a table on a refine, never on a fresh build', async () => {
+    const fresh = makeFake([{ code: goodCode, notes: [] }])
+    await buildCore({ spec: makeSpec(), pass: 'structural', partBounds: bounds }, fresh.callTool)
+    expect(userText(fresh.calls[0]!)).not.toContain('Measured world-space box')
+
+    const refine = makeFake([{ code: goodCode, notes: [] }])
+    await buildCore(
+      { spec: makeSpec(), pass: 'structural', code: goodCode, defects: [{ component: 'bracket', what: 'floats', measured: '', fix: '' }], partBounds: bounds },
+      refine.callTool,
+    )
+    const text = userText(refine.calls[0]!)
+    expect(text).toContain('Measured world-space box')
+    expect(text).toContain('bracket: x -0.620..-0.580  y 0.735..0.835')
+    expect(text).toContain('size 1.400 × 0.015 × 0.680')
+  })
+
+  it('reach the reviewer and drop malformed entries', async () => {
+    const { callTool, calls } = makeFake([makeReview()])
+    await reviewCore(
+      { spec: makeSpec(), pass: 'structural', sheet: pngBase64(), image: pngBase64(), fixesLeft: 1, partBounds: [...bounds, { id: 'bad', min: [1, 2], max: 'x' }, 7] },
+      callTool,
+    )
+    const text = userText(calls[0]!)
+    expect(text).toContain('slab: x -0.700..0.700')
+    expect(text).toContain('bracket: x')
+    expect(text).not.toContain('bad:')
+    expect(text).toContain('ground truth for structure')
+  })
+})
+
 describe('reviewCore', () => {
   it('labels each image and sends the photo before the sheet', async () => {
     const { callTool, calls } = makeFake([makeReview()])

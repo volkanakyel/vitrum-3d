@@ -16,19 +16,19 @@
  * build note.
  */
 
-import type { ApiResult, BuildOutput, Dims, Intake, PassId, Review, SculptSpec, Usage, View } from './types'
+import type { ApiResult, BuildOutput, Dims, Intake, PartBounds, PassId, Review, SculptSpec, Usage, View } from './types'
 import { PASSES } from './types'
 
 export interface Transport {
   intake: (req: { image: string, hint?: string, dims?: Dims }, signal: AbortSignal) => Promise<ApiResult<Intake>>
   spec: (req: { intake: Intake, image: string, critique?: string }, signal: AbortSignal) => Promise<ApiResult<SculptSpec>>
-  build: (req: { spec: SculptSpec, pass: PassId, code?: string, defects?: Review['defects'], notes?: string[] }, signal: AbortSignal) => Promise<ApiResult<BuildOutput>>
-  review: (req: { spec: SculptSpec, pass: PassId, sheet: string, image: string, fixesLeft: number }, signal: AbortSignal) => Promise<ApiResult<Review>>
+  build: (req: { spec: SculptSpec, pass: PassId, code?: string, defects?: Review['defects'], notes?: string[], partBounds?: PartBounds[] }, signal: AbortSignal) => Promise<ApiResult<BuildOutput>>
+  review: (req: { spec: SculptSpec, pass: PassId, sheet: string, image: string, fixesLeft: number, partBounds?: PartBounds[] }, signal: AbortSignal) => Promise<ApiResult<Review>>
 }
 
 /** Sandbox + sheet, injected so the runner is testable. */
 export interface Renderer {
-  load: (code: string) => Promise<{ parts: string[], triangles: number }>
+  load: (code: string) => Promise<{ parts: string[], triangles: number, partBounds?: PartBounds[] }>
   render: (views: View[]) => Promise<{ name: string, blob: Blob }[]>
   exportGLB: () => Promise<ArrayBuffer>
 }
@@ -55,6 +55,8 @@ export interface PassRecord {
   sheets: string[]
   reviews: Review[]
   fixes: number
+  /** Measured world boxes from this pass's latest load; absent on jobs stored before the field existed. */
+  partBounds?: PartBounds[]
 }
 
 export interface SculptJob {
@@ -330,8 +332,11 @@ export class JobRunner {
 
           job.status = 'building'
           if (!(await this.commit())) return this.snapshot()
+          // The measured boxes describe the code being revised: only a
+          // refine-code rebuild (same file, same numbers) can use them.
+          const measured = prevCode && prevCode === record.code && record.partBounds?.length ? record.partBounds : undefined
           const buildRes: ApiResult<BuildOutput> = await this.call<BuildOutput>(signal => this.deps.transport.build(
-            { spec, pass, code: prevCode, defects, notes: notes.length > 0 ? notes : undefined },
+            { spec, pass, code: prevCode, defects, notes: notes.length > 0 ? notes : undefined, partBounds: measured },
             signal,
           ))
           if (this.cancelled) return this.snapshot()
@@ -347,7 +352,8 @@ export class JobRunner {
 
           this.lastLoadOk = false
           try {
-            await this.deps.renderer.load(record.code)
+            const loaded = await this.deps.renderer.load(record.code)
+            record.partBounds = loaded.partBounds ?? []
             this.lastLoadOk = true
           }
           catch (err) {
@@ -376,7 +382,7 @@ export class JobRunner {
 
           const fixesLeft = Math.min(PASS_FIX_BUDGET - record.fixes, TOTAL_FIX_BUDGET - job.fixesTotal)
           const reviewRes: ApiResult<Review> = await this.call<Review>(signal => this.deps.transport.review(
-            { spec, pass, sheet: sheetUrl, image: job.image, fixesLeft },
+            { spec, pass, sheet: sheetUrl, image: job.image, fixesLeft, partBounds: record.partBounds?.length ? record.partBounds : undefined },
             signal,
           ))
           if (this.cancelled) return this.snapshot()

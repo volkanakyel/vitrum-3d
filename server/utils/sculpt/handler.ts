@@ -81,7 +81,13 @@ export async function runSculptRoute<T>(event: H3Event, core: Core<T>): Promise<
       prices: runtime.public.sculptPrices as Prices,
       workspaceId: runtime.anthropicWorkspaceId,
     })
+    const startedAt = Date.now()
     const result = await core(body, callTool, cfg)
+    // One line per call is how a slow pass gets found: which route, how long,
+    // how many tokens, what it cost.
+    const seconds = ((Date.now() - startedAt) / 1000).toFixed(1)
+    const usage = result.usage ? `${result.usage.input}/${result.usage.output} tok` : 'no usage'
+    console.info(`[sculpt] ${event.path ?? ''} ${result.ok ? 'ok' : 'failed'} in ${seconds}s · ${usage} · $${(result.costUsd ?? 0).toFixed(3)}`)
     // A failed core may still have paid for calls (validation after the model
     // answered); charge the day for whatever it reports.
     recordSpend(guardState, Date.now(), result.costUsd ?? 0)

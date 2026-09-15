@@ -12,6 +12,7 @@ import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { createKit } from './kit'
 import type { KitOptions } from './kit'
+import type { PartBounds } from './types'
 
 export interface SandboxView {
   name: string
@@ -42,6 +43,8 @@ export type SandboxResponse =
     triangles: number
     drawCalls: number
     bounds: { w: number, h: number, d: number }
+    /** Per-part world boxes, so the builder and the reviewer can reason in numbers. */
+    partBounds: PartBounds[]
   }
   | { type: 'rendered', id: number, nonce: string, views: { name: string, png: ArrayBuffer }[] }
   | { type: 'exported', id: number, nonce: string, glb: ArrayBuffer }
@@ -158,6 +161,40 @@ function countGeometry(group: THREE.Group): { triangles: number, drawCalls: numb
     triangles += per * (typeof mesh.count === 'number' ? mesh.count : 1)
   })
   return { triangles: Math.round(triangles), drawCalls }
+}
+
+/** Rounded to the millimetre: enough to place a bracket, small enough to read. */
+function mm(value: number): number {
+  return Math.round(value * 1000) / 1000
+}
+
+const MAX_PART_BOUNDS = 400
+
+function partBounds(group: THREE.Group): PartBounds[] {
+  const registry = (group.userData?.sculpt as { parts?: Record<string, unknown> } | undefined)?.parts
+  const out: PartBounds[] = []
+  const box = new THREE.Box3()
+  const entries = registry && typeof registry === 'object' ? Object.entries(registry) : []
+  for (const [id, object] of entries) {
+    if (out.length >= MAX_PART_BOUNDS) break
+    const mesh = object as THREE.Object3D & { isObject3D?: boolean }
+    if (!mesh?.isObject3D) continue
+    // Detached parts (registered but never added to the root) have no place
+    // in the scene; the table lists what the render actually shows.
+    let attached = false
+    for (let o: THREE.Object3D | null = mesh; o; o = o.parent) {
+      if (o === group) { attached = true; break }
+    }
+    if (!attached) continue
+    box.setFromObject(mesh)
+    if (box.isEmpty()) continue
+    out.push({
+      id,
+      min: [mm(box.min.x), mm(box.min.y), mm(box.min.z)],
+      max: [mm(box.max.x), mm(box.max.y), mm(box.max.z)],
+    })
+  }
+  return out
 }
 
 function partNames(group: THREE.Group): string[] {
@@ -338,6 +375,7 @@ export class SandboxRuntime {
       triangles,
       drawCalls,
       bounds: { w: size.x, h: size.y, d: size.z },
+      partBounds: partBounds(group),
     })
   }
 

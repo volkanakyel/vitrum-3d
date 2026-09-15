@@ -1,5 +1,5 @@
 import { PASSES } from '../../../app/utils/sculpt/types'
-import type { ApiResult, BuildOutput, Intake, PassId, Review, SculptSpec, Usage } from '../../../app/utils/sculpt/types'
+import type { ApiResult, BuildOutput, Intake, PartBounds, PassId, Review, SculptSpec, Usage } from '../../../app/utils/sculpt/types'
 import { buildSchema, intakeSchema, reviewSchema, specSchema, toolSchema, validateSpec } from './schema'
 import { validateCode } from './validateCode'
 import { PROMPTS } from './prompts'
@@ -92,6 +92,37 @@ function parseImage(value: unknown, label: string): { ok: true, part: UserPart }
 
 function isPass(value: unknown): value is PassId {
   return typeof value === 'string' && (PASSES as readonly string[]).includes(value)
+}
+
+const MAX_PART_BOUNDS = 400
+
+function isVec3(value: unknown): value is [number, number, number] {
+  return Array.isArray(value) && value.length === 3 && value.every(n => typeof n === 'number' && Number.isFinite(n))
+}
+
+/** The measured part table from the client, shape-checked and capped. */
+function parsePartBounds(value: unknown): PartBounds[] {
+  if (!Array.isArray(value)) return []
+  const out: PartBounds[] = []
+  for (const entry of value.slice(0, MAX_PART_BOUNDS)) {
+    if (!isRecord(entry) || typeof entry.id !== 'string' || !isVec3(entry.min) || !isVec3(entry.max)) continue
+    out.push({ id: entry.id.slice(0, 120), min: entry.min, max: entry.max })
+  }
+  return out
+}
+
+/** One line per part, millimetre precision, in the model's own frame. */
+function partBoundsTable(bounds: PartBounds[]): string {
+  const f = (n: number) => n.toFixed(3)
+  const lines = bounds.map(b =>
+    `${b.id}: x ${f(b.min[0])}..${f(b.max[0])}  y ${f(b.min[1])}..${f(b.max[1])}  z ${f(b.min[2])}..${f(b.max[2])}  (size ${f(b.max[0] - b.min[0])} × ${f(b.max[1] - b.min[1])} × ${f(b.max[2] - b.min[2])})`,
+  )
+  return [
+    'Measured world-space box of every part in the last render, in metres, after `kit.root` centred the model in x/z and set its bottom to y = 0 (so compare parts with each other, not with the raw numbers in your code):',
+    '```',
+    ...lines,
+    '```',
+  ].join('\n')
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +255,10 @@ export async function buildCore(
   if (defects.length > 0) {
     base.push(`Defects the reviewer measured — fix exactly these and nothing else:\n\`\`\`json\n${JSON.stringify(defects, null, 2)}\n\`\`\``)
   }
+  const measured = parsePartBounds(body.partBounds)
+  if (previous && measured.length > 0) {
+    base.push(`${partBoundsTable(measured)}\n\nUse this table to locate each defect exactly: a part whose box does not touch its parent's box is floating, a part whose box crosses a face it should sit under is poking through, a part that is missing from the table was never added to the root. Fix the numbers, not the guess.`)
+  }
   if (notes.length > 0) {
     base.push(`Notes carried from the previous pass:\n${notes.map(n => `- ${n}`).join('\n')}`)
   }
@@ -285,10 +320,14 @@ export async function reviewCore(
     ? Math.max(0, Math.floor(body.fixesLeft))
     : 0
 
+  const measured = parsePartBounds(body.partBounds)
   const text = [
     `Review the "${body.pass}" pass.`,
     `Fixes left in the budget: ${fixesLeft}.`,
     `Spec:\n\`\`\`json\n${JSON.stringify(spec.spec, null, 2)}\n\`\`\``,
+    ...(measured.length > 0
+      ? [`${partBoundsTable(measured)}\n\nThe table is ground truth for structure: a part listed here exists even when the render hides it, a part absent from it was never built, two parts whose boxes overlap or touch are attached, and a gap between a part and the one it should rest on is a floating part. Quote the numbers in \`measured\` when you report a structural defect.`]
+      : []),
   ].join('\n\n')
 
   const tally = new Tally()

@@ -16,7 +16,8 @@ Nothing else at the top level. No export, no call, no wrapper. It runs in a sand
 - Build every mesh through `kit.part(id, geometry, material, { position, rotation })`, and use the **spec's component ids verbatim** as the part ids. The review pipeline names defects by those ids; an invented id makes a defect unfixable.
 - Use the kit's builders for geometry. `THREE` is in scope for `Math`-level helpers, `Vector3`, and `Math.PI` rotations — not for constructing geometry the kit already provides.
 - Every `rests-on` contact in the spec becomes a `kit.restOn(child, parent, overlap)` call, so nothing floats and nothing intersects by accident. Place a part approximately, then let `restOn` seat it.
-- Every `mirror` entry in `repetition` becomes `kit.mirror(part, 'x')` (or `'z'`), added to the root alongside the original. Author the visible side once.
+- Every `mirror` entry in `repetition` becomes `kit.mirror(part, 'x')` (or `'z'`), added to the root alongside the original. Author the visible side once. `mirror` returns a clone that is already placed: it negates the position along the axis and the rotations that go with it. **Never set the clone's position or rotation yourself** — re-deriving it is how brackets end up above the tabletop.
+- Small hardware (brackets, bolts, pads, hinges) is placed by arithmetic from its parent's box, never by eye: the bracket's top face is the slab's underside minus the sink, its back face is the panel's inner face. Write the derivation as the comment on the part.
 - Every `linear` repetition becomes `kit.instanced(geometry, material, transforms)` — one draw call, not a loop of parts.
 - **One material object per spec material**, created once near the top and reused by every part that references that id. Creating the same material twice costs a texture bake each time and makes the two surfaces drift apart.
 - Return `kit.root([...])` with every top-level part and mirror in the array. `root` centres the model in x/z and puts its bottom at y = 0, so build around the origin and let it settle.
@@ -30,7 +31,7 @@ Read the spec as a build order: materials first, then the root macro mass, then 
 
 Prefer measured coordinates over magic numbers: derive positions from the spec's dimensions and from other parts (`backrest.position.y - 0.10`) so that a later pass changing one dimension does not leave a detail stranded.
 
-When you are given a previous version of the file and a list of defects, **fix the named defects and change nothing else**. Attribution is the whole value of the loop: if you also "improve" three other things, nobody can tell which change helped. A defect you cannot attribute to a concrete field — say so in `notes` and leave it.
+When you are given a previous version of the file and a list of defects, you are also given the **measured box of every part** from its render. That table is the truth about what the previous code produced: read the defect, find the part in the table, compute the correction from the numbers, and change exactly that. When you are given a previous version of the file and a list of defects, **fix the named defects and change nothing else**. Attribution is the whole value of the loop: if you also "improve" three other things, nobody can tell which change helped. A defect you cannot attribute to a concrete field — say so in `notes` and leave it.
 
 **Return the complete file every time**, never a diff, never an ellipsis, never "unchanged from before". Put a short list of what you changed and what you deliberately left alone in `notes`. Say "improved", not "done", unless every listed defect is closed.
 
