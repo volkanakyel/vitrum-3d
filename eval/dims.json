@@ -1,0 +1,14 @@
+{
+  "strandmon-wing-chair": {
+    "hint": "IKEA STRANDMON wing chair, buttoned back, turned wooden legs",
+    "widthMm": 820,
+    "heightMm": 1010,
+    "depthMm": 960
+  },
+  "poang-armchair": {
+    "hint": "IKEA POÄNG armchair, bent birch veneer frame, loose cushion",
+    "widthMm": 680,
+    "heightMm": 1000,
+    "depthMm": 820
+  }
+}

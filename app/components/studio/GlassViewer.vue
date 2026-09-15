@@ -50,6 +50,8 @@ defineExpose({
   exportGLB: async (name = 'vitrum') => { if (studio) download(await studio.exportGLB(), `${name}.glb`) },
   exportSTL: (name = 'vitrum') => { if (studio) download(studio.exportSTL(), `${name}.stl`) },
   screenshot: async (name = 'vitrum') => { if (studio) download(await studio.screenshot(), `${name}.png`) },
+  /** The same render as `screenshot`, handed back instead of downloaded — the eval harness saves it itself. */
+  capture: async (scale = 2) => (studio ? await studio.screenshot(scale) : null),
 })
 </script>
 

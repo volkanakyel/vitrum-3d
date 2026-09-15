@@ -93,6 +93,8 @@ export interface ViewerHandle {
   exportGLB: (name?: string) => Promise<void>
   exportSTL: (name?: string) => void
   screenshot: (name?: string) => Promise<void>
+  /** `screenshot` without the download — used by the dev hook the eval harness drives. */
+  capture: (scale?: number) => Promise<Blob | null>
   frame: () => void
   setView: (v: ViewName) => void
   snap: (p: Partial<GlassParams>, applyNow?: boolean) => void
@@ -615,9 +617,69 @@ export function useStudio(initialMode: StudioMode = 'icon') {
     if (v > 0 && aspect.value > 0) glass.widthMm = v / aspect.value
   }
 
+  /**
+   * Dev-only handle for the sculpt eval harness (`scripts/sculpt-eval.ts`),
+   * which drives the real studio from Playwright: `state()` is the stable
+   * "the import has settled, a run may start" signal, `screenshot()` is the
+   * viewer render as a data URL (the exposed `screenshot` downloads instead).
+   * `useSculpt` created `window.__vitrum`; this only adds to it.
+   */
+  if (import.meta.dev && import.meta.client) {
+    const hook: StudioDevHook = {
+      state: () => ({
+        mode: mode.value,
+        fileName: fileName.value,
+        hasImage: !!image.value,
+        hasTrace: !!trace.value,
+        hasHull: !!hull.value,
+        busy: busy.value,
+        importing: !!importing.value,
+        error: error.value,
+        dims: dims.value ? { ...dims.value } : null,
+        size: { widthMm: glass.widthMm, heightMm: heightMm.value, depthMm: glass.depthMm },
+      }),
+      screenshot: async () => {
+        const blob = await viewer.value?.capture()
+        if (!blob) return null
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.onerror = () => reject(new Error('could not read the screenshot'))
+          reader.readAsDataURL(blob)
+        })
+      },
+    }
+    if (window.__vitrum) window.__vitrum.studio = hook
+  }
+
   return {
     mode, image, fileName, trace, traceOpts, reliefOpts, relief, views, viewOpts, cameraSide, hull, depthState, depthProgress, depthDevice, hullSources, glass, dims, busy, importing, error,
     dragging, exporting, toast, view, viewer, heightMm, sculpt, sculpted,
     setView, setMode, useFile, clearImage, onDrop, onPick, onPickView, removeView, flipView, loadSample, doExport, setHeight, notify,
+  }
+}
+
+/** What `scripts/sculpt-eval.ts` reads off the studio; dev builds only. */
+export interface StudioDevHook {
+  state: () => {
+    mode: StudioMode
+    fileName: string
+    hasImage: boolean
+    hasTrace: boolean
+    hasHull: boolean
+    busy: boolean
+    importing: boolean
+    error: string
+    dims: ModelDimensions | null
+    size: { widthMm: number, heightMm: number, depthMm: number }
+  }
+  /** The viewer render as a PNG data URL, or `null` before the viewer is up. */
+  screenshot: () => Promise<string | null>
+}
+
+declare global {
+  interface Window {
+    /** Dev-only handle for the sculpt eval harness; `useSculpt` creates it, `useStudio` adds `studio`. */
+    __vitrum?: { sculpt: SculptApi, studio?: StudioDevHook }
   }
 }

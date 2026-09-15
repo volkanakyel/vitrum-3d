@@ -13,6 +13,7 @@
     "test": "vitest run",
     "postinstall": "nuxt prepare",
     "kit-api": "tsx scripts/kit-api.ts",
+    "eval": "tsx scripts/sculpt-eval.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

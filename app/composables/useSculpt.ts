@@ -17,7 +17,11 @@ import { Sandbox } from '~/utils/sculpt/sandbox'
 import { buildSheet } from '~/utils/sculpt/sheet'
 import { listJobs, loadJob, saveJob, type JobSummary } from '~/utils/sculpt/store'
 import { fetchTransport } from '~/utils/sculpt/transport'
+import type { KitOptions } from '~/utils/sculpt/kit'
 import type { Dims } from '~/utils/sculpt/types'
+
+/** Render quality the sandbox builds at; the studio uses `standard`. */
+export type SculptQuality = KitOptions['quality']
 
 /** What `useSculpt` needs from the viewer; `ViewerHandle` satisfies it. */
 export interface SculptViewer {
@@ -73,15 +77,15 @@ export function useSculpt(deps: SculptDeps) {
     }
   }
 
-  function runnerFor(target: SculptJob): JobRunner {
+  function runnerFor(target: SculptJob, quality: SculptQuality = 'standard'): JobRunner {
     const box = ensureSandbox()
     return new JobRunner(target, {
       transport: fetchTransport(),
-      // The sandbox takes a quality and a seed the runner does not model:
-      // every studio run is the standard quality at seed 1, so two runs of the
-      // same code look the same.
+      // The sandbox takes a quality and a seed the runner does not model: the
+      // studio always renders at the standard quality (the eval harness can ask
+      // for another), always at seed 1, so two runs of the same code match.
       renderer: {
-        load: code => box.load(code, 'standard', 1),
+        load: code => box.load(code, quality, 1),
         render: views => box.render(views),
         exportGLB: () => box.exportGLB(),
       },
@@ -127,7 +131,7 @@ export function useSculpt(deps: SculptDeps) {
     }
   }
 
-  async function start(hint: string, dims: Dims | null = deps.dims()) {
+  async function start(hint: string, dims: Dims | null = deps.dims(), opts: { quality?: SculptQuality } = {}) {
     if (!available.value || running.value) return
     const img = deps.image.value
     if (!img) {
@@ -139,7 +143,7 @@ export function useSculpt(deps: SculptDeps) {
     try {
       fresh = createJob(toApiImage(img), hint.trim(), dims)
       job.value = fresh
-      runner = runnerFor(fresh)
+      runner = runnerFor(fresh, opts.quality)
       await finish(await runner.run())
     }
     catch (e) {
@@ -244,10 +248,3 @@ export function useSculpt(deps: SculptDeps) {
 }
 
 export type SculptApi = ReturnType<typeof useSculpt>
-
-declare global {
-  interface Window {
-    /** Dev-only handle for the sculpt eval harness. */
-    __vitrum?: { sculpt: SculptApi }
-  }
-}
