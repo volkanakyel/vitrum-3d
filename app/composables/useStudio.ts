@@ -649,7 +649,11 @@ export function useStudio(initialMode: StudioMode = 'icon') {
         })
       },
     }
+    // `useSculpt` runs first and creates the object; if that ever changes, say
+    // so loudly rather than leaving the harness waiting on a hook that is half
+    // there.
     if (window.__vitrum) window.__vitrum.studio = hook
+    else console.warn('[vitrum] window.__vitrum was not created by useSculpt — the studio dev hook is not attached')
   }
 
   return {

@@ -11,8 +11,9 @@
  * The prompts and the kit are tuned against that table.
  *
  * The harness starts its own Nuxt dev server on a free port and kills it at the
- * end, so it never disturbs a dev server you already have running; `--base`
- * reuses one instead.
+ * end — including on Ctrl-C, an uncaught error or a crash, since a detached
+ * process group never sees the terminal's own SIGINT. `--base` reuses a server
+ * you started yourself, and that one is never killed.
  *
  * See `eval/README.md` for photos, `dims.json` and how to read the table.
  */
@@ -52,6 +53,9 @@ const SERVER_TIMEOUT_MS = 180_000
 /** The carve's hull is nice to have in `final.png` but not worth failing a run over. */
 const HULL_WAIT_MS = 120_000
 const IMPORT_TIMEOUT_MS = 180_000
+const HOOK_TIMEOUT_MS = 60_000
+/** A cancel the runner ignores must not turn into an endless loop of cancels. */
+const MAX_CANCELS = 3
 
 // ---------------------------------------------------------------- arguments
 
@@ -106,11 +110,16 @@ function usage() {
   --only <name[,name]>   Only these photos (file name without the extension).
   --passes <a,b>         Stop once the run moves past the last named pass
                          (${PASSES.join(', ')}) — for cheap prompt iteration.
+                         A run stopped this way counts as a success.
   --quality <q>          Sandbox render quality: draft | standard | hero (default standard).
   --headed               Show the browser.
   --base <url>           Use a dev server already running here instead of starting one.
-                         It must have been started with VITRUM_SANDBOX_E2E=1.
-  --timeout <minutes>    Per-photo budget (default 15).`)
+                         It must have been started with VITRUM_SANDBOX_E2E=1, and it is
+                         never killed by the harness.
+  --timeout <minutes>    Per-photo budget (default 15).
+
+Environment:
+  EVAL_VERBOSE=1         Echo the dev server's stdout (stderr is always shown).`)
 }
 
 // ------------------------------------------------------------------ helpers
@@ -148,7 +157,15 @@ function freePort(): Promise<number> {
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
-async function startServer(port: number): Promise<ChildProcess> {
+// --------------------------------------------------------- server lifecycle
+
+/**
+ * The dev server this process spawned — and only that one. A server passed in
+ * with `--base` belongs to whoever started it and is never touched.
+ */
+let spawnedServer: ChildProcess | null = null
+
+async function startServer(port: number): Promise<void> {
   const base = `http://localhost:${port}`
   console.log(`[eval] starting a dev server on ${base}`)
   const child = spawn('pnpm', ['dev', '--port', String(port)], {
@@ -158,19 +175,27 @@ async function startServer(port: number): Promise<ChildProcess> {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, VITRUM_SANDBOX_E2E: '1', NUXT_IGNORE_LOCK: '1' },
   })
+  spawnedServer = child
   child.stdout?.on('data', (d: Buffer) => process.env.EVAL_VERBOSE && process.stdout.write(`[dev] ${d}`))
   child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[dev] ${d}`))
+  let failure: Error | null = null
   let exited: number | null = null
-  child.on('exit', code => (exited = code ?? 0))
+  // `pnpm` missing, or no permission to run it: `spawn` reports it here, not by throwing.
+  child.on('error', (e: Error) => (failure = e))
+  child.on('exit', (code) => {
+    exited = code ?? 0
+    spawnedServer = null
+  })
 
   const deadline = Date.now() + SERVER_TIMEOUT_MS
   while (Date.now() < deadline) {
+    if (failure) throw new Error(`the dev server could not be started: ${(failure as Error).message}`)
     if (exited !== null) throw new Error(`the dev server exited with code ${exited} before it was ready`)
     try {
       const res = await fetch(`${base}/studio/product`)
       if (res.ok) {
         console.log('[eval] dev server ready')
-        return child
+        return
       }
     }
     catch {
@@ -181,9 +206,13 @@ async function startServer(port: number): Promise<ChildProcess> {
   throw new Error(`the dev server was not ready within ${SERVER_TIMEOUT_MS / 1000}s`)
 }
 
-function stopServer(child: ChildProcess | null) {
+/** Take down the server this process spawned; a no-op for `--base`. */
+function stopServer() {
+  const child = spawnedServer
+  spawnedServer = null
   if (!child?.pid) return
   try {
+    // Negative pid: the whole group, so the Nuxt child goes too.
     process.kill(-child.pid, 'SIGTERM')
   }
   catch {
@@ -194,6 +223,31 @@ function stopServer(child: ChildProcess | null) {
       // Already gone.
     }
   }
+}
+
+/**
+ * Ctrl-C reaches this process but not the server's own process group, so
+ * without this the dev server outlives the harness and holds its port and the
+ * Nuxt dev lock.
+ */
+function installShutdownHandlers() {
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => {
+      console.log(`\n[eval] ${signal} — stopping the dev server`)
+      stopServer()
+      process.exit(130)
+    })
+  }
+  process.on('uncaughtException', (e: Error) => {
+    console.error(`[eval] uncaught: ${e.stack ?? e.message}`)
+    stopServer()
+    process.exit(1)
+  })
+  process.on('unhandledRejection', (reason: unknown) => {
+    console.error(`[eval] unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`)
+    stopServer()
+    process.exit(1)
+  })
 }
 
 // ------------------------------------------------------- shapes read in-page
@@ -228,6 +282,8 @@ interface EvalWindow {
   __vitrum?: {
     sculpt: {
       job: { value: Record<string, unknown> | null }
+      /** False when the server has no `NUXT_ANTHROPIC_KEY`: the studio hides the panel. */
+      available: { value: boolean }
       start: (hint: string, dims: unknown, opts?: { quality?: Quality }) => Promise<void>
       cancel: () => void
       clear: () => void
@@ -239,10 +295,14 @@ interface EvalWindow {
   }
 }
 
+/** What the page has shouted about since it was opened; quoted when a wait times out. */
+interface Diagnostics { pageErrors: string[] }
+
 // ------------------------------------------------------------------ one run
 
 interface RunReport {
   name: string
+  /** `done`, `failed`, `cancelled`, `stopped-after:<pass>` (a deliberate `--passes` stop) or `harness-error`. */
   status: string
   quality: string | null
   error: string | null
@@ -252,6 +312,11 @@ interface RunReport {
   tokens: { input: number, output: number }
   costUsd: number
   seconds: number
+}
+
+/** A run that ended the way it was asked to — the exit code must not call these failures. */
+function succeeded(report: RunReport): boolean {
+  return report.status === 'done' || report.status.startsWith('stopped-after:')
 }
 
 function dataUrlToBuffer(dataUrl: string): { buffer: Buffer, ext: string } {
@@ -264,17 +329,50 @@ function dataUrlToBuffer(dataUrl: string): { buffer: Buffer, ext: string } {
   return { buffer, ext }
 }
 
-async function runPhoto(page: Page, base: string, file: string, opts: Options, dims: Record<string, PhotoDims>): Promise<RunReport> {
-  const name = basename(file, extname(file))
-  const entry = dimsFor(dims, basename(file))
-  const hint = entry.hint ?? ''
-  const size = entry.widthMm && entry.heightMm && entry.depthMm
-    ? { widthMm: entry.widthMm, heightMm: entry.heightMm, depthMm: entry.depthMm }
-    : null
-  console.log(`\n[eval] ${name} — hint ${hint ? JSON.stringify(hint) : '(none)'}, dims ${size ? `${size.widthMm}×${size.heightMm}×${size.depthMm} mm` : '(estimated)'}`)
+/** Which half of the dev hook is missing, and what the page complained about. */
+async function hookDiagnosis(page: Page, diag: Diagnostics): Promise<string> {
+  let present = { vitrum: false, sculpt: false, studio: false }
+  try {
+    present = await page.evaluate(() => {
+      const w = (window as unknown as EvalWindow).__vitrum
+      return { vitrum: !!w, sculpt: !!w?.sculpt, studio: !!w?.studio }
+    })
+  }
+  catch (e) {
+    return `the page could not even be queried (${(e as Error).message})`
+  }
+  const missing = [!present.vitrum && 'window.__vitrum', present.vitrum && !present.sculpt && '__vitrum.sculpt', present.vitrum && !present.studio && '__vitrum.studio']
+    .filter(Boolean)
+    .join(', ') || 'nothing (the hook appeared late)'
+  const errors = diag.pageErrors.length ? ` Page errors: ${diag.pageErrors.slice(-5).join(' | ')}` : ' The page reported no errors.'
+  return `missing: ${missing}.${errors}`
+}
 
+/** Open the studio, wait for the dev hook, and check the pipeline is even switched on. */
+async function preflight(page: Page, base: string, diag: Diagnostics) {
   await page.goto(`${base}/studio/product`, { waitUntil: 'domcontentloaded' })
-  await page.waitForFunction(() => !!(window as unknown as EvalWindow).__vitrum?.studio, null, { timeout: 60_000 })
+  await waitForHook(page, diag)
+  const available = await page.evaluate(() => !!(window as unknown as EvalWindow).__vitrum?.sculpt.available.value)
+  if (!available) throw new Error('sculpt is disabled — set NUXT_ANTHROPIC_KEY')
+}
+
+async function waitForHook(page: Page, diag: Diagnostics) {
+  try {
+    await page.waitForFunction(() => {
+      const w = (window as unknown as EvalWindow).__vitrum
+      return !!w?.sculpt && !!w.studio
+    }, null, { timeout: HOOK_TIMEOUT_MS })
+  }
+  catch {
+    throw new Error(`window.__vitrum never appeared within ${HOOK_TIMEOUT_MS / 1000}s — is this a dev build? ${await hookDiagnosis(page, diag)}`)
+  }
+}
+
+/** Open the studio on this photo and wait until the import has settled. */
+async function importPhoto(page: Page, base: string, file: string, diag: Diagnostics) {
+  diag.pageErrors.length = 0
+  await page.goto(`${base}/studio/product`, { waitUntil: 'domcontentloaded' })
+  await waitForHook(page, diag)
 
   await page.setInputFiles('input[type="file"]', join(PHOTOS_DIR, file))
   // The import traces, then carves; both must settle before a run starts.
@@ -289,23 +387,34 @@ async function runPhoto(page: Page, base: string, file: string, opts: Options, d
     // The depth model may be unavailable offline; the carve is only the backdrop for `final.png`.
     console.log('[eval]   (no hull — carrying on)')
   }
+}
 
-  const started = Date.now()
-  // Fire and forget: `start` only settles when the whole run does, and the
-  // poll below is what reports on it.
-  await page.evaluate(([h, d, q]) => {
-    const api = (window as unknown as EvalWindow).__vitrum?.sculpt
-    if (!api) throw new Error('window.__vitrum.sculpt is missing — is this a dev build?')
-    void api.start(h as string, d, { quality: q as Quality })
-  }, [hint, size, opts.quality] as const)
+interface PollResult {
+  snapshot: JobStatusSnapshot
+  seconds: number
+  /** The run was cancelled on purpose because `--passes` was satisfied. */
+  stoppedAfter: PassId | null
+}
 
+/** Watch the job until it settles, cancelling it when there is nothing left worth paying for. */
+async function pollJob(page: Page, opts: Options, started: number): Promise<PollResult> {
   const lastPassIndex = opts.passes ? Math.max(...opts.passes.map(p => PASSES.indexOf(p))) : PASSES.length - 1
+  const lastPass = PASSES[lastPassIndex] ?? null
   const terminal = new Set(['done', 'failed', 'cancelled'])
+  const deadline = started + opts.timeoutMs
   let snapshot: JobStatusSnapshot | null = null
-  let cancelled = false
+  let cancels = 0
+  let stoppedAfter: PassId | null = null
   let lastLine = ''
 
-  const deadline = started + opts.timeoutMs
+  const cancel = async (why: string) => {
+    if (cancels >= MAX_CANCELS) return false
+    cancels++
+    console.log(`[eval]   ${why} — cancelling${cancels > 1 ? ` (attempt ${cancels})` : ''}`)
+    await page.evaluate(() => (window as unknown as EvalWindow).__vitrum?.sculpt.cancel())
+    return true
+  }
+
   for (;;) {
     await sleep(POLL_MS)
     snapshot = await page.evaluate(() => {
@@ -339,35 +448,29 @@ async function runPhoto(page: Page, base: string, file: string, opts: Options, d
 
     if (terminal.has(snapshot.status)) break
 
+    const outOfTime = Date.now() > deadline
     if (snapshot.status === 'waiting-input') {
       // Nobody is at the keyboard: an unanswered question ends the run.
-      console.log(`[eval]   question: ${snapshot.question ?? '(none)'} — cancelling`)
-      await page.evaluate(() => (window as unknown as EvalWindow).__vitrum?.sculpt.cancel())
-      cancelled = true
+      if (!await cancel(`question: ${snapshot.question ?? '(none)'}`) || outOfTime) break
       continue
     }
-
-    if (!cancelled && snapshot.currentPass && PASSES.indexOf(snapshot.currentPass) > lastPassIndex) {
-      console.log(`[eval]   past --passes, cancelling`)
-      await page.evaluate(() => (window as unknown as EvalWindow).__vitrum?.sculpt.cancel())
-      cancelled = true
+    if (!stoppedAfter && snapshot.currentPass && PASSES.indexOf(snapshot.currentPass) > lastPassIndex) {
+      if (await cancel(`past --passes (${lastPass})`)) stoppedAfter = lastPass
+      else break
       continue
     }
-
-    if (Date.now() > deadline) {
-      if (!cancelled) {
-        console.log('[eval]   out of time, cancelling')
-        await page.evaluate(() => (window as unknown as EvalWindow).__vitrum?.sculpt.cancel())
-        cancelled = true
-        continue
-      }
-      break
+    if (outOfTime) {
+      if (!await cancel('out of time')) break
+      continue
     }
   }
 
-  const seconds = Math.round((Date.now() - started) / 1000)
   if (!snapshot) throw new Error('the run never produced a job')
+  return { snapshot, seconds: Math.round((Date.now() - started) / 1000), stoppedAfter }
+}
 
+/** Pull everything the run made out of the page and onto disk. */
+async function writeOutputs(page: Page, name: string, poll: PollResult): Promise<RunReport> {
   // Everything the run made, minus the GLB (raw bytes do not cross `evaluate`).
   const dump = await page.evaluate((): JobDump | null => {
     const j = (window as unknown as EvalWindow).__vitrum?.sculpt.job.value
@@ -442,7 +545,8 @@ async function runPhoto(page: Page, base: string, file: string, opts: Options, d
 
   const report: RunReport = {
     name,
-    status: dump.status,
+    // A `--passes` stop is a cancel the harness asked for, not a failure.
+    status: poll.stoppedAfter ? `stopped-after:${poll.stoppedAfter}` : dump.status,
     quality: dump.quality,
     error: dump.error,
     fidelityByPass,
@@ -450,11 +554,36 @@ async function runPhoto(page: Page, base: string, file: string, opts: Options, d
     fixes: dump.fixesTotal,
     tokens: dump.usage,
     costUsd: dump.costUsd,
-    seconds,
+    seconds: poll.seconds,
   }
   writeFileSync(join(dir, 'run.json'), JSON.stringify(report, null, 2))
+  return report
+}
+
+async function runPhoto(page: Page, base: string, file: string, opts: Options, dims: Record<string, PhotoDims>, diag: Diagnostics): Promise<RunReport> {
+  const name = basename(file, extname(file))
+  const entry = dimsFor(dims, basename(file))
+  const hint = entry.hint ?? ''
+  const size = entry.widthMm && entry.heightMm && entry.depthMm
+    ? { widthMm: entry.widthMm, heightMm: entry.heightMm, depthMm: entry.depthMm }
+    : null
+  console.log(`\n[eval] ${name} — hint ${hint ? JSON.stringify(hint) : '(none)'}, dims ${size ? `${size.widthMm}×${size.heightMm}×${size.depthMm} mm` : '(estimated)'}`)
+
+  await importPhoto(page, base, file, diag)
+
+  const started = Date.now()
+  // Fire and forget: `start` only settles when the whole run does, and the
+  // poll is what reports on it.
+  await page.evaluate(([h, d, q]) => {
+    const api = (window as unknown as EvalWindow).__vitrum?.sculpt
+    if (!api) throw new Error('window.__vitrum.sculpt is missing — is this a dev build?')
+    void api.start(h as string, d, { quality: q as Quality })
+  }, [hint, size, opts.quality] as const)
+
+  const poll = await pollJob(page, opts, started)
+  const report = await writeOutputs(page, name, poll)
   appendSummary(report, opts.quality)
-  console.log(`[eval]   ${report.status} in ${seconds}s → eval/out/${name}/`)
+  console.log(`[eval]   ${report.status} in ${report.seconds}s → eval/out/${name}/`)
   return report
 }
 
@@ -472,12 +601,14 @@ function appendSummary(report: RunReport, renderQuality: Quality) {
   if (!existsSync(path)) writeFileSync(path, SUMMARY_HEADER)
   const n = (v: number | undefined) => (typeof v === 'number' ? v.toFixed(2) : '—')
   const fidelities = Object.values(report.fidelityByPass)
-  const finalFidelity = report.status === 'done' || fidelities.length ? n(fidelities.at(-1)) : '—'
+  const finalFidelity = fidelities.length ? n(fidelities.at(-1)) : '—'
   const l = report.layers
   const layers = l
     ? [l.silhouetteProportion, l.componentStructure, l.formDetail, l.materialSurface, l.lightingCamera].map(v => n(v)).join('/')
     : '—'
-  const quality = report.status === 'done' ? (report.quality ?? '—') : `${report.status}${report.error ? `: ${report.error.replace(/\|/g, '/').replace(/\s+/g, ' ').slice(0, 160)}` : ''}`
+  const quality = report.status === 'done'
+    ? (report.quality ?? '—')
+    : `${report.status}${report.error ? `: ${report.error.replace(/\|/g, '/').replace(/\s+/g, ' ').slice(0, 160)}` : ''}`
   const row = `| ${report.name} | ${renderQuality} · ${quality} | ${finalFidelity} | ${layers} | ${report.fixes} | ${report.tokens.input}/${report.tokens.output} | ${report.costUsd.toFixed(2)} | ${report.seconds} |\n`
   appendFileSync(path, row)
 }
@@ -486,6 +617,7 @@ function appendSummary(report: RunReport, renderQuality: Quality) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2))
+  installShutdownHandlers()
 
   if (!existsSync(PHOTOS_DIR)) throw new Error(`no ${PHOTOS_DIR} — see eval/README.md`)
   let photos = readdirSync(PHOTOS_DIR).filter(f => PHOTO_EXTENSIONS.has(extname(f).toLowerCase())).sort()
@@ -495,43 +627,54 @@ async function main() {
   const dims = readDims()
   mkdirSync(OUT_DIR, { recursive: true })
 
-  let server: ChildProcess | null = null
   let browser: Browser | null = null
   const reports: RunReport[] = []
   try {
     let base = opts.base
     if (!base) {
       const port = await freePort()
-      server = await startServer(port)
+      await startServer(port)
       base = `http://localhost:${port}`
     }
     browser = await chromium.launch({ headless: !opts.headed, args: CHROMIUM_ARGS })
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
     const page = await context.newPage()
-    page.on('pageerror', e => console.log(`[page] ${e.message}`))
-    page.on('console', m => m.type() === 'error' && console.log(`[page] ${m.text()}`))
+    const diag: Diagnostics = { pageErrors: [] }
+    const note = (text: string) => {
+      console.log(`[page] ${text}`)
+      diag.pageErrors.push(text)
+      if (diag.pageErrors.length > 50) diag.pageErrors.shift()
+    }
+    page.on('pageerror', e => note(e.message))
+    page.on('console', m => m.type() === 'error' && note(m.text()))
+
+    // One cheap load before any photo: a disabled pipeline should not cost a
+    // 15-minute timeout per photo to discover.
+    await preflight(page, base, diag)
 
     for (const photo of photos) {
       try {
-        reports.push(await runPhoto(page, base, photo, opts, dims))
+        reports.push(await runPhoto(page, base, photo, opts, dims, diag))
       }
       catch (e) {
         console.error(`[eval] ${photo} could not be run: ${(e as Error).message}`)
-        reports.push({ name: basename(photo, extname(photo)), status: 'harness-error', quality: null, error: (e as Error).message, fidelityByPass: {}, layers: null, fixes: 0, tokens: { input: 0, output: 0 }, costUsd: 0, seconds: 0 })
-        appendSummary(reports[reports.length - 1]!, opts.quality)
+        const failed: RunReport = { name: basename(photo, extname(photo)), status: 'harness-error', quality: null, error: (e as Error).message, fidelityByPass: {}, layers: null, fixes: 0, tokens: { input: 0, output: 0 }, costUsd: 0, seconds: 0 }
+        reports.push(failed)
+        appendSummary(failed, opts.quality)
       }
     }
   }
   finally {
     await browser?.close()
-    stopServer(server)
+    stopServer()
   }
 
-  console.log(`\n[eval] ${reports.filter(r => r.status === 'done').length}/${reports.length} runs finished — eval/out/summary.md`)
-  if (reports.some(r => r.status !== 'done')) process.exitCode = 1
+  console.log(`\n[eval] ${reports.filter(succeeded).length}/${reports.length} runs finished — eval/out/summary.md`)
+  if (!reports.every(succeeded)) process.exitCode = 1
 }
 
 main().catch((e: unknown) => {
   console.error(`[eval] ${(e as Error).message}`)
+  stopServer()
   process.exit(1)
 })

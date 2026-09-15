@@ -57,6 +57,7 @@ pnpm eval --quality draft              # sandbox render quality: draft | standar
 pnpm eval --headed                     # watch it happen
 pnpm eval --base http://localhost:3000 # reuse a dev server you started yourself
 pnpm eval --timeout 25                 # per-photo budget in minutes (default 15)
+EVAL_VERBOSE=1 pnpm eval                # echo the dev server's stdout too (stderr is always shown)
 ```
 
 `--base` only works with a dev server started with `VITRUM_SANDBOX_E2E=1` (the opaque-origin sandbox
@@ -64,8 +65,15 @@ frame needs the CORS relaxation that flag turns on):
 `VITRUM_SANDBOX_E2E=1 pnpm dev --port 3000`.
 
 A run that is still going after `--timeout` minutes is cancelled and recorded as `cancelled`; a job
-that stops to ask the user a question is cancelled too, since nobody is at the keyboard. The process
-exits non-zero if any run did not reach `done`.
+that stops to ask the user a question is cancelled too, since nobody is at the keyboard. A run the
+harness stopped on purpose because `--passes` was satisfied is recorded as `stopped-after:<pass>`
+and counts as a success, so scripted iteration loops work. The process exits non-zero if any other
+run did not reach `done`.
+
+Before the first photo the harness loads the studio once and checks that sculpt is switched on; if
+the server has no `NUXT_ANTHROPIC_KEY` it stops immediately with "sculpt is disabled" rather than
+burning a timeout per photo. Ctrl-C stops the dev server it started (a server given with `--base` is
+never touched).
 
 ## 4. What it writes
 
