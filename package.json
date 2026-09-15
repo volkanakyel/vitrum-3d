@@ -14,6 +14,7 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "@lucide/vue": "^1.41.0",
     "@pmndrs/vanilla": "^1.25.0",
     "@tailwindcss/vite": "^4.3.3",

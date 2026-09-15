@@ -1,6 +1,10 @@
 import { contours as d3Contours } from 'd3-contour'
 
-export type SourceMode = 'auto' | 'dark' | 'light' | 'alpha' | 'color'
+/**
+ * `object`: everything that is not the page, at an absolute colour distance, for product photos
+ * whose lit faces are too close to the page for the stretched fields to keep.
+ */
+export type SourceMode = 'auto' | 'dark' | 'light' | 'alpha' | 'color' | 'object'
 export type ResolvedMode = Exclude<SourceMode, 'auto'>
 
 export interface TraceOptions {
@@ -505,10 +509,16 @@ export function buildField(
     const g = px[p + 1]! * a + bg * (1 - a)
     const b = px[p + 2]! * a + bb * (1 - a)
     let v: number
-    if (mode === 'color') {
+    if (mode === 'color' || mode === 'object') {
       const dr = r - br, dg = g - bg, db = b - bb
       v = Math.sqrt(0.3 * dr * dr + 0.59 * dg * dg + 0.11 * db * db) * norm * 2.2
       if (v > 1) v = 1
+      // Object mode: a product shot's soft floor shadow is bright and grey; it is page, not object.
+      if (mode === 'object') {
+        const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+        const chroma = (Math.max(r, g, b) - Math.min(r, g, b)) / 255
+        if (lum > 0.8 && chroma < 0.07) v = 0
+      }
     } else {
       const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
       v = mode === 'dark' ? 1 - lum : lum
@@ -516,7 +526,8 @@ export function buildField(
     // Fully transparent pixels never count as logo, whatever the page colour.
     field[i] = a < 0.02 ? 0 : v
   }
-  return stretch && mode !== 'alpha' ? normalize(field) : field
+  // Object mode is absolute: a lit wooden top is still off-page, and stretching would push it toward page.
+  return stretch && mode !== 'alpha' && mode !== 'object' ? normalize(field) : field
 }
 
 function hasUsefulAlpha(data: ImageData): boolean {
@@ -616,7 +627,9 @@ function traceMode(
 ): Candidate {
   const { width, height } = data
   const field = blurField(buildField(data, mode, background), width, height, blur)
-  const gen = d3Contours().size([width, height]).smooth(true).thresholds([threshold])
+  // Object mode cuts just above the page colour and its soft floor shadow (0.5 → 10% distance).
+  const iso = mode === 'object' ? threshold * 0.2 : threshold
+  const gen = d3Contours().size([width, height]).smooth(true).thresholds([iso])
   const [multi] = gen(Array.from(field))
   const polygons: TracedPolygon[] = []
   const bordered: TracedPolygon[] = []

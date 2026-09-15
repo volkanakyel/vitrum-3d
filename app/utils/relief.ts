@@ -168,7 +168,7 @@ function maskBounds(mask: Uint8Array | null, w: number, h: number) {
  * Huttenlocher's separable parabola transform). Outside points and the grid border count as
  * distance 0 so a silhouette touching the edge still rounds off there.
  */
-function distanceToEdge(mask: Uint8Array, w: number, h: number): Float32Array {
+export function distanceToEdge(mask: Uint8Array, w: number, h: number): Float32Array {
   const INF = 1e12
   const f = new Float32Array(w * h)
   for (let i = 0; i < f.length; i++) f[i] = mask[i] ? INF : 0
@@ -222,8 +222,8 @@ function stretch(f: Float32Array) {
   for (let i = 0; i < f.length; i++) f[i] = Math.min(1, Math.max(0, (f[i]! - a) * k))
 }
 
-/** Three box passes ≈ Gaussian, separable, in place. */
-function gaussianBlur(f: Float32Array, w: number, h: number, sigma: number) {
+/** Three box passes ≈ Gaussian, separable, in place. Shared with `surface.ts`. */
+export function gaussianBlur(f: Float32Array, w: number, h: number, sigma: number) {
   const r = Math.max(1, Math.round(sigma * 0.9))
   const tmp = new Float32Array(f.length)
   for (let pass = 0; pass < 3; pass++) {
@@ -248,7 +248,7 @@ function gaussianBlur(f: Float32Array, w: number, h: number, sigma: number) {
 }
 
 /** Fill the traced polygons (even-odd) into a w×h grid, scaled from the trace raster. */
-function rasterizeMask(mask: ReliefMask, w: number, h: number): Uint8Array {
+export function rasterizeMask(mask: ReliefMask, w: number, h: number): Uint8Array {
   const canvas = makeCanvas(w, h)
   const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
   const kx = w / mask.width, ky = h / mask.height
@@ -342,7 +342,8 @@ export function buildReliefGeometry(d: ReliefData, b: ReliefBuild): THREE.Buffer
       const dzdy = (zTop(yu * w + x) - zTop(yd * w + x)) / ((yd - yu) * sy || 1)
       const len = Math.hypot(dzdx, dzdy, 1)
       nor[t] = -dzdx / len; nor[t + 1] = -dzdy / len; nor[t + 2] = 1 / len
-      if (mirror) { nor[bt] = dzdx / len; nor[bt + 1] = dzdy / len; nor[bt + 2] = -1 / len }
+      // The back is the front mirrored through the mid-plane: same in-plane tilt, z flipped.
+      if (mirror) { nor[bt] = -dzdx / len; nor[bt + 1] = -dzdy / len; nor[bt + 2] = -1 / len }
       else { nor[bt] = 0; nor[bt + 1] = 0; nor[bt + 2] = -1 }
     }
   }

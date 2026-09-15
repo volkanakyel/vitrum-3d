@@ -8,7 +8,8 @@ import { STUDIO_MODES, type StudioMode } from '~/composables/useStudio'
 
 // No `validate` here: a runtime validator makes Nuxt load this page module (and the WebGL
 // stack behind it) while server-rendering every other route. An unknown mode falls back to icon.
-definePageMeta({ layout: 'studio' })
+// One page instance for both modes: switching changes the URL, never remounts the studio.
+definePageMeta({ layout: 'studio', key: 'studio' })
 
 const route = useRoute()
 const router = useRouter()
@@ -17,20 +18,20 @@ const initial: StudioMode = STUDIO_MODES.some(x => x.id === requested) ? (reques
 if (requested && requested !== initial) void router.replace('/studio/icon')
 const studio = useStudio(initial)
 const {
-  mode, image, fileName, trace, traceOpts, reliefOpts, relief, glass, dims, busy, importing, error,
+  mode, image, fileName, trace, traceOpts, reliefOpts, relief, views, viewOpts, cameraSide, hull, depthState, depthProgress, depthDevice, hullSources, glass, dims, busy, importing, error,
   dragging, exporting, toast, view, viewer, heightMm,
-  setView, clearImage, onDrop, onPick, loadSample, doExport, setHeight,
+  setView, clearImage, onDrop, onPick, onPickView, removeView, flipView, loadSample, doExport, setHeight,
 } = studio
 
 useHead(() => ({ title: mode.value === 'product' ? 'Product studio · Vitrum' : 'Icon studio · Vitrum' }))
 
 function setMode(m: StudioMode) {
   if (mode.value === m) return
-  mode.value = m
+  void studio.setMode(m)
   void router.replace(`/studio/${m}`)
 }
 watch(() => route.params.mode, (m) => {
-  if (m && STUDIO_MODES.some(x => x.id === m)) mode.value = m as StudioMode
+  if (m && STUDIO_MODES.some(x => x.id === m)) void studio.setMode(m as StudioMode)
 })
 const modeInfo = computed(() => STUDIO_MODES.find(m => m.id === mode.value)!)
 
@@ -54,6 +55,13 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
         :trace-opts="traceOpts"
         :relief-opts="reliefOpts"
         :glass="glass"
+        :views="views"
+        :view-opts="viewOpts"
+        :camera-side="cameraSide"
+        :hull="hull"
+        :depth-state="depthState"
+        :depth-progress="depthProgress"
+        :depth-device="depthDevice"
         :height-mm="heightMm"
         :file-name="fileName"
         :busy="busy"
@@ -63,6 +71,10 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
         @sample="loadSample()"
         @clear="clearImage"
         @set-height="setHeight"
+        @mode="setMode"
+        @pick-view="onPickView"
+        @remove-view="removeView"
+        @flip-view="flipView"
       />
 
       <SidebarInset class="min-h-0 min-w-0 overflow-hidden bg-card">
@@ -102,24 +114,41 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
             </NuxtLink>
           </div>
 
-          <!-- Mode: what a fresh import opens as. Centred so it reads as the studio's title. -->
-          <div class="absolute left-1/2 flex h-8 -translate-x-1/2 items-center rounded-full well p-[3px] max-sm:hidden">
-            <button
+          <!-- Mode: how the picture is read. Centred so it reads as the studio's title; on
+               small screens it lives in the panel header instead. -->
+          <div
+            class="absolute left-1/2 flex h-8 -translate-x-1/2 items-center rounded-full well p-[3px] max-sm:hidden"
+            role="radiogroup"
+            aria-label="Studio mode"
+          >
+            <Tooltip
               v-for="m in STUDIO_MODES"
               :key="m.id"
-              class="relative h-[26px] rounded-full px-3.5 text-[12px] font-medium transition-colors"
-              :class="mode === m.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
-              :aria-pressed="mode === m.id"
-              @click="setMode(m.id)"
             >
-              <motion.span
-                v-if="mode === m.id"
-                layout-id="mode-pill"
-                class="absolute inset-0 -z-10 rounded-full bg-card shadow-[var(--shadow-raise)]"
-                :transition="{ type: 'spring', stiffness: 500, damping: 40 }"
-              />
-              <span class="relative">{{ m.label }}</span>
-            </button>
+              <TooltipTrigger as-child>
+                <button
+                  class="relative flex h-[26px] items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium transition-colors"
+                  :class="mode === m.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
+                  role="radio"
+                  :aria-checked="mode === m.id"
+                  @click="setMode(m.id)"
+                >
+                  <motion.span
+                    v-if="mode === m.id"
+                    layout-id="mode-pill"
+                    class="absolute inset-0 -z-10 rounded-full bg-card shadow-[var(--shadow-raise)]"
+                    :transition="{ type: 'spring', stiffness: 500, damping: 40 }"
+                  />
+                  <Icon
+                    :name="m.icon"
+                    :size="13"
+                    class="relative"
+                  />
+                  <span class="relative">{{ m.label }}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{{ m.hint }}</TooltipContent>
+            </Tooltip>
           </div>
 
           <div class="flex items-center gap-2">
@@ -186,6 +215,8 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
             ref="viewer"
             :trace="trace"
             :relief="relief"
+            :hull="hull"
+            :hull-sources="hullSources"
             :params="glass"
             :source="image"
             @dimensions="dims = $event"

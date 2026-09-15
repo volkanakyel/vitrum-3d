@@ -17,7 +17,7 @@ const active = computed(() => {
 function apply(p: MaterialPreset) { Object.assign(props.glass, p.values) }
 function switchTab(f: Finish) {
   tab.value = f
-  const first = { glass: 'clear', metal: 'gold', print: 'satin' }[f]
+  const first = { glass: 'clear', metal: 'gold', print: 'natural' }[f]
   if (props.glass.finish !== f) apply(MATERIAL_PRESETS.find(p => p.id === first)!)
 }
 

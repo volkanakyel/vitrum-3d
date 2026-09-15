@@ -2,13 +2,31 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
 import { STLExporter } from 'three/addons/exporters/STLExporter.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { MeshTransmissionMaterial } from '@pmndrs/vanilla'
 import type { TraceResult } from './trace'
 import { DEFAULT_GLASS_PARAMS, type Finish, type Geometry, type GlassParams } from './presets'
 export * from './presets'
 import { buildExtrudeGeometry } from './extrude'
-import { buildPrintTexture, buildCropTexture } from './printTexture'
+import { buildPrintTexture, buildCropTexture, padSilhouette } from './printTexture'
 import { buildReliefGeometry, reliefScale, type ReliefData } from './relief'
+import { buildSurfaceCanvases, softenCanvas } from './surface'
+import { projectHull, type HullData, type HullPaintView } from './hull'
+import type { ReliefMask } from './relief'
+import type { Crop } from './trace'
+
+/** The photos a carved hull is painted from, each with the source region its outline covers. */
+export interface HullSource {
+  image: HTMLImageElement
+  crop: Crop
+  /** The view's outline in its trace raster, so paint never samples the page around the object. */
+  mask: ReliefMask
+}
+export interface HullSources {
+  front: HullSource
+  side: HullSource | null
+  top: HullSource | null
+}
 
 /**
  * A dark studio with a few bright softboxes. High contrast is what makes glass read as glass:
@@ -54,6 +72,8 @@ export function createStudioEnvironment(): THREE.Scene {
   return scene
 }
 
+export type ViewName = 'angle' | 'front' | 'side' | 'top'
+
 export interface ModelDimensions {
   widthMm: number
   heightMm: number
@@ -76,7 +96,7 @@ export class GlassStudio {
   private target: GlassParams = { ...DEFAULT_GLASS_PARAMS }
   /** Values currently applied; eased toward `target` every frame. */
   private params: GlassParams = { ...DEFAULT_GLASS_PARAMS }
-  private built = { widthMm: NaN, depthMm: NaN, bevelMm: NaN, bevelSegments: NaN, reliefMm: NaN, layerMm: NaN, geometry: '' as Geometry | '', relief: null as ReliefData | null }
+  private built = { widthMm: NaN, depthMm: NaN, bevelMm: NaN, bevelSegments: NaN, reliefMm: NaN, layerMm: NaN, geometry: '' as Geometry | '', relief: null as ReliefData | null, hull: null as HullData | null }
   private camGoal: THREE.Vector3 | null = null
   /** Wheel zoom eases toward this distance from the target; 0 when settled. */
   private zoomGoal = 0
@@ -93,17 +113,70 @@ export class GlassStudio {
   private disposed = false
   private key: THREE.DirectionalLight
   private rim: THREE.DirectionalLight
+  /** Product stage only: sky/ground ambient and a cool fill opposite the key. */
+  private hemi: THREE.HemisphereLight
+  private fill: THREE.DirectionalLight
+  /** Which rig is up: `null` until the first `apply`. */
+  private stage: 'wall' | 'floor' | null = null
+  private envStudio: THREE.Texture
+  private envRoom: THREE.Texture | null = null
   private backdrop: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
   private backdropCanvas = document.createElement('canvas')
   private shadowPlane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
   private shadowCanvas = document.createElement('canvas')
   readonly metal: THREE.MeshPhysicalMaterial
   readonly print: THREE.MeshPhysicalMaterial
+  /**
+   * The Color finish for a carved hull: the photos are projected onto it at full resolution,
+   * blended per vertex by which camera saw the surface (`projectHull`), with the front photo's
+   * grain as normal and roughness maps where the front camera faced it.
+   */
+  readonly printHull: THREE.MeshPhysicalMaterial
+  private hullUniforms = { hullFront: { value: null as THREE.Texture | null }, hullSide: { value: null as THREE.Texture | null }, hullTop: { value: null as THREE.Texture | null } }
+  private hullMaps: THREE.Texture[] = []
+  /** 1×1 white: what an absent photo samples as (its weight is 0 anyway). */
+  private blank = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
+  private hull: HullData | null = null
+  private hullSources: HullSources | null = null
+  /** `flatten|grain` the hull's photo maps were built with. */
+  private hullPaintSig = ''
+  private hullPaintTimer: ReturnType<typeof setTimeout> | undefined
   private source: HTMLImageElement | null = null
   private relief: ReliefData | null = null
   private printTex: THREE.CanvasTexture | null = null
   /** Which geometry the print texture was padded for; relief without a cutout wants the plain crop. */
   private printTexKind: Geometry | null = null
+  /** The raw Color canvas; the albedo, normal and roughness maps are derived from it. */
+  private printCanvas: HTMLCanvasElement | null = null
+  private surface: { albedo: THREE.CanvasTexture | null; normal: THREE.CanvasTexture | null; roughness: THREE.CanvasTexture | null } = { albedo: null, normal: null, roughness: null }
+  /** `flatten|grain` the surface maps were built for. */
+  private surfaceSig = ''
+  private surfaceTimer: ReturnType<typeof setTimeout> | undefined
+  /** Floor under the model that catches the key light's shadow (product shots). */
+  private floor: THREE.Mesh<THREE.PlaneGeometry, THREE.ShadowMaterial>
+  /**
+   * The two light rigs, as unit directions from the model. The wall rig is the glass studio's.
+   * The floor rig is the reference product shot's (`orange-chair-bed`, `createOrangeChairBedLookDevLights('reference')`)
+   * to the number: white key 2.2 from upper front left casting the shadow, warm fill 0.8 from
+   * the front right, white rim 0.5 from behind and above, over a white sky / warm-grey ground
+   * hemisphere at 0.9. Only the key's direction is scaled to the model, in `placeFloor`.
+   */
+  private static readonly RIGS = {
+    wall: {
+      keyDir: new THREE.Vector3(-1, 1.7, 1.4).normalize(),
+      rimDir: new THREE.Vector3(1.4, -0.4, -1).normalize(),
+    },
+    floor: {
+      keyDir: new THREE.Vector3(-2.2, 3.4, 2.6).normalize(),
+      fillDir: new THREE.Vector3(2.4, 1.6, 2.0).normalize(),
+      rimDir: new THREE.Vector3(0, 2.5, -3).normalize(),
+    },
+  } as const
+  /** Parameters that land at once: integers, and the two that rebuild textures. */
+  private static readonly SNAP_KEYS = ['bevelSegments', 'flatten', 'grain', 'soften'] as const
+  /** Procedural weave bump shared by both Color materials: strength and cells per millimetre. */
+  private weaveUniforms = { weaveStrength: { value: 0 }, weaveFreq: { value: 1 } }
+  private view: ViewName = 'angle'
   /** How long the last geometry rebuild took; decides whether size changes ease or snap. */
   private lastRebuildMs = 0
   private static readonly GEOMETRY_KEYS = ['widthMm', 'depthMm', 'bevelMm', 'reliefMm', 'layerMm'] as const
@@ -118,6 +191,11 @@ export class GlassStudio {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.NeutralToneMapping
     this.renderer.toneMappingExposure = 1.0
+    // Only the key light casts, and only while the model stands on a floor. The reference used
+    // PCFSoftShadowMap, deprecated in r185 (it falls back to PCF with a warning); PCF with a
+    // small radius on a 2048 map gives the same wide, soft penumbra.
+    this.renderer.shadowMap.enabled = true
+    this.renderer.shadowMap.type = THREE.PCFShadowMap
 
     this.camera = new THREE.PerspectiveCamera(28, 1, 1, 10000)
     this.camera.position.set(-120, 60, 420)
@@ -143,16 +221,26 @@ export class GlassStudio {
     this.controls.maxDistance = 4000
 
     this.pmrem = new THREE.PMREMGenerator(this.renderer)
-    this.scene.environment = this.pmrem.fromScene(createStudioEnvironment(), 0.02).texture
+    this.envStudio = this.pmrem.fromScene(createStudioEnvironment(), 0.02).texture
+    this.scene.environment = this.envStudio
+    this.blank.needsUpdate = true
     this.renderer.transmissionResolutionScale = 1
     this.scene.background = new THREE.Color(this.params.background)
 
-    // Two hard lights give the crisp specular streaks a studio glass shot has.
+    // Two hard lights give the crisp specular streaks a studio glass shot has. The product rig
+    // (floor on) re-aims and re-colours them: see `RIGS`.
     this.key = new THREE.DirectionalLight(0xffffff, 2.2)
-    this.key.position.set(-1, 1.2, 1.6)
+    this.key.position.copy(GlassStudio.RIGS.wall.keyDir)
+    this.key.shadow.mapSize.set(2048, 2048)
+    this.key.shadow.radius = 3
     this.rim = new THREE.DirectionalLight(0xdfe9ff, 1.4)
-    this.rim.position.set(1.4, -0.4, -1)
-    this.scene.add(this.key, this.rim)
+    this.rim.position.copy(GlassStudio.RIGS.wall.rimDir)
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0xd8d2cc, 0.9)
+    this.hemi.visible = false
+    this.fill = new THREE.DirectionalLight(0xfff4ec, 0.8)
+    this.fill.position.copy(GlassStudio.RIGS.floor.fillDir)
+    this.fill.visible = false
+    this.scene.add(this.key, this.rim, this.hemi, this.fill)
 
     // A soft vignette behind the model gives refraction and dispersion something to bend.
     this.backdropCanvas.width = this.backdropCanvas.height = 512
@@ -178,6 +266,17 @@ export class GlassStudio {
     this.shadowPlane.visible = false
     this.scene.add(this.shadowPlane)
 
+    // Floor: invisible except for the shadow it receives; placed under the model per rebuild.
+    this.floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.ShadowMaterial({ opacity: this.params.shadow, depthWrite: false }),
+    )
+    this.floor.name = 'floor'
+    this.floor.rotation.x = -Math.PI / 2
+    this.floor.receiveShadow = true
+    this.floor.visible = false
+    this.scene.add(this.floor)
+
     this.metal = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(this.params.tint),
       metalness: this.params.metalness,
@@ -194,8 +293,26 @@ export class GlassStudio {
       roughness: this.params.roughness,
       clearcoat: this.params.clearcoat,
       clearcoatRoughness: 0.12,
+      sheen: this.params.sheen,
+      sheenRoughness: 0.55,
+      sheenColor: 0xffffff,
       envMapIntensity: this.params.envIntensity,
     })
+
+    this.printHull = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff,
+      metalness: 0,
+      roughness: this.params.roughness,
+      clearcoat: this.params.clearcoat,
+      clearcoatRoughness: 0.12,
+      sheen: this.params.sheen,
+      sheenRoughness: 0.55,
+      sheenColor: 0xffffff,
+      envMapIntensity: this.params.envIntensity,
+    })
+    this.patchHullProjection()
+    this.patchWeave(this.print)
+    this.patchWeave(this.printHull)
 
     // drei's transmission material: renders the scene into its own buffer twice (back faces, then
     // front faces) so the rims refract the glass behind them instead of a flat background.
@@ -319,7 +436,7 @@ export class GlassStudio {
       if (tv === pv) continue
       dirty = true
       if (typeof tv === 'number' && typeof pv === 'number') {
-        if (key === 'bevelSegments' || (snapGeometry && (GlassStudio.GEOMETRY_KEYS as readonly string[]).includes(key))) { p[key] = tv; continue }
+        if ((GlassStudio.SNAP_KEYS as readonly string[]).includes(key) || (snapGeometry && (GlassStudio.GEOMETRY_KEYS as readonly string[]).includes(key))) { p[key] = tv; continue }
         const next = pv + (tv - pv) * k
         p[key] = Math.abs(tv - next) < Math.abs(tv) * 1e-4 + 1e-4 ? tv : next
       } else if (typeof tv === 'string' && (this.colorKeys as readonly string[]).includes(key)) {
@@ -376,13 +493,27 @@ export class GlassStudio {
     this.metal.roughness = p.roughness
     this.metal.clearcoat = p.clearcoat
     this.metal.envMapIntensity = p.envIntensity
-    this.print.roughness = p.roughness
-    this.print.clearcoat = p.clearcoat
-    this.print.envMapIntensity = p.envIntensity
+    // three darkens the base by 0.157 × sheen to pay for the sheen lobe; lift the base back so a
+    // cloth preset keeps the photo's brightness instead of going dull.
+    const sheenGain = 1 / (1 - 0.157 * p.sheen)
+    // The reference weave repeats 180 cells across its cushion: the same count across the width.
+    this.weaveUniforms.weaveStrength.value = p.weave
+    this.weaveUniforms.weaveFreq.value = 180 / Math.max(1, p.widthMm)
+    for (const m of [this.print, this.printHull]) {
+      m.roughness = p.roughness
+      m.clearcoat = p.clearcoat
+      m.sheen = p.sheen
+      m.color.setScalar(sheenGain)
+      m.envMapIntensity = p.envIntensity
+    }
     // Clear glass shows what is behind it, and a black silhouette right behind a clear slab
     // reads as a grey slab. Fade the contact shadow by the glass's clarity, never by the mesh.
     const glassy = p.finish === 'glass'
-    this.shadowPlane.material.opacity = glassy ? p.shadow * (1 - 0.7 * p.clarity) : p.shadow
+    const shadowOpacity = glassy ? p.shadow * (1 - 0.7 * p.clarity) : p.shadow
+    this.shadowPlane.material.opacity = shadowOpacity
+    this.floor.material.opacity = shadowOpacity
+    const floorChanged = this.key.castShadow !== p.floor
+    this.setFloor(p.floor)
     ;(this.scene.background as THREE.Color).set(p.background)
     this.paintBackdrop()
     this.renderer.toneMappingExposure = p.exposure
@@ -393,9 +524,14 @@ export class GlassStudio {
       this.camera.updateProjectionMatrix()
     }
     if (this.mesh) {
-      if (p.finish === 'print') this.ensurePrintTexture()
+      if (p.finish === 'print') {
+        if (this.hullActive()) this.scheduleHullPaint()
+        else { this.ensurePrintTexture(); this.scheduleSurface() }
+      }
       this.mesh.material = this.materialFor(p.finish)
       if (prevFinish !== p.finish) this.pop = 0
+      // A new stage (wall ↔ floor) is a new shot: glide to its named angle.
+      if (floorChanged) this.frame(true)
     }
     const b = this.built
     const active = this.activeGeometry()
@@ -407,7 +543,8 @@ export class GlassStudio {
       Math.abs(b.widthMm - p.widthMm) > 0.01 || Math.abs(b.depthMm - p.depthMm) > 0.01 ||
       (!relief && (Math.abs(b.bevelMm - p.bevelMm) > 0.005 || b.bevelSegments !== p.bevelSegments)) ||
       (active === 'stack' && Math.abs(b.layerMm - p.layerMm) > 0.01) ||
-      (relief && (Math.abs(b.reliefMm - p.reliefMm) > 0.01 || b.relief !== this.relief))
+      (relief && !this.hullActive() && (Math.abs(b.reliefMm - p.reliefMm) > 0.01 || b.relief !== this.relief)) ||
+      (this.hullActive() && b.hull !== this.hull)
     ) {
       this.rebuild()
       if (swapped && this.mesh) { this.pop = 0; this.frame() }
@@ -451,8 +588,280 @@ export class GlassStudio {
     gl.render(this.scene, this.camera)
   }
 
+  /**
+   * Floor on: the key light casts, the model stands on the floor and the orbit stays above it.
+   * Floor off: the blurred silhouette on the wall behind, and the full orbit.
+   */
+  private setFloor(on: boolean) {
+    const has = !!this.mesh
+    this.setStage(on ? 'floor' : 'wall')
+    this.key.castShadow = on
+    this.floor.visible = on && has
+    this.shadowPlane.visible = !on && has
+    if (this.mesh) { this.mesh.castShadow = on; this.mesh.receiveShadow = on }
+    this.controls.maxPolarAngle = on ? Math.PI / 2 - 0.04 : Math.PI - 0.03
+  }
+
+  /**
+   * Two stages. The wall (logo) stage is the glass studio: a dark room with bright softboxes,
+   * neutral tone curve, one hard key and a cool rim, so bevels flare and go dark. The floor
+   * (product) stage is the reference product shot: ACES film curve, the `RIGS.floor` lights,
+   * and for the Color finish *no* environment map at all, so a matte surface is lit by the four
+   * lights alone and shows no room reflections on its rims. Glass and metal cannot do without
+   * reflections, so they keep a neutral room while on the floor.
+   */
+  private setStage(stage: 'wall' | 'floor') {
+    if (this.stage === stage) { this.applyEnvironment(); return }
+    this.stage = stage
+    const product = stage === 'floor'
+    const rig = product ? GlassStudio.RIGS.floor : GlassStudio.RIGS.wall
+    this.renderer.toneMapping = product ? THREE.ACESFilmicToneMapping : THREE.NeutralToneMapping
+    this.applyEnvironment()
+    this.hemi.visible = this.fill.visible = product
+    this.key.color.set(0xffffff)
+    this.key.intensity = 2.2
+    this.rim.color.set(product ? 0xffffff : 0xdfe9ff)
+    this.rim.intensity = product ? 0.5 : 1.4
+    this.rim.position.copy(rig.rimDir)
+    this.key.position.copy(rig.keyDir).multiplyScalar(this.keyDistance)
+  }
+
+  /** How far out along its direction the key light sits; set per model in `placeFloor`. */
+  private keyDistance = 1
+
+  private applyEnvironment() {
+    const product = this.stage === 'floor'
+    const bare = product && this.params.finish === 'print'
+    if (product && !bare && !this.envRoom) this.envRoom = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+    const env = bare ? null : product ? this.envRoom : this.envStudio
+    if (this.scene.environment !== env) this.scene.environment = env
+    this.scene.environmentIntensity = product ? 0.35 : 1
+  }
+
+  /**
+   * Teach the hull material to sample up to three photos by the per-vertex weights and texture
+   * coordinates `projectHull` computed, falling back to the vertex colour where no camera saw
+   * the surface. The front photo's grain maps only apply in proportion to the front weight.
+   */
+  private patchHullProjection() {
+    const m = this.printHull
+    const u = this.hullUniforms
+    m.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, u)
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>
+          attribute vec2 hullUvFront; attribute vec2 hullUvSide; attribute vec2 hullUvTop;
+          attribute vec3 hullWeight; attribute vec3 hullColor;
+          varying vec2 vHullUvFront; varying vec2 vHullUvSide; varying vec2 vHullUvTop;
+          varying vec3 vHullWeight; varying vec3 vHullColor;`)
+        .replace('#include <uv_vertex>', `#include <uv_vertex>
+          vHullUvFront = hullUvFront; vHullUvSide = hullUvSide; vHullUvTop = hullUvTop;
+          vHullWeight = hullWeight; vHullColor = hullColor;`)
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+          uniform sampler2D hullFront; uniform sampler2D hullSide; uniform sampler2D hullTop;
+          varying vec2 vHullUvFront; varying vec2 vHullUvSide; varying vec2 vHullUvTop;
+          varying vec3 vHullWeight; varying vec3 vHullColor;`)
+        .replace('#include <map_fragment>', `
+          vec3 hullRgb = texture2D( hullFront, vHullUvFront ).rgb * vHullWeight.x
+            + texture2D( hullSide, vHullUvSide ).rgb * vHullWeight.y
+            + texture2D( hullTop, vHullUvTop ).rgb * vHullWeight.z;
+          float hullSeen = min( 1.0, vHullWeight.x + vHullWeight.y + vHullWeight.z );
+          diffuseColor.rgb *= hullRgb + vHullColor * ( 1.0 - hullSeen );`)
+        .replace('#include <normal_fragment_maps>', THREE.ShaderChunk.normal_fragment_maps.replace('mapN.xy *= normalScale;', 'mapN.xy *= normalScale * vHullWeight.x;'))
+        .replace('#include <roughnessmap_fragment>', THREE.ShaderChunk.roughnessmap_fragment.replace('roughnessFactor *= texelRoughness.g;', 'roughnessFactor *= mix( 1.0, texelRoughness.g, vHullWeight.x );'))
+    }
+    m.customProgramCacheKey = () => 'hull-projection'
+  }
+
+  /**
+   * A woven bump computed in the shader from the object-space position, so every part of the
+   * surface gets the same cell size whatever the texture coordinates did (the projected photo's
+   * pixels stretch where a camera saw the surface at an angle; this does not). Two thread
+   * directions over and under in a checker, as the reference's fabric canvas, bump-mapped by
+   * screen derivatives, blended across the three axes by the normal, and faded out once a cell
+   * is under two pixels so a far view does not shimmer.
+   */
+  private patchWeave(m: THREE.MeshPhysicalMaterial) {
+    const inner = m.onBeforeCompile
+    const innerKey = m.customProgramCacheKey
+    const u = this.weaveUniforms
+    m.onBeforeCompile = (shader, renderer) => {
+      inner.call(m, shader, renderer)
+      shader.uniforms.weaveStrength = u.weaveStrength
+      shader.uniforms.weaveFreq = u.weaveFreq
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWeavePos; varying vec3 vWeaveNrm;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWeavePos = position; vWeaveNrm = normal;')
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+          uniform float weaveStrength; uniform float weaveFreq;
+          varying vec3 vWeavePos; varying vec3 vWeaveNrm;
+          float weaveH( vec2 q ) {
+            vec2 c = floor( q );
+            float over = mod( c.x + c.y, 2.0 );
+            vec2 f = fract( q );
+            float t = over > 0.5 ? sin( f.x * 3.14159 ) : sin( f.y * 3.14159 );
+            return t * ( 0.7 + 0.3 * over );
+          }
+          vec3 weaveNormal( vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection ) {
+            vec3 vSigmaX = normalize( dFdx( surf_pos.xyz ) );
+            vec3 vSigmaY = normalize( dFdy( surf_pos.xyz ) );
+            vec3 vN = surf_norm;
+            vec3 R1 = cross( vSigmaY, vN );
+            vec3 R2 = cross( vN, vSigmaX );
+            float fDet = dot( vSigmaX, R1 ) * faceDirection;
+            vec3 vGrad = sign( fDet ) * ( dHdxy.x * R1 + dHdxy.y * R2 );
+            return normalize( abs( fDet ) * surf_norm - vGrad );
+          }`)
+        .replace('#include <emissivemap_fragment>', `
+          if ( weaveStrength > 0.0 ) {
+            vec3 wp = vWeavePos * weaveFreq;
+            vec3 an = abs( normalize( vWeaveNrm ) );
+            an /= max( an.x + an.y + an.z, 1e-4 );
+            float wh = weaveH( wp.xy ) * an.z + weaveH( wp.zy ) * an.x + weaveH( wp.xz ) * an.y;
+            float cellsPerPx = max( fwidth( wp.x ), max( fwidth( wp.y ), fwidth( wp.z ) ) );
+            float fade = 1.0 - smoothstep( 0.25, 0.5, cellsPerPx );
+            float k = 0.35 * weaveStrength * fade;
+            if ( k > 0.0 ) normal = weaveNormal( - vViewPosition, normal, vec2( dFdx( wh ), dFdy( wh ) ) * k, faceDirection );
+          }
+          #include <emissivemap_fragment>`)
+    }
+    m.customProgramCacheKey = () => (innerKey ? innerKey.call(m) : '') + '+weave'
+  }
+
+  /** Floor under the model's lowest point; key light and its shadow camera fitted to the model. */
+  private placeFloor() {
+    const mesh = this.mesh
+    if (!mesh) { this.floor.visible = false; return }
+    const geo = mesh.geometry
+    if (!geo.boundingBox) geo.computeBoundingBox()
+    const r = geo.boundingBox!.getSize(new THREE.Vector3()).length() / 2
+    this.floor.scale.setScalar(r * 14)
+    this.floor.position.y = geo.boundingBox!.min.y - r * 0.002
+    this.keyDistance = r * 5
+    const rig = this.params.floor ? GlassStudio.RIGS.floor : GlassStudio.RIGS.wall
+    this.key.position.copy(rig.keyDir).multiplyScalar(this.keyDistance)
+    const cam = this.key.shadow.camera
+    cam.left = cam.bottom = -r * 1.7
+    cam.right = cam.top = r * 1.7
+    cam.near = r * 2
+    cam.far = r * 9
+    cam.updateProjectionMatrix()
+    // Biases scale with the model: the mesh is in millimetres, a logo 100 wide, a coin 20. The
+    // reference uses 0.02 m of normal bias on a 0.8 m chair; the same share of the size here.
+    this.key.shadow.normalBias = r * 0.02
+    this.key.shadow.bias = -0.0002
+    this.setFloor(this.params.floor)
+  }
+
   private materialFor(finish: Finish): THREE.Material {
-    return finish === 'metal' ? this.metal : finish === 'print' ? this.print : this.material
+    return finish === 'metal' ? this.metal : finish === 'print' ? (this.hullActive() ? this.printHull : this.print) : this.material
+  }
+
+  /** Inflate with a side or top view: the carved hull replaces the single-photo pillow. */
+  private hullActive(): boolean {
+    return this.params.geometry === 'inflate' && !!this.hull && !!this.hullSources
+  }
+
+  /** The carved volume and the photos to paint it from; `null` returns Inflate to the single-photo pillow. */
+  setHull(hull: HullData | null, sources: HullSources | null) {
+    const hadMesh = !!this.mesh
+    this.hull = hull
+    this.hullSources = sources
+    this.hullPaintSig = ''
+    if (this.params.geometry !== 'inflate') return
+    const before = this.built.geometry
+    this.rebuild()
+    // A first hull (or the hull replacing the pillow) is a new object; a flip or a re-carve is not.
+    const swapped = before !== this.built.geometry || (!!hull && this.built.hull === hull && before !== 'inflate')
+    if (!hadMesh) this.camera.position.set(0, 0, 0)
+    if (!hadMesh || swapped) this.frame()
+    if (this.mesh && (!hadMesh || swapped)) this.pop = 0
+  }
+
+  /** Re-project the photos shortly after `flatten` or `grain` settles. */
+  private scheduleHullPaint() {
+    if (!this.hullActive() || this.surfaceSignature() === this.hullPaintSig) return
+    clearTimeout(this.hullPaintTimer)
+    this.hullPaintTimer = setTimeout(() => this.paintHullColors(), 90)
+  }
+
+  private dropHullMaps() {
+    for (const t of this.hullMaps) t.dispose()
+    this.hullMaps = []
+    for (const k of ['hullFront', 'hullSide', 'hullTop'] as const) this.hullUniforms[k].value = this.blank
+    this.printHull.normalMap = null
+    this.printHull.roughnessMap = null
+    this.printHull.needsUpdate = true
+  }
+
+  /**
+   * Project the photos onto the hull. Each view's crop (front at up to 2048 px, the others at
+   * 1024) is de-lit by `flatten` and padded past its outline so no edge samples the page; the
+   * front photo also gives the grain maps. `projectHull` decides, per vertex, which photo
+   * shows the surface and where.
+   */
+  private paintHullColors() {
+    const hull = this.hull, src = this.hullSources, mesh = this.mesh
+    if (!hull || !src || !mesh || this.disposed || mesh.geometry.getAttribute('position').count * 3 !== hull.positions.length) return
+    const sig = this.surfaceSignature()
+    if (sig === this.hullPaintSig) return
+    this.hullPaintSig = sig
+    const t0 = performance.now()
+    this.dropHullMaps()
+    const maxAniso = this.renderer.capabilities.getMaxAnisotropy()
+    const tex = (canvas: HTMLCanvasElement, srgb: boolean) => {
+      const t = new THREE.CanvasTexture(canvas)
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace
+      t.anisotropy = maxAniso
+      t.minFilter = THREE.LinearMipmapLinearFilter
+      this.hullMaps.push(t)
+      return t
+    }
+    const view = (v: HullSource | null, size: number, grain: number): { paint: HullPaintView; canvas: HTMLCanvasElement; normal: HTMLCanvasElement | null; roughness: HTMLCanvasElement | null } | null => {
+      if (!v) return null
+      const raw = buildCropTexture(v.image, v.crop, size)
+      const maps = buildSurfaceCanvases(raw, { flatten: this.params.flatten, grain })
+      // Outline at the photo's resolution: the trace raster and the crop cover the same region.
+      // Pad past the outline first, then soften: the blur must never reach the page colour.
+      const { canvas: padded, inside } = padSilhouette(maps.albedo, v.mask)
+      const canvas = softenCanvas(padded, this.params.soften)
+      const data = canvas.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, canvas.width, canvas.height)
+      return { paint: { data, inside }, canvas, normal: maps.normal, roughness: maps.roughness }
+    }
+    const front = view(src.front, 2048, this.params.grain)!
+    const side = view(src.side, 1024, 0)
+    const top = view(src.top, 1024, 0)
+    const paint = projectHull(hull, { front: front.paint, side: side?.paint ?? null, top: top?.paint ?? null })
+    const geo = mesh.geometry
+    const n = paint.colors.length / 3
+    geo.setAttribute('color', new THREE.BufferAttribute(paint.colors, 3))
+    geo.setAttribute('hullColor', geo.getAttribute('color'))
+    geo.setAttribute('hullWeight', new THREE.BufferAttribute(paint.weights, 3))
+    const uvOf = (slot: number) => {
+      const a = new Float32Array(n * 2)
+      for (let i = 0; i < n; i++) { a[i * 2] = paint.uvs[i * 6 + slot * 2]!; a[i * 2 + 1] = paint.uvs[i * 6 + slot * 2 + 1]! }
+      return new THREE.BufferAttribute(a, 2)
+    }
+    const uvFront = uvOf(0)
+    geo.setAttribute('hullUvFront', uvFront)
+    geo.setAttribute('hullUvSide', uvOf(1))
+    geo.setAttribute('hullUvTop', uvOf(2))
+    // The grain maps read the standard uv channel: the front projection.
+    geo.setAttribute('uv', uvFront)
+    this.hullUniforms.hullFront.value = tex(front.canvas, true)
+    this.hullUniforms.hullSide.value = side ? tex(side.canvas, true) : this.blank
+    this.hullUniforms.hullTop.value = top ? tex(top.canvas, true) : this.blank
+    this.printHull.normalMap = front.normal ? tex(front.normal, false) : null
+    this.printHull.normalScale.set(1, 1)
+    this.printHull.roughnessMap = front.roughness ? tex(front.roughness, false) : null
+    // Sheen in the object's own colour (its mean albedo): a black chair keeps a dark rim.
+    let sr = 0, sg = 0, sb = 0
+    for (let i = 0; i < paint.colors.length; i += 3) { sr += paint.colors[i]!; sg += paint.colors[i + 1]!; sb += paint.colors[i + 2]! }
+    this.printHull.sheenColor.setRGB(sr / n, sg / n, sb / n, THREE.LinearSRGBColorSpace)
+    this.printHull.needsUpdate = true
+    if (import.meta.dev) console.debug(`[hull] projected in ${Math.round(performance.now() - t0)} ms (${sig})`)
   }
 
   /**
@@ -499,6 +908,7 @@ export class GlassStudio {
   private activeGeometry(): Geometry {
     const g = this.params.geometry
     if (g === 'stack') return this.trace?.layers ? 'stack' : 'extrude'
+    if (g === 'inflate' && this.hullActive()) return 'inflate'
     const r = this.relief
     if (g === 'extrude' || !r) return 'extrude'
     return r.mirror === (g === 'inflate') ? g : 'extrude'
@@ -508,8 +918,64 @@ export class GlassStudio {
     this.printTex?.dispose()
     this.printTex = null
     this.printTexKind = null
+    this.printCanvas = null
+    this.dropSurface()
     this.print.map = null
+    this.print.sheenColorMap = null
     this.print.needsUpdate = true
+  }
+
+  private dropSurface() {
+    clearTimeout(this.surfaceTimer)
+    for (const k of ['albedo', 'normal', 'roughness'] as const) { this.surface[k]?.dispose(); this.surface[k] = null }
+    this.surfaceSig = ''
+    this.print.normalMap = null
+    this.print.roughnessMap = null
+  }
+
+  private surfaceSignature() {
+    return `${this.params.flatten.toFixed(2)}|${this.params.grain.toFixed(2)}|${this.params.soften.toFixed(2)}`
+  }
+
+  /** Rebuild the surface maps shortly after `flatten`/`grain` settle; a drag never builds per frame. */
+  private scheduleSurface() {
+    if (!this.printCanvas || this.surfaceSignature() === this.surfaceSig) return
+    clearTimeout(this.surfaceTimer)
+    this.surfaceTimer = setTimeout(() => this.buildSurface(), 90)
+  }
+
+  /**
+   * The Color finish's albedo, normal and roughness maps from the print canvas: the picture's
+   * lighting divided out and its grain turned into a normal map, per `flatten` and `grain`.
+   */
+  private buildSurface() {
+    const c = this.printCanvas
+    if (!c || this.disposed) return
+    const sig = this.surfaceSignature()
+    if (sig === this.surfaceSig) return
+    const t0 = performance.now()
+    const maps = buildSurfaceCanvases(c, { flatten: this.params.flatten, grain: this.params.grain })
+    this.dropSurface()
+    this.surfaceSig = sig
+    const tex = (canvas: HTMLCanvasElement, srgb: boolean) => {
+      const t = new THREE.CanvasTexture(canvas)
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace
+      t.anisotropy = this.renderer.capabilities.getMaxAnisotropy()
+      t.minFilter = THREE.LinearMipmapLinearFilter
+      return t
+    }
+    const albedo = softenCanvas(maps.albedo, this.params.soften)
+    this.surface.albedo = albedo === c ? null : tex(albedo, true)
+    this.surface.normal = maps.normal ? tex(maps.normal, false) : null
+    this.surface.roughness = maps.roughness ? tex(maps.roughness, false) : null
+    this.print.map = this.surface.albedo ?? this.printTex
+    // Cloth sheen is the fibre's own colour at a grazing angle: black velvet never glows white.
+    this.print.sheenColorMap = this.print.map
+    this.print.normalMap = this.surface.normal
+    this.print.normalScale.set(1, 1)
+    this.print.roughnessMap = this.surface.roughness
+    this.print.needsUpdate = true
+    if (import.meta.dev) console.debug(`[surface] ${Math.round(performance.now() - t0)} ms (${sig})`)
   }
 
   setParams(next: Partial<GlassParams>) {
@@ -540,7 +1006,9 @@ export class GlassStudio {
       : buildCropTexture(this.source, this.relief!.crop)
     if (!canvas) return
     this.printTex?.dispose()
+    this.dropSurface()
     this.printTexKind = kind
+    this.printCanvas = canvas
     const tex = new THREE.CanvasTexture(canvas)
     tex.colorSpace = THREE.SRGBColorSpace
     tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy()
@@ -548,7 +1016,9 @@ export class GlassStudio {
     tex.generateMipmaps = true
     this.printTex = tex
     this.print.map = tex
+    this.print.sheenColorMap = tex
     this.print.needsUpdate = true
+    this.buildSurface()
   }
 
   /**
@@ -643,8 +1113,15 @@ export class GlassStudio {
     this.shadowPlane.visible = false
     const p = this.params
     const active = this.activeGeometry()
+    if (active === 'inflate' && this.hullActive()) {
+      this.rebuildHull()
+      this.placeFloor()
+      this.onRebuild?.()
+      return
+    }
     if (active === 'inflate' || active === 'relief') {
       this.rebuildRelief()
+      this.placeFloor()
       this.onRebuild?.()
       return
     }
@@ -657,7 +1134,7 @@ export class GlassStudio {
     const { bw, bh, scale, cx, cy } = built.frame
     this.mesh = new THREE.Mesh(merged, this.materialFor(p.finish))
     this.mesh.name = active === 'stack' ? 'stack' : 'glass-logo'
-    this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: p.bevelMm, bevelSegments: p.bevelSegments, reliefMm: NaN, layerMm: p.layerMm, geometry: active, relief: null }
+    this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: p.bevelMm, bevelSegments: p.bevelSegments, reliefMm: NaN, layerMm: p.layerMm, geometry: active, relief: null, hull: null }
     this.scene.add(this.mesh)
     this.paintShadow(bw * scale, bh * scale, p.depthMm, (ctx, sx, sy) => {
       for (const poly of t.polygons) {
@@ -671,7 +1148,32 @@ export class GlassStudio {
       }
     })
     this.lastRebuildMs = performance.now() - t0
+    this.placeFloor()
     this.onRebuild?.()
+  }
+
+  /** The carved hull at `widthMm`, painted from its photos, with the front outline's shadow. */
+  private rebuildHull() {
+    const h = this.hull!, p = this.params, t = this.trace
+    const t0 = performance.now()
+    const geo = new THREE.BufferGeometry()
+    const pos = new Float32Array(h.positions.length)
+    for (let i = 0; i < pos.length; i++) pos[i] = h.positions[i]! * p.widthMm
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    geo.setAttribute('normal', new THREE.BufferAttribute(h.normals, 3))
+    geo.computeBoundingBox()
+    this.mesh = new THREE.Mesh(geo, this.materialFor(p.finish))
+    this.mesh.name = 'hull'
+    this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: NaN, bevelSegments: NaN, reliefMm: NaN, layerMm: NaN, geometry: 'inflate', relief: null, hull: h }
+    this.scene.add(this.mesh)
+    this.hullPaintSig = ''
+    this.paintHullColors()
+    const size = geo.boundingBox!.getSize(new THREE.Vector3())
+    // The carved box's footprint; the photo's outline no longer lies in the model's own front plane.
+    this.paintShadow(size.x, size.y, size.z, (ctx, sx, sy) => {
+      ctx.rect(-size.x / 2 * sx, -size.y / 2 * sy, size.x * sx, size.y * sy)
+    })
+    this.lastRebuildMs = performance.now() - t0
   }
 
   /** The picture as a height field: every grid point a vertex, walls and a flat back. */
@@ -690,7 +1192,7 @@ export class GlassStudio {
     geo.computeBoundingBox()
     this.mesh = new THREE.Mesh(geo, this.materialFor(p.finish))
     this.mesh.name = r.mirror ? 'inflate' : 'relief'
-    this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: NaN, bevelSegments: NaN, reliefMm: p.reliefMm, layerMm: NaN, geometry: r.mirror ? 'inflate' : 'relief', relief: r }
+    this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: NaN, bevelSegments: NaN, reliefMm: p.reliefMm, layerMm: NaN, geometry: r.mirror ? 'inflate' : 'relief', relief: r, hull: null }
     this.scene.add(this.mesh)
     const size = geo.boundingBox!.getSize(new THREE.Vector3())
     const t = this.trace
@@ -744,18 +1246,33 @@ export class GlassStudio {
     this.shadowPlane.scale.set(wMm, hMm, 1)
     // Light comes from the upper left, so the shadow falls slightly down and to the right.
     this.shadowPlane.position.set(wMm * 0.015, -hMm * 0.02, -depth / 2 - depth * 0.6)
-    this.shadowPlane.visible = true
+    this.shadowPlane.visible = !this.params.floor
   }
 
   /** Named camera angles; `frame()` re-fits the distance. */
-  setView(view: 'angle' | 'front' | 'side' | 'top') {
-    const dirs = { angle: [-0.32, 0.14, 1], front: [0, 0, 1], side: [1, 0.05, 0.25], top: [0, 1, 0.001] } as const
-    const d = dirs[view]
-    this.viewDir.set(d[0], d[1], d[2]).normalize()
+  setView(view: ViewName) {
+    this.view = view
     this.frame(true)
   }
 
-  private viewDir = new THREE.Vector3(-0.32, 0.14, 1).normalize()
+  /**
+   * On a wall a logo is shot almost square on; on a floor an object gets the reference product
+   * shot's camera (`1.15, 0.72, 2.05` at a target `0.45` up an `0.8` m chair): three-quarter,
+   * a little above, from whichever side the photo was taken on, so the faces it painted best face
+   * the camera.
+   */
+  private viewDir(): THREE.Vector3 {
+    const front = this.hullActive() ? this.hull!.frames[0] : null
+    const side = front && front.d[0] < 0 ? -1 : 1
+    const dirs = {
+      angle: this.params.floor ? [1.15 * side, 0.27, 2.05] : [-0.32, 0.14, 1],
+      front: [0, this.params.floor ? 0.08 : 0, 1],
+      side: [1, 0.08, 0.25],
+      top: [0, 1, 0.001],
+    } as const
+    const d = dirs[this.view]
+    return new THREE.Vector3(d[0], d[1], d[2]).normalize()
+  }
 
   /**
    * Move the camera to a distance that fits the model. Keeps the direction the user orbited to;
@@ -770,7 +1287,7 @@ export class GlassStudio {
     const tanH = tanV * this.camera.aspect
     // Fit both axes with a margin for the HUD above and the view dock below.
     const dist = Math.max(size.y / 2 / tanV, size.x / 2 / tanH, size.z) * 2.3
-    const dir = !named && this.camera.position.lengthSq() >= 1 ? this.camera.position.clone().normalize() : this.viewDir
+    const dir = !named && this.camera.position.lengthSq() >= 1 ? this.camera.position.clone().normalize() : this.viewDir()
     const goal = dir.multiplyScalar(dist)
     this.zoomGoal = 0
     if (this.camera.position.lengthSq() < 1 || !this.mesh) this.camera.position.copy(goal)
@@ -793,8 +1310,17 @@ export class GlassStudio {
     if (p.finish === 'print') this.ensurePrintTexture()
     const exportMaterial = p.finish === 'metal'
       ? new THREE.MeshPhysicalMaterial({ color: new THREE.Color(p.tint), metalness: p.metalness, roughness: p.roughness, clearcoat: p.clearcoat, clearcoatRoughness: 0.08 })
+      : p.finish === 'print' && this.hullActive()
+      ? new THREE.MeshPhysicalMaterial({
+        vertexColors: true, metalness: 0, roughness: p.roughness, clearcoat: p.clearcoat, clearcoatRoughness: 0.12,
+        sheen: p.sheen, sheenRoughness: 0.55, sheenColor: 0xffffff,
+      })
       : p.finish === 'print'
-      ? new THREE.MeshPhysicalMaterial({ color: 0xffffff, map: this.printTex, metalness: 0, roughness: p.roughness, clearcoat: p.clearcoat, clearcoatRoughness: 0.12 })
+      ? new THREE.MeshPhysicalMaterial({
+        color: 0xffffff, map: this.print.map, normalMap: this.print.normalMap, roughnessMap: this.print.roughnessMap,
+        metalness: 0, roughness: p.roughness, clearcoat: p.clearcoat, clearcoatRoughness: 0.12,
+        sheen: p.sheen, sheenRoughness: 0.55, sheenColor: 0xffffff,
+      })
       : new THREE.MeshPhysicalMaterial({
       color: 0xffffff,
       metalness: 0,
@@ -847,7 +1373,16 @@ export class GlassStudio {
   dispose() {
     this.relief = null
     this.printTex?.dispose()
+    this.dropSurface()
+    clearTimeout(this.hullPaintTimer)
+    this.dropHullMaps()
+    this.blank.dispose()
+    this.envRoom?.dispose()
+    this.envStudio.dispose()
     this.print.dispose()
+    this.printHull.dispose()
+    this.floor.geometry.dispose()
+    this.floor.material.dispose()
     this.disposed = true
     cancelAnimationFrame(this.raf)
     clearTimeout(this.interactTimer)

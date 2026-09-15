@@ -21,8 +21,27 @@ export interface GlassParams {
   layerMm: number
   /** Metal finish only: 1 = pure metal, lower mixes toward a painted/ceramic solid. */
   metalness: number
-  /** Opacity of the soft shadow cast on the backdrop (0..1). */
+  /** Opacity of the shadow (on the wall behind the model, or on the floor) (0..1). */
   shadow: number
+  /**
+   * Stand the model on a floor with a real cast shadow, as a product shot does. Off, a soft
+   * silhouette shadow sits on the wall behind it, which suits a logo.
+   */
+  floor: boolean
+  /** Color finish: how much of the picture's own lighting is divided out of the albedo (0..1). */
+  flatten: number
+  /** Color finish: grain from the picture as a normal and roughness map (0..1). */
+  grain: number
+  /** Color finish: cloth-like sheen at grazing angles (0..1). */
+  sheen: number
+  /**
+   * Color finish: a procedural woven bump laid over the surface at a fixed real-world size
+   * (0..1). Uniform everywhere, unlike the picture's own grain which stretches where the photo
+   * was projected at an angle.
+   */
+  weave: number
+  /** Color finish: blur of the picture on the surface (0..1), so photo noise and stretched pixels melt into a flat colour. */
+  soften: number
   widthMm: number
   depthMm: number
   bevelMm: number
@@ -58,6 +77,12 @@ export const DEFAULT_GLASS_PARAMS: GlassParams = {
   layerMm: 2,
   metalness: 1,
   shadow: 0.35,
+  floor: false,
+  flatten: 0,
+  grain: 0,
+  sheen: 0,
+  weave: 0,
+  soften: 0,
   widthMm: 100,
   depthMm: 12,
   bevelMm: 3.2,
@@ -98,7 +123,7 @@ const metal = (v: Partial<GlassParams>): Partial<GlassParams> => ({
   finish: 'metal', metalness: 1, roughness: 0.22, clearcoat: 0, tint: '#ffffff', ...v,
 })
 const print = (v: Partial<GlassParams>): Partial<GlassParams> => ({
-  finish: 'print', metalness: 0, roughness: 0.5, clearcoat: 0, tint: '#ffffff', ...v,
+  finish: 'print', metalness: 0, roughness: 0.5, clearcoat: 0, tint: '#ffffff', flatten: 0, grain: 0, sheen: 0, weave: 0, soften: 0, ...v,
 })
 
 /** One-click looks. Each sets every material key so switching presets is deterministic. */
@@ -121,9 +146,22 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
   { id: 'copper', label: 'Copper', group: 'metal', swatch: 'linear-gradient(135deg,#ffc9a8,#c06a3a 55%,#6e3517)', values: metal({ tint: '#c8734a', roughness: 0.26 }) },
   { id: 'titanium', label: 'Titanium', group: 'metal', swatch: 'linear-gradient(135deg,#8f939b,#4f535a 55%,#2a2d32)', values: metal({ tint: '#5f636b', roughness: 0.34 }) },
   { id: 'black', label: 'Black', group: 'metal', swatch: 'linear-gradient(135deg,#3a3b40,#111114)', values: metal({ tint: '#15161a', metalness: 0.35, roughness: 0.32, clearcoat: 0.9 }) },
-  { id: 'matte', label: 'Matte', group: 'print', swatch: 'linear-gradient(135deg,#f3f1ec,#d9d6cf)', values: print({ roughness: 0.62, clearcoat: 0 }) },
-  { id: 'satin', label: 'Satin', group: 'print', swatch: 'linear-gradient(135deg,#ffffff,#e2e5ea 60%,#f6f7f9)', values: print({ roughness: 0.4, clearcoat: 0.35 }) },
-  { id: 'gloss', label: 'Gloss', group: 'print', swatch: 'linear-gradient(135deg,#ffffff 0%,#d7dbe2 50%,#ffffff 100%)', values: print({ roughness: 0.18, clearcoat: 1 }) },
+  // Photographed objects. Roughness, sheen and lacquer follow measured dielectric responses
+  // (matte cotton ~0.85 with sheen, velvet sheen 1, leather ~0.62 with a trace of coat, bare wood
+  // ~0.72, varnished wood ~0.42 under a 0.75 coat). The picture's own shading is divided out so
+  // the studio lights it, and its grain catches the light as a normal map.
+  { id: 'natural', label: 'Natural', group: 'print', swatch: 'linear-gradient(135deg,#f7f3ee,#d8cfc4 60%,#efe9e2)', values: print({ roughness: 0.68, clearcoat: 0, flatten: 0.55, grain: 0.5, sheen: 0.15 }) },
+  // Fabric is the reference upholstery to the number: a flat colour under roughness 0.88, no
+  // coat, no sheen, a fine uniform weave. The photo is de-lit and softened into that flat colour
+  // (its own grain would stretch where it was projected at an angle) and the weave is procedural.
+  { id: 'fabric', label: 'Fabric', group: 'print', swatch: 'repeating-linear-gradient(45deg,#e8ddd2 0 2px,#cfc2b4 2px 4px)', values: print({ roughness: 0.88, clearcoat: 0, flatten: 0.85, grain: 0, sheen: 0, weave: 1, soften: 0.6 }) },
+  { id: 'velvet', label: 'Velvet', group: 'print', swatch: 'radial-gradient(circle at 35% 30%,#6b2a4a,#2a0f1e 70%)', values: print({ roughness: 0.72, clearcoat: 0, flatten: 0.8, grain: 0, sheen: 1, weave: 0.5, soften: 0.6 }) },
+  { id: 'leather', label: 'Leather', group: 'print', swatch: 'linear-gradient(135deg,#8a5a3c,#4a2c1a 60%,#6b4630)', values: print({ roughness: 0.62, clearcoat: 0.08, flatten: 0.5, grain: 0.7, sheen: 0.1 }) },
+  { id: 'wood', label: 'Wood', group: 'print', swatch: 'repeating-linear-gradient(100deg,#c9a071 0 3px,#a87c4f 3px 5px,#b98c5e 5px 9px)', values: print({ roughness: 0.72, clearcoat: 0, flatten: 0.45, grain: 0.6, sheen: 0 }) },
+  { id: 'varnished', label: 'Varnished', group: 'print', swatch: 'linear-gradient(135deg,#fff3dc 0%,#b8834a 45%,#7a4d24 60%,#e9c89a 100%)', values: print({ roughness: 0.42, clearcoat: 0.75, flatten: 0.4, grain: 0.45, sheen: 0 }) },
+  { id: 'matte', label: 'Matte', group: 'print', swatch: 'linear-gradient(135deg,#f3f1ec,#d9d6cf)', values: print({ roughness: 0.62, clearcoat: 0, flatten: 0.3, grain: 0.25 }) },
+  { id: 'satin', label: 'Satin', group: 'print', swatch: 'linear-gradient(135deg,#ffffff,#e2e5ea 60%,#f6f7f9)', values: print({ roughness: 0.4, clearcoat: 0.35, flatten: 0.3, grain: 0.15 }) },
+  { id: 'gloss', label: 'Gloss', group: 'print', swatch: 'linear-gradient(135deg,#ffffff 0%,#d7dbe2 50%,#ffffff 100%)', values: print({ roughness: 0.18, clearcoat: 1, flatten: 0.2 }) },
   { id: 'acrylic', label: 'Acrylic', group: 'print', swatch: 'linear-gradient(135deg,#ffffff,#cfe0ff 55%,#ffffff)', values: print({ roughness: 0.06, clearcoat: 1 }) },
   { id: 'ceramic', label: 'Ceramic', group: 'metal', swatch: 'linear-gradient(135deg,#ffffff,#eceff3)', values: metal({ tint: '#f4f4f2', metalness: 0, roughness: 0.28, clearcoat: 1 }) },
 ]

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { GlassStudio, type GlassParams, type ModelDimensions } from '~/utils/glassScene'
+import { GlassStudio, type GlassParams, type HullSources, type ModelDimensions } from '~/utils/glassScene'
+import type { HullData } from '~/utils/hull'
 import type { ReliefData } from '~/utils/relief'
 import type { TraceResult } from '~/utils/trace'
 
-const props = defineProps<{ trace: TraceResult | null; relief: ReliefData | null; params: GlassParams; source?: HTMLImageElement | null }>()
+const props = defineProps<{ trace: TraceResult | null; relief: ReliefData | null; hull?: HullData | null; hullSources?: HullSources | null; params: GlassParams; source?: HTMLImageElement | null }>()
 const emit = defineEmits<{ dimensions: [ModelDimensions | null] }>()
 
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -26,6 +27,7 @@ onBeforeUnmount(() => {
 
 watch(() => props.trace, t => studio?.setTrace(t, props.source ?? null))
 watch(() => props.relief, r => studio?.setRelief(r))
+watch(() => [props.hull, props.hullSources] as const, ([h, s]) => studio?.setHull(h ?? null, s ?? null))
 watch(() => ({ ...props.params }), p => studio?.setParams(p))
 
 function download(blob: Blob, name: string) {

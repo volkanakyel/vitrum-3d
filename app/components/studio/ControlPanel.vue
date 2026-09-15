@@ -17,7 +17,8 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { SegmentOption } from '~/components/studio/SegmentedControl.vue'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { StudioMode } from '~/composables/useStudio'
+import { DEFAULT_VIEW_OPTIONS, STUDIO_MODES, type DepthState, type StudioMode, type StudioView, type ViewAxis, type ViewOptions } from '~/composables/useStudio'
+import type { HullData } from '~/utils/hull'
 import { DEFAULT_GLASS_PARAMS, type GlassParams, type Geometry } from '~/utils/glassScene'
 import { DEFAULT_RELIEF_OPTIONS, type HeightSource, type ReliefOptions } from '~/utils/relief'
 import {
@@ -32,13 +33,42 @@ const props = defineProps<{
   traceOpts: TraceOptions
   reliefOpts: ReliefOptions
   glass: GlassParams
+  views?: Record<ViewAxis, StudioView | null>
+  viewOpts?: ViewOptions
+  /** Camera side read from the outline: −1 left, 1 right, 0 level. */
+  cameraSide?: number
+  hull?: HullData | null
+  depthState?: DepthState
+  depthProgress?: number
+  depthDevice?: string
   heightMm: number
   fileName: string
   busy: boolean
   error: string
   mode?: StudioMode
 }>()
-const emit = defineEmits<{ pick: [Event]; sample: []; clear: []; 'set-height': [number] }>()
+const emit = defineEmits<{ pick: [Event]; sample: []; clear: []; 'set-height': [number]; mode: [StudioMode]; 'pick-view': [ViewAxis, Event]; 'remove-view': [ViewAxis]; 'flip-view': [ViewAxis] }>()
+const viewSlots: { axis: ViewAxis; label: string; hint: string; flipHint: string }[] = [
+  { axis: 'side', label: 'Side', hint: 'The object from its side, front facing right', flipHint: 'Mirror: the photo shows the other side' },
+  { axis: 'top', label: 'Top', hint: 'The object from above, front at the bottom', flipHint: 'Mirror: the front is at the top of the photo' },
+]
+const hasViews = computed(() => !!(props.views?.side || props.views?.top))
+const VO = DEFAULT_VIEW_OPTIONS
+const sideOptions: SegmentOption<ViewOptions['side']>[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'left', label: 'Left' },
+  { value: 'right', label: 'Right' },
+]
+const sideRead = computed(() => (props.cameraSide === -1 ? 'left' : props.cameraSide === 1 ? 'right' : 'straight on'))
+const depthHint = computed(() => {
+  const s = props.depthState
+  if (s === 'loading') return props.depthProgress ? `Downloading the depth model, ${Math.round(props.depthProgress * 100)}%` : 'Reading the photo\'s depth…'
+  if (s === 'ready') return `From the depth model (${props.depthDevice === 'webgpu' ? 'WebGPU' : 'CPU'}). Runs on your device; the photo never leaves it.`
+  if (s === 'unavailable') return 'Depth model unavailable: carved from outlines only'
+  return 'How deep the photo\'s relief cuts. Depth model, 27 MB, downloaded once, runs on your device.'
+})
+const depthOn = computed(() => props.depthState === 'ready' && (props.viewOpts?.depth ?? 0) > 0)
+const modeOptions: SegmentOption<StudioMode>[] = STUDIO_MODES.map(m => ({ value: m.id, label: m.label, icon: m.icon }))
 
 const D = DEFAULT_GLASS_PARAMS
 const T = DEFAULT_TRACE_OPTIONS
@@ -77,7 +107,7 @@ function resetSurface() {
   const g = props.glass
   if (g.finish === 'glass') pick('ior', 'dispersion', 'clarity', 'roughness', 'blur')
   else if (g.finish === 'metal') Object.assign(g, { metalness: 1, roughness: 0.22, clearcoat: 0 })
-  else Object.assign(g, { roughness: 0.4, clearcoat: 0.35 })
+  else Object.assign(g, { roughness: 0.7, clearcoat: 0, flatten: 0.55, grain: 0.5, sheen: 0.15, weave: 0, soften: 0 })
 }
 function pick<K extends keyof GlassParams>(...keys: K[]) {
   const out: Partial<GlassParams> = {}
@@ -90,6 +120,7 @@ const modeLabel: Record<string, string> = {
   light: 'light pixels',
   alpha: 'alpha',
   color: 'colour distance',
+  object: 'whole object',
 }
 const panelTabs = [
   { value: 'shape', label: 'Shape', icon: 'shapes' },
@@ -102,6 +133,7 @@ const modes: SegmentOption<TraceOptions['mode']>[] = [
   { value: 'light', label: 'Light' },
   { value: 'alpha', label: 'Alpha' },
   { value: 'color', label: 'Color' },
+  { value: 'object', label: 'Object' },
 ]
 const resolutions: SegmentOption<number>[] = [512, 1024, 2048].map((r) => ({
   value: r,
@@ -183,6 +215,19 @@ const dimInput =
               />
             </Button>
           </div>
+        </div>
+
+        <!-- Mode, on small screens only: the header's switch is hidden there. -->
+        <div
+          v-if="mode"
+          class="sm:hidden"
+        >
+          <SegmentedControl
+            :model-value="mode"
+            :options="modeOptions"
+            size="md"
+            @update:model-value="(v) => emit('mode', v)"
+          />
         </div>
 
         <!-- Source -->
@@ -355,8 +400,8 @@ const dimInput =
                     it rises as its own layer, so the picture becomes a real stepped object.
                   </template>
                   <template v-else-if="isInflate">
-                    The outline is puffed into a rounded solid, front and back, and the picture's
-                    shading dents it: an object photo becomes an object.
+                    The outline is puffed into a rounded solid, front and back; a side or top photo
+                    carves the volume to its real profile.
                   </template>
                   <template v-else>
                     The traced outline is extruded into a bevelled solid: crisp edges for logos,
@@ -456,6 +501,147 @@ const dimInput =
                     :options="reliefResolutions"
                     mono
                   />
+                </div>
+              </SectionGroup>
+
+              <SectionGroup
+                v-if="isInflate"
+                key="views"
+                :index="2"
+                title="Views"
+                :hint="hull ? `Carved from ${1 + (viewOpts?.symmetric ? 1 : 0) + (views?.side ? 1 : 0) + (views?.top ? 1 : 0)} outlines${depthOn ? ' + depth' : ''}` : 'One photo: a pillow'"
+                resettable
+                @reset="viewOpts && Object.assign(viewOpts, VO)"
+              >
+                <p class="text-[11.5px] leading-relaxed text-ink-3">
+                  Where the photo was taken from. The outline is carved along that camera, the
+                  object's mirror image counts as a second view, and a side or top photo measures
+                  the depth instead of guessing it.
+                </p>
+                <template v-if="viewOpts">
+                  <SliderField
+                    v-model="viewOpts.yaw"
+                    label="Photo angle"
+                    hint="How far around the object the camera stood: 0 straight on, 30–45 a typical product shot"
+                    :min="0"
+                    :max="60"
+                    :step="1"
+                    :decimals="0"
+                    unit="°"
+                    :default-value="VO.yaw"
+                  />
+                  <div class="flex flex-col gap-1.5">
+                    <Label class="flex h-5 items-center justify-between text-[12.5px] font-normal text-ink-2">
+                      Camera stood
+                      <span class="text-[11px] text-ink-3">reads {{ sideRead }}</span>
+                    </Label>
+                    <SegmentedControl
+                      v-model="viewOpts.side"
+                      :options="sideOptions"
+                    />
+                  </div>
+                  <SliderField
+                    v-model="viewOpts.pitch"
+                    label="Camera height"
+                    hint="How far above the object the camera stood"
+                    :min="0"
+                    :max="35"
+                    :step="1"
+                    :decimals="0"
+                    unit="°"
+                    :default-value="VO.pitch"
+                  />
+                  <div class="flex h-6 items-center justify-between pointer-coarse:h-9">
+                    <Label
+                      for="view-symmetric"
+                      class="text-[12.5px] font-normal text-ink-2"
+                    >
+                      Symmetric object
+                    </Label>
+                    <Switch
+                      id="view-symmetric"
+                      :model-value="viewOpts.symmetric"
+                      @update:model-value="(v) => (viewOpts!.symmetric = v)"
+                    />
+                  </div>
+                  <SliderField
+                    v-model="viewOpts.depth"
+                    label="Depth"
+                    :hint="depthHint"
+                    :min="0"
+                    :max="1"
+                    :step="0.05"
+                    :decimals="2"
+                    :default-value="VO.depth"
+                  />
+                </template>
+                <div
+                  v-for="slot in viewSlots"
+                  :key="slot.axis"
+                  class="group/view flex h-12 items-center gap-3 rounded-[14px] px-2"
+                  :class="views?.[slot.axis] ? 'bg-card shadow-[var(--shadow-raise)]' : 'well'"
+                >
+                  <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                    <input
+                      type="file"
+                      accept="image/*,.svg"
+                      hidden
+                      @change="emit('pick-view', slot.axis, $event)"
+                    />
+                    <span
+                      class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-card text-muted-foreground shadow-[inset_0_0_0_1px_var(--hairline)]"
+                    >
+                      <img
+                        v-if="views?.[slot.axis]"
+                        :src="views[slot.axis]!.preview"
+                        class="size-full object-cover"
+                        :alt="`${slot.label} view`"
+                      />
+                      <Icon
+                        v-else
+                        name="imagePlus"
+                        :size="14"
+                      />
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-[12.5px] font-medium">
+                        {{ views?.[slot.axis] ? views[slot.axis]!.name : `Add ${slot.label.toLowerCase()} photo` }}
+                      </span>
+                      <span class="block truncate text-[11px] text-ink-3">{{ slot.hint }}</span>
+                    </span>
+                  </label>
+                  <template v-if="views?.[slot.axis]">
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          :class="views[slot.axis]!.flip ? 'bg-well-strong text-foreground' : 'text-muted-foreground'"
+                          :aria-pressed="views[slot.axis]!.flip"
+                          aria-label="Mirror view"
+                          @click="emit('flip-view', slot.axis)"
+                        >
+                          <Icon
+                            name="rotate"
+                            :size="13"
+                          />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{{ slot.flipHint }}</TooltipContent>
+                    </Tooltip>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      class="text-muted-foreground"
+                      aria-label="Remove view"
+                      @click="emit('remove-view', slot.axis)"
+                    >
+                      <Icon
+                        name="x"
+                        :size="13"
+                      />
+                    </Button>
+                  </template>
                 </div>
               </SectionGroup>
 
@@ -570,7 +756,7 @@ const dimInput =
               <SectionGroup
                 v-if="!isRelief || reliefOpts.cutout"
                 key="trace"
-                :index="isRelief || isInflate || isStack ? 2 : 1"
+                :index="isInflate ? 3 : isRelief || isStack ? 2 : 1"
                 title="Outline"
                 :hint="trace ? `${trace.polygons.length} shape${trace.polygons.length === 1 ? '' : 's'} · ${modeLabel[trace.resolvedMode]}` : undefined"
                 resettable
@@ -638,9 +824,9 @@ const dimInput =
 
               <SectionGroup
                 key="dimensions"
-                :index="isRelief ? (reliefOpts.cutout ? 3 : 2) : isInflate || isStack ? 3 : 2"
+                :index="isRelief ? (reliefOpts.cutout ? 3 : 2) : isInflate ? 4 : isStack ? 3 : 2"
                 title="Dimensions"
-                :hint="isRelief ? 'D = base slab, relief on top' : isInflate ? 'D = full thickness' : isStack ? 'D = base, layers on top' : 'H follows the outline'"
+                :hint="isRelief ? 'D = base slab, relief on top' : isInflate ? (hasViews ? 'D measured from the views' : hull ? 'D = the object\'s depth' : 'D = full thickness') : isStack ? 'D = base, layers on top' : 'H follows the outline'"
                 resettable
                 @reset="pick('widthMm', 'depthMm', 'bevelMm', 'bevelSegments')"
               >
@@ -745,12 +931,57 @@ const dimInput =
                 >
                 <template v-if="isPrint">
                   <SliderField
+                    v-model="glass.flatten"
+                    label="Flatten lighting"
+                    hint="Divides the picture's own shading out of the colour, so the studio lights the volume instead of re-lighting a painted shadow"
+                    :min="0"
+                    :max="1"
+                    :step="0.01"
+                    :default-value="0.55"
+                  />
+                  <SliderField
+                    v-model="glass.grain"
+                    label="Grain"
+                    hint="The picture's fine texture (weave, brush, pores) as a normal and roughness map, so it catches the light at any grid detail"
+                    :min="0"
+                    :max="1"
+                    :step="0.01"
+                    :default-value="0.5"
+                  />
+                  <SliderField
+                    v-model="glass.soften"
+                    label="Soften"
+                    hint="Blurs the picture on the surface so photo noise and stretched pixels melt into a flat colour"
+                    :min="0"
+                    :max="1"
+                    :step="0.01"
+                    :default-value="0"
+                  />
+                  <SliderField
+                    v-model="glass.weave"
+                    label="Weave"
+                    hint="A fine woven bump at a fixed real-world size, uniform over the whole surface"
+                    :min="0"
+                    :max="1"
+                    :step="0.01"
+                    :default-value="0"
+                  />
+                  <SliderField
                     v-model="glass.roughness"
                     label="Roughness"
                     :min="0"
                     :max="1"
                     :step="0.01"
-                    :default-value="0.4"
+                    :default-value="0.7"
+                  />
+                  <SliderField
+                    v-model="glass.sheen"
+                    label="Sheen"
+                    hint="Soft glow at grazing angles, the way cloth and velvet catch the light"
+                    :min="0"
+                    :max="1"
+                    :step="0.01"
+                    :default-value="0.15"
                   />
                   <SliderField
                     v-model="glass.clearcoat"
@@ -758,7 +989,7 @@ const dimInput =
                     :min="0"
                     :max="1"
                     :step="0.01"
-                    :default-value="0.35"
+                    :default-value="0"
                   />
                   <p class="text-[11.5px] leading-relaxed text-ink-3">
                     <template v-if="isRelief && !reliefOpts.cutout">
@@ -913,10 +1144,35 @@ const dimInput =
             >
               <SectionGroup
                 :index="0"
-                title="Backdrop"
+                title="Stage"
+                :hint="glass.floor ? 'Object on a floor' : 'Logo on a wall'"
                 resettable
-                @reset="pick('background', 'shadow', 'vignette')"
+                @reset="pick('background', 'shadow', 'vignette', 'floor')"
               >
+                <div class="flex h-6 items-center justify-between pointer-coarse:h-9">
+                  <Label
+                    for="stage-floor"
+                    class="text-[12.5px] font-normal text-ink-2"
+                  >
+                    Stand on a floor
+                  </Label>
+                  <Switch
+                    id="stage-floor"
+                    :model-value="glass.floor"
+                    @update:model-value="(v) => (glass.floor = v)"
+                  />
+                </div>
+                <p class="text-[11.5px] leading-relaxed text-ink-3">
+                  <template v-if="glass.floor">
+                    A product set: a film tone curve, a white key casting a soft shadow on the
+                    floor, a warm fill and a rim from behind, over a sky and ground ambient. The
+                    Color finish shows no room reflections. The orbit stays above the floor.
+                  </template>
+                  <template v-else>
+                    A glass studio: a dark room with bright softboxes, one hard key and a cool
+                    rim, and a soft silhouette shadow on the wall behind the model.
+                  </template>
+                </p>
                 <ColorField
                   v-model="glass.background"
                   label="Background"

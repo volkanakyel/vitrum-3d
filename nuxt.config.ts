@@ -33,6 +33,12 @@ export default defineNuxtConfig({
   },
   vite: {
     plugins: [tailwindcss()],
-    optimizeDeps: { include: ['three', 'd3-contour'] },
+    optimizeDeps: { include: ['three', 'd3-contour'], exclude: ['@huggingface/transformers'] },
+  },
+  runtimeConfig: {
+    public: {
+      /** Depth model id on the Hugging Face hub, or a path under `/models/` when self-hosted. */
+      depthModel: 'onnx-community/depth-anything-v2-small',
+    },
   },
 })
