@@ -18,6 +18,14 @@ export const DEFAULT_ROUTE_CFG: RouteCfg = {
 }
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
+/**
+ * The same cap measured in base64 characters, so an oversized payload is
+ * refused on its `.length` before anything decodes it: `Buffer.from` on a
+ * hostile string would allocate the decoded copy first and complain after.
+ * 4/3 is base64's expansion, plus slack for the data-URL prefix, padding and
+ * any line breaks.
+ */
+const MAX_IMAGE_BASE64_CHARS = Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 1024
 
 /** A tally that grows across the retries of one request. */
 class Tally {
@@ -50,6 +58,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseImage(value: unknown, label: string): { ok: true, part: UserPart } | { ok: false, error: string } {
   if (typeof value !== 'string' || value.length === 0) {
     return { ok: false, error: `${label} must be a base64-encoded JPEG or PNG` }
+  }
+  if (value.length > MAX_IMAGE_BASE64_CHARS) {
+    return { ok: false, error: `${label} is larger than the 4 MB limit` }
   }
   const base64 = value.replace(/^data:image\/(?:jpeg|jpg|png);base64,/, '').replace(/\s+/g, '')
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
