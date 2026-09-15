@@ -81,7 +81,9 @@ function isTransient(error: unknown): boolean {
   if (!e) return false
   if (e.status === 429 || e.status === 529 || e.status === 500 || e.status === 503) return true
   const message = `${e.name ?? ''} ${e.message ?? ''}`.toLowerCase()
-  return /overloaded|rate.?limit|timeout|timed out|econnreset|enotfound|econnrefused|socket hang up|fetch failed|network/.test(message)
+  // `terminated` is undici's word for a stream the far end (or a middlebox)
+  // closed mid-body; a long build stream sees it now and then.
+  return /overloaded|rate.?limit|timeout|timed out|econnreset|enotfound|econnrefused|socket hang up|fetch failed|network|terminated|other side closed/.test(message)
 }
 
 export class NoToolCallError extends Error {

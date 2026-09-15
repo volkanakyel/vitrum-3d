@@ -58,6 +58,8 @@ const HOOK_TIMEOUT_MS = 60_000
 const MAX_CANCELS = 3
 /** Page reloads survived per run before giving up. */
 const MAX_RECOVERIES = 2
+/** Failed runs resumed per photo before the failure is recorded. */
+const MAX_RETRIES = 1
 
 // ---------------------------------------------------------------- arguments
 
@@ -422,6 +424,7 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
   let lastLine = ''
   let jobId: string | null = null
   let recoveries = 0
+  let retries = 0
 
   // A dev-server full reload (Nuxt regenerating its virtual modules, Vite
   // re-optimising a dependency) wipes the page and the runner with it. The
@@ -484,6 +487,15 @@ async function pollJob(page: Page, opts: Options, started: number): Promise<Poll
       lastLine = line
     }
 
+    if (snapshot.status === 'failed' && retries < MAX_RETRIES && Date.now() < deadline) {
+      // A failed run resumes from its last completed pass; nothing already
+      // paid for is redone, so one more attempt is cheap insurance against a
+      // dropped upstream stream.
+      retries++
+      console.log(`[eval]   failed: ${snapshot.error ?? '(no error)'} — resuming (attempt ${retries})`)
+      await page.evaluate(() => { void (window as unknown as EvalWindow).__vitrum?.sculpt.retry() })
+      continue
+    }
     if (terminal.has(snapshot.status)) break
 
     const outOfTime = Date.now() > deadline

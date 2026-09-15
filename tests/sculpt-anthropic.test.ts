@@ -152,6 +152,19 @@ describe('makeCallTool', () => {
     expect(params).toHaveLength(3)
   })
 
+  it('retries a stream the far end terminated', async () => {
+    vi.useFakeTimers()
+    const terminated = Object.assign(new TypeError('terminated'), { cause: new Error('other side closed') })
+    const { stream, params } = stubStream([terminated, message()])
+    const callTool = makeCallTool({ apiKey: 'k', stream })
+
+    const pending = callTool(call())
+    await vi.runAllTimersAsync()
+
+    expect((await pending).data).toBeDefined()
+    expect(params).toHaveLength(2)
+  })
+
   it('does not retry a 400', async () => {
     const { stream, params } = stubStream([apiError(400), message()])
     const callTool = makeCallTool({ apiKey: 'k', stream })
