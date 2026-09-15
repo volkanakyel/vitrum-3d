@@ -184,10 +184,38 @@ export const buildSchema: z.ZodType<BuildOutput> = z.strictObject({
 })
 
 export function toolSchema(schema: z.ZodType): Record<string, unknown> {
-  const json = z.toJSONSchema(schema, { target: 'draft-7' }) as Record<string, unknown>
+  const json = z.toJSONSchema(schema, { target: 'draft-2020-12' }) as Record<string, unknown>
   delete json.$schema
   if (json.additionalProperties === undefined) json.additionalProperties = false
+  relaxTuples(json)
   return json
+}
+
+/**
+ * Strict tool schemas accept neither `prefixItems` nor `minItems` above 1, so a
+ * fixed-length tuple (`[x, y, z]`) is offered to the model as a plain array of
+ * its element type with the length stated in the description. The zod schema
+ * still enforces the exact length when the answer comes back.
+ */
+function relaxTuples(node: unknown): void {
+  if (!node || typeof node !== 'object') return
+  if (Array.isArray(node)) {
+    for (const item of node) relaxTuples(item)
+    return
+  }
+  const o = node as Record<string, unknown>
+  const prefix = o.prefixItems
+  if (Array.isArray(prefix) && prefix.length > 0) {
+    const first = JSON.stringify(prefix[0])
+    const uniform = prefix.every(p => JSON.stringify(p) === first)
+    o.items = uniform ? prefix[0] : { anyOf: prefix }
+    const existing = typeof o.description === 'string' ? `${o.description} ` : ''
+    o.description = `${existing}Exactly ${prefix.length} items.`
+    delete o.prefixItems
+    delete o.minItems
+    delete o.maxItems
+  }
+  for (const value of Object.values(o)) relaxTuples(value)
 }
 
 export function validateSpec(spec: unknown): { ok: true; spec: SculptSpec } | { ok: false; errors: string[] } {

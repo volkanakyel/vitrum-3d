@@ -10,7 +10,13 @@ export type UserPart =
 export interface ToolCall<T> {
   system: string
   user: UserPart[]
-  tool: { name: string, description: string, schema: Record<string, unknown> }
+  tool: {
+    name: string
+    description: string
+    schema: Record<string, unknown>
+    /** Structured outputs. Defaults to true; off for schemas too large for the strict grammar. */
+    strict?: boolean
+  }
   model: string
   maxTokens: number
   /** Present only to keep `T` load-bearing at call sites. */
@@ -139,6 +145,9 @@ export function makeCallTool(cfg: CallToolConfig): CallTool {
           name: call.tool.name,
           description: call.tool.description,
           input_schema: call.tool.schema,
+          // Structured outputs: the API guarantees the input matches the schema,
+          // so a flattened or partial object can no longer reach validation.
+          strict: call.tool.strict ?? true,
         }],
         tool_choice: { type: 'auto' },
       }).finalMessage()

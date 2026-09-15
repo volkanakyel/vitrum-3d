@@ -178,6 +178,8 @@ export async function specCore(
         name: 'spec',
         description: 'Author the buildable SculptSpec for the photographed object.',
         schema: toolSchema(specSchema),
+        // The spec grammar is too large for strict mode; zod plus one retry covers it.
+        strict: false,
       },
       model: cfg.modelAuthor,
       maxTokens: 16_000,
