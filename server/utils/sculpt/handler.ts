@@ -82,13 +82,15 @@ export async function runSculptRoute<T>(event: H3Event, core: Core<T>): Promise<
       workspaceId: runtime.anthropicWorkspaceId,
     })
     const result = await core(body, callTool, cfg)
-    if (result.ok) recordSpend(guardState, Date.now(), result.costUsd)
-    else setResponseStatus(event, 422)
+    // A failed core may still have paid for calls (validation after the model
+    // answered); charge the day for whatever it reports.
+    recordSpend(guardState, Date.now(), result.costUsd ?? 0)
+    if (!result.ok) setResponseStatus(event, 422)
     return result
   }
   catch (error) {
-    // Tokens were almost certainly spent before this threw; charge the day for
-    // whatever the failing core managed to report, if anything.
+    // Tokens may have been spent before this threw, but nothing survives the
+    // throw to report them: this path is invisible to the daily ceiling.
     const ref = correlationId()
     console.error(`[sculpt ${ref}] ${event.path ?? ''}`, error)
     setResponseStatus(event, 500)

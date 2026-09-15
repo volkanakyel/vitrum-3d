@@ -76,5 +76,11 @@ export interface Review {
 export interface BuildOutput { code: string; notes: string[] }
 export interface Usage { input: number; output: number }
 export interface ApiOk<T> { ok: true; data: T; usage: Usage; costUsd: number }
-export interface ApiErr { ok: false; error: string }
+export interface ApiErr {
+  ok: false
+  error: string
+  /** Tokens spent before the request failed (validation after a paid call). */
+  usage?: Usage
+  costUsd?: number
+}
 export type ApiResult<T> = ApiOk<T> | ApiErr

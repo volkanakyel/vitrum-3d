@@ -44,6 +44,11 @@ class Tally {
   ok<T>(data: T): ApiResult<T> {
     return { ok: true, data, usage: this.usage, costUsd: this.costUsd }
   }
+
+  /** A failure after paid calls: the spend still reaches the daily ceiling. */
+  fail(error: string): ApiResult<never> {
+    return { ok: false, error, usage: this.usage, costUsd: this.costUsd }
+  }
 }
 
 function fail(error: string): ApiResult<never> {
@@ -128,7 +133,7 @@ export async function intakeCore(
 
   const parsed = intakeSchema.safeParse(raw)
   if (!parsed.success) {
-    return fail(`intake failed validation: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
+    return tally.fail(`intake failed validation: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
   }
   return tally.ok(parsed.data)
 }
@@ -183,7 +188,7 @@ export async function specCore(
     errors = result.errors
   }
 
-  return fail(`spec failed validation twice: ${errors.join('; ')}`)
+  return tally.fail(`spec failed validation twice: ${errors.join('; ')}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +255,7 @@ export async function buildCore(
     errors = checked.errors
   }
 
-  return fail(`generated code failed validation twice: ${errors.join('; ')}`)
+  return tally.fail(`generated code failed validation twice: ${errors.join('; ')}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -305,7 +310,7 @@ export async function reviewCore(
 
   const parsed = reviewSchema.safeParse(raw)
   if (!parsed.success) {
-    return fail(`review failed validation: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
+    return tally.fail(`review failed validation: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
   }
 
   const review = { ...parsed.data }

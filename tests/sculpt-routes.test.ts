@@ -192,6 +192,11 @@ describe('buildCore', () => {
     const { callTool } = makeFake([bad, bad])
     const res = await buildCore({ spec: makeSpec(), pass: 'form' }, callTool)
     expect(res.ok).toBe(false)
+    if (res.ok) return
+    // Both calls were paid for: the failure still reports the spend so the
+    // daily ceiling counts it.
+    expect(res.usage).toEqual({ input: 20, output: 40 })
+    expect(res.costUsd).toBeCloseTo(1)
   })
 
   it('rejects an unknown pass', async () => {
