@@ -1,5 +1,11 @@
 import tailwindcss from '@tailwindcss/vite'
 
+/** Installed inline, ahead of the app bundle; a no-op wherever storage works. */
+const STORAGE_SHIM = `(function(){try{window.localStorage;return}catch(e){}
+function mem(){var m=new Map();return{getItem:function(k){k=String(k);return m.has(k)?m.get(k):null},setItem:function(k,v){m.set(String(k),String(v))},removeItem:function(k){m.delete(String(k))},clear:function(){m.clear()},key:function(i){return Array.from(m.keys())[i]||null},get length(){return m.size}}}
+Object.defineProperty(window,'localStorage',{value:mem(),configurable:true});
+Object.defineProperty(window,'sessionStorage',{value:mem(),configurable:true})})()`
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
@@ -13,6 +19,17 @@ export default defineNuxtConfig({
     // with nothing worth rendering on the server.
     '/': { prerender: true },
     '/studio/**': { ssr: false },
+    // The sandbox runs generated code in an opaque-origin iframe; there is
+    // nothing to render on the server, and its dev-only host page is the same.
+    '/sandbox': { ssr: false },
+    '/sandbox-host': { ssr: false },
+  },
+  // The sandbox page runs on an opaque origin ("null"), and ES modules are
+  // always fetched in CORS mode — without this its own bundle is blocked.
+  // Dev is covered by `vite.server.cors` below; doing both would emit the
+  // header twice, which browsers reject.
+  $production: {
+    routeRules: { '/_nuxt/**': { headers: { 'access-control-allow-origin': '*' } } },
   },
   app: {
     head: {
@@ -22,6 +39,13 @@ export default defineNuxtConfig({
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { name: 'description', content: 'Vitrum turns any icon, logo or product photo into a true-to-size 3D object in glass, metal or full colour that you can orbit and export.' },
         { name: 'theme-color', content: '#eceef2' },
+      ],
+      script: [
+        // The sandbox page runs in an opaque-origin iframe, where reading
+        // window.localStorage throws — and Vue Router's devtools hook reads it
+        // while the bundle is still evaluating, which would kill the app before
+        // it mounts. A memory shim, installed only where the real one throws.
+        { innerHTML: STORAGE_SHIM },
       ],
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
@@ -33,7 +57,15 @@ export default defineNuxtConfig({
   },
   vite: {
     plugins: [tailwindcss()],
-    optimizeDeps: { include: ['three', 'd3-contour'], exclude: ['@huggingface/transformers'] },
+    // The sandbox iframe cannot recover from vite's mid-flight dependency
+    // re-optimisation, so everything it imports is pre-bundled.
+    optimizeDeps: {
+      include: ['three', 'three/examples/jsm/exporters/GLTFExporter.js', 'd3-contour'],
+      exclude: ['@huggingface/transformers'],
+    },
+    // Same reason as the `/_nuxt/**` rule above, for the dev server: the
+    // sandbox iframe asks for its modules from origin "null".
+    server: { cors: { origin: ['null', /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/] } },
   },
   runtimeConfig: {
     public: {

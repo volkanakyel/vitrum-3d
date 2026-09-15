@@ -12,7 +12,8 @@
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "postinstall": "nuxt prepare",
-    "kit-api": "tsx scripts/kit-api.ts"
+    "kit-api": "tsx scripts/kit-api.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
@@ -36,8 +37,10 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/d3-contour": "^3.0.6",
     "@types/three": "^0.185.4",
+    "playwright": "^1.63.0",
     "shadcn-nuxt": "^2.8.2",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
