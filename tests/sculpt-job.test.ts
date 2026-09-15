@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createJob, JobRunner } from '../app/utils/sculpt/job'
+import { createJob, JobRunner, plainJob } from '../app/utils/sculpt/job'
 import type { PassRecord, Renderer, SculptJob, Transport } from '../app/utils/sculpt/job'
 import type { ApiResult, BuildOutput, Intake, Review, SculptSpec } from '../app/utils/sculpt/types'
 
@@ -39,8 +39,8 @@ function baseSpec(name = 'Oak stool'): SculptSpec {
   }
 }
 
-function buildOutput(code: string): BuildOutput {
-  return { code, notes: [] }
+function buildOutput(code: string, notes: string[] = []): BuildOutput {
+  return { code, notes }
 }
 
 function baseReview(overrides: Partial<Review> = {}): Review {
@@ -68,6 +68,19 @@ function refineCodeReview(): Review {
 
 function requestInputReview(question: string): Review {
   return baseReview({ action: 'request-input', fidelity: 0.6, question })
+}
+
+function refineSpecReview(summary: string): Review {
+  return baseReview({
+    action: 'refine-spec',
+    fidelity: 0.4,
+    summary,
+    defects: [{ component: 'seat', what: 'too tall', measured: '0.6m', fix: 'lower to 0.45m' }],
+  })
+}
+
+function stopReview(fidelity: number): Review {
+  return baseReview({ action: 'stop', fidelity })
 }
 
 function ok<T>(data: T, usage = { input: 10, output: 20 }, costUsd = 0.01): ApiResult<T> {
@@ -132,11 +145,11 @@ function makeTransport(): FakeTransport {
   return { transport, queues, calls }
 }
 
-function makeRenderer(opts: { failLoadOnce?: boolean } = {}): Renderer & { load: ReturnType<typeof vi.fn> } {
+function makeRenderer(opts: { failLoadOnce?: boolean, failLoadAlways?: boolean } = {}): Renderer & { load: ReturnType<typeof vi.fn> } {
   let calls = 0
   const load = vi.fn(async (_code: string) => {
     calls += 1
-    if (opts.failLoadOnce && calls === 1) throw new Error('boom')
+    if (opts.failLoadAlways || (opts.failLoadOnce && calls === 1)) throw new Error('boom')
     return { parts: ['part'], triangles: 100 }
   })
   const render = vi.fn(async (views: { name: string }[]) =>
@@ -400,8 +413,8 @@ describe('JobRunner', () => {
     const renderer = makeRenderer()
     const deps = makeDeps(fake.transport, renderer)
 
-    const blockout: PassRecord = { id: 'blockout', code: 'blockout-code', sheets: ['data:x'], reviews: [continueReview()], fixes: 0 }
-    const structural: PassRecord = { id: 'structural', code: 'structural-code', sheets: ['data:x'], reviews: [continueReview()], fixes: 0 }
+    const blockout: PassRecord = { id: 'blockout', code: 'blockout-code', notes: [], sheets: ['data:x'], reviews: [continueReview()], fixes: 0 }
+    const structural: PassRecord = { id: 'structural', code: 'structural-code', notes: [], sheets: ['data:x'], reviews: [continueReview()], fixes: 0 }
     const job: SculptJob = {
       id: 'persisted-1',
       createdAt: Date.now(),
@@ -456,5 +469,361 @@ describe('JobRunner', () => {
     expect(result.error).toBe('camera obstructed')
     expect(fake.calls.spec).toHaveLength(0)
     expect(fake.calls.build).toHaveLength(0)
+  })
+
+  // -------------------------------------------------------------------------
+  // fix round 1 — chained code + carried notes
+  // -------------------------------------------------------------------------
+
+  it('chains build code (and notes) from the previous pass, and refine-spec rebuilds without code', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    const deps = makeDeps(fake.transport, renderer)
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake()))
+    fake.queues.spec.push(ok(baseSpec('v1')))
+
+    // blockout: single build, continue. Carries its own notes forward.
+    fake.queues.build.push(ok(buildOutput('blockout-final', ['note-A'])))
+    fake.queues.review.push(ok(continueReview()))
+
+    // structural: fresh pass -> chains blockout's final code + notes.
+    fake.queues.build.push(ok(buildOutput('structural-draft', ['note-B'])))
+    fake.queues.review.push(ok(refineSpecReview('proportions are wrong')))
+    fake.queues.spec.push(ok(baseSpec('v2')))
+    // refine-spec rebuild: no code, but notes still carry from the last build.
+    fake.queues.build.push(ok(buildOutput('structural-mid', ['note-C'])))
+    fake.queues.review.push(ok(refineCodeReview()))
+    // refine-code rebuild: own latest code, notes carry from the last build.
+    fake.queues.build.push(ok(buildOutput('structural-final', ['note-D'])))
+    fake.queues.review.push(ok(continueReview()))
+
+    // form: fresh pass -> chains structural's *final* code + notes.
+    fake.queues.build.push(ok(buildOutput('form-final')))
+    fake.queues.review.push(ok(continueReview()))
+
+    queueSimplePass(fake, 'material')
+    queueSimplePass(fake, 'surface')
+
+    const result = await runner.run()
+
+    const structuralBuilds = fake.calls.build.filter(c => c.pass === 'structural')
+    expect(structuralBuilds).toHaveLength(3)
+    expect(structuralBuilds[0]?.code).toBe('blockout-final')
+    expect(structuralBuilds[0]?.notes).toEqual(['note-A'])
+    expect(structuralBuilds[1]?.code).toBeUndefined() // rebuilt from the refined spec, no prior code
+    expect(structuralBuilds[1]?.notes).toEqual(['note-B'])
+    expect(structuralBuilds[2]?.code).toBe('structural-mid') // refine-code: own latest code
+    expect(structuralBuilds[2]?.notes).toEqual(['note-C'])
+
+    const formBuilds = fake.calls.build.filter(c => c.pass === 'form')
+    expect(formBuilds).toHaveLength(1)
+    expect(formBuilds[0]?.code).toBe('structural-final')
+    expect(formBuilds[0]?.notes).toEqual(['note-D'])
+
+    expect(result.status).toBe('done')
+  })
+
+  // -------------------------------------------------------------------------
+  // fix round 1 — cancel/save races
+  // -------------------------------------------------------------------------
+
+  it('cancelling from inside save() bails immediately: no further transport calls, terminal status stays cancelled', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    let runner!: JobRunner
+    const saveStatuses: string[] = []
+    let triggered = false
+    const save = vi.fn(async (job: SculptJob) => {
+      saveStatuses.push(job.status)
+      // Fires on the commit right after the first build succeeds — the exact
+      // race from the bug report: cancel() lands while `save()` for that
+      // commit is in flight, before `status` would otherwise move on to
+      // 'rendering' and before renderer.load (a real, paid call) fires.
+      if (!triggered && job.status === 'building' && job.passes[0]?.code === 'blockout-1') {
+        triggered = true
+        runner.cancel()
+      }
+    })
+    const onChange = vi.fn()
+    const deps = { transport: fake.transport, renderer, sheet: vi.fn(async () => 'data:image/jpeg;base64,x'), save, onChange }
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake()))
+    fake.queues.spec.push(ok(baseSpec()))
+    fake.queues.build.push(ok(buildOutput('blockout-1')))
+    // No review queued: reaching a review call would be a bug.
+
+    const result = await runner.run()
+
+    expect(result.status).toBe('cancelled')
+    expect(fake.calls.build).toHaveLength(1)
+    expect(fake.calls.review).toHaveLength(0)
+    expect(renderer.load).not.toHaveBeenCalled()
+    expect(saveStatuses[saveStatuses.length - 1]).toBe('cancelled')
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }))
+  })
+
+  it('cancel during renderer.render() stops before sheet/review are ever called', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    let resolveRender!: (value: { name: string, blob: Blob }[]) => void
+    const renderPromise = new Promise<{ name: string, blob: Blob }[]>((resolve) => { resolveRender = resolve })
+    renderer.render = vi.fn(() => renderPromise)
+    const deps = makeDeps(fake.transport, renderer)
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake()))
+    fake.queues.spec.push(ok(baseSpec()))
+    fake.queues.build.push(ok(buildOutput('blockout-1')))
+
+    const runPromise = runner.run()
+    while ((renderer.render as ReturnType<typeof vi.fn>).mock.calls.length === 0) await tick(1)
+
+    runner.cancel()
+    resolveRender([{ name: 'reference', blob: new Blob(['x']) }])
+    const result = await runPromise
+
+    expect(result.status).toBe('cancelled')
+    expect(deps.sheet).not.toHaveBeenCalled()
+    expect(fake.calls.review).toHaveLength(0)
+  })
+
+  // -------------------------------------------------------------------------
+  // fix round 1 — save failure surfaces as a job failure
+  // -------------------------------------------------------------------------
+
+  it('a save() rejection during a pass fails the job, still fires onChange, and run() resolves (not rejects)', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    let saveCallCount = 0
+    const save = vi.fn(async () => {
+      saveCallCount += 1
+      // The 5th commit is the "status: building" commit for the blockout
+      // pass — i.e. a failure that happens *during a pass*, not during
+      // intake/spec.
+      if (saveCallCount === 5) throw new Error('disk full')
+    })
+    const onChange = vi.fn()
+    const deps = { transport: fake.transport, renderer, sheet: vi.fn(async () => 'data:image/jpeg;base64,x'), save, onChange }
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake()))
+    fake.queues.spec.push(ok(baseSpec()))
+    // No build/review queued: the failure must happen before any build call.
+
+    const result = await runner.run()
+
+    expect(result.status).toBe('failed')
+    expect(result.error).toBe('disk full')
+    expect(fake.calls.build).toHaveLength(0)
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', error: 'disk full' }))
+  })
+
+  // -------------------------------------------------------------------------
+  // fix round 1 — quality is surface-only
+  // -------------------------------------------------------------------------
+
+  it('stop before surface finishes "approximate" (even with a high fidelity), and export still runs', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    const deps = makeDeps(fake.transport, renderer)
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake()))
+    fake.queues.spec.push(ok(baseSpec()))
+    fake.queues.build.push(ok(buildOutput('blockout-1')))
+    fake.queues.review.push(ok(stopReview(0.85)))
+
+    const result = await runner.run()
+
+    expect(result.status).toBe('done')
+    expect(result.quality).toBe('approximate')
+    expect(result.passes).toHaveLength(1)
+    expect(result.currentPass).toBe('blockout')
+    expect(renderer.exportGLB).toHaveBeenCalledTimes(1)
+    expect(result.glb).toBeInstanceOf(ArrayBuffer)
+  })
+
+  // -------------------------------------------------------------------------
+  // fix round 1 — re-entrancy
+  // -------------------------------------------------------------------------
+
+  it('run() is re-entrant: a concurrent call returns the same in-flight promise', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    const deps = makeDeps(fake.transport, renderer)
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake()))
+    fake.queues.spec.push(ok(baseSpec()))
+    for (const pass of ['blockout', 'structural', 'form', 'material', 'surface']) queueSimplePass(fake, pass)
+
+    const p1 = runner.run()
+    const p2 = runner.run()
+    expect(p2).toBe(p1)
+
+    const result = await p1
+    expect(result.status).toBe('done')
+    expect(fake.calls.intake).toHaveLength(1)
+  })
+
+  it('run() on an already-done job is a no-op', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    const deps = makeDeps(fake.transport, renderer)
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    job.status = 'done'
+    const runner = new JobRunner(job, deps)
+
+    const result = await runner.run()
+
+    expect(result.status).toBe('done')
+    expect(fake.calls.intake).toHaveLength(0)
+    expect(deps.save).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // fix round 1 — export guarded by the last load's success
+  // -------------------------------------------------------------------------
+
+  it('skips export and finishes "approximate" with glb: null when the renderer never loaded successfully', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer({ failLoadAlways: true })
+    const deps = makeDeps(fake.transport, renderer)
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake()))
+    fake.queues.spec.push(ok(baseSpec()))
+    // Every pass burns its fix budget on load failures alone; 13 build calls
+    // total across the 5 passes (3 + 3 + 3 + 3 + 1, per the shared 8-fix cap).
+    for (let i = 0; i < 13; i++) fake.queues.build.push(ok(buildOutput(`code-${i}`)))
+
+    const result = await runner.run()
+
+    expect(result.status).toBe('done')
+    expect(result.quality).toBe('approximate')
+    expect(result.glb).toBeNull()
+    expect(renderer.exportGLB).not.toHaveBeenCalled()
+    expect(fake.calls.review).toHaveLength(0)
+    expect(fake.calls.build).toHaveLength(13)
+  })
+
+  // -------------------------------------------------------------------------
+  // fix round 1 — save boundary is a plain (non-reactive-proxy-safe) copy
+  // -------------------------------------------------------------------------
+
+  it('plainJob() deep-clones JSON-shaped fields but passes glb through by reference', () => {
+    const original = createJob('data:image/jpeg;base64,photo', '', null)
+    original.intake = new Proxy(baseIntake(), {}) // stand-in for a Vue reactive proxy
+    original.passes = [{ id: 'blockout', code: 'c', notes: ['n'], sheets: ['s'], reviews: [continueReview()], fixes: 0 }]
+    original.glb = new ArrayBuffer(4)
+
+    const plain = plainJob(original)
+
+    expect(plain).not.toBe(original)
+    expect(plain.intake).toEqual(baseIntake())
+    expect(Object.getPrototypeOf(plain.intake)).toBe(Object.prototype)
+    expect(plain.passes).not.toBe(original.passes)
+    expect(plain.passes[0]).not.toBe(original.passes[0])
+    expect(plain.passes).toEqual(original.passes)
+    // The one field JSON cannot represent must survive by reference, not be dropped.
+    expect(plain.glb).toBe(original.glb)
+  })
+
+  it('commit() persists a plain copy, not the live job object', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    const deps = makeDeps(fake.transport, renderer)
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake()))
+    fake.queues.spec.push(ok(baseSpec()))
+    for (const pass of ['blockout', 'structural', 'form', 'material', 'surface']) queueSimplePass(fake, pass)
+
+    await runner.run()
+
+    expect(deps.save.mock.calls.length).toBeGreaterThan(0)
+    for (const [savedJob] of deps.save.mock.calls) {
+      expect(savedJob).not.toBe(job)
+    }
+  })
+
+  // -------------------------------------------------------------------------
+  // fix round 1 — usage/cost accumulation
+  // -------------------------------------------------------------------------
+
+  it('accumulates usage and costUsd across intake, spec, build and review calls', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    const deps = makeDeps(fake.transport, renderer)
+    const job = createJob('data:image/jpeg;base64,photo', '', null)
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.intake.push(ok(baseIntake(), { input: 100, output: 50 }, 1))
+    fake.queues.spec.push(ok(baseSpec(), { input: 200, output: 80 }, 2))
+    fake.queues.build.push(ok(buildOutput('blockout-1'), { input: 300, output: 120 }, 3))
+    fake.queues.review.push(ok(stopReview(0.5), { input: 400, output: 160 }, 4))
+
+    const result = await runner.run()
+
+    expect(result.usage).toEqual({ input: 1000, output: 410 })
+    expect(result.costUsd).toBeCloseTo(10)
+    expect(result.status).toBe('done')
+  })
+
+  // -------------------------------------------------------------------------
+  // fix round 1 — resume a pass that has code but no review (rebuild)
+  // -------------------------------------------------------------------------
+
+  it('resumes a pass with code but no review by rebuilding it from the top', async () => {
+    const fake = makeTransport()
+    const renderer = makeRenderer()
+    const deps = makeDeps(fake.transport, renderer)
+
+    const blockout: PassRecord = { id: 'blockout', code: 'existing-code', notes: ['n1'], sheets: [], reviews: [], fixes: 0 }
+    const job: SculptJob = {
+      id: 'persisted-2',
+      createdAt: Date.now(),
+      image: 'data:image/jpeg;base64,photo',
+      hint: '',
+      dims: null,
+      intake: baseIntake(),
+      spec: baseSpec(),
+      passes: [blockout],
+      currentPass: 'blockout',
+      fixesTotal: 0,
+      usage: { input: 0, output: 0 },
+      costUsd: 0,
+      status: 'idle',
+      quality: null,
+      error: null,
+      question: null,
+      glb: null,
+    }
+    const runner = new JobRunner(job, deps)
+
+    fake.queues.build.push(ok(buildOutput('blockout-rebuilt')))
+    fake.queues.review.push(ok(continueReview()))
+    for (const pass of ['structural', 'form', 'material', 'surface']) queueSimplePass(fake, pass)
+
+    const result = await runner.run()
+
+    expect(fake.calls.intake).toHaveLength(0)
+    expect(fake.calls.spec).toHaveLength(0)
+    expect(fake.calls.build[0]?.code).toBe('existing-code')
+    expect(fake.calls.build[0]?.notes).toEqual(['n1'])
+    const finalBlockout = result.passes.find(p => p.id === 'blockout') as PassRecord
+    expect(finalBlockout.code).toBe('blockout-rebuilt')
+    expect(result.status).toBe('done')
   })
 })

@@ -15,17 +15,29 @@ import type { CanvasCtxLike, CanvasLike, ImageLike } from '../app/utils/sculpt/s
 describe('computeLayout', () => {
   const layout = computeLayout()
 
-  it('clamps the long side to MAX_LONG_SIDE', () => {
+  it('fits under MAX_LONG_SIDE without downscaling at the real margin/gutter', () => {
     expect(Math.max(layout.width, layout.height)).toBeLessThanOrEqual(MAX_LONG_SIDE)
-    // The base (unscaled) geometry for these constants exceeds the cap, so
-    // the layout must actually have been scaled down, not just happen to fit.
     const row1ContentWidth = CELL_PAIR * 2 + GUTTER
     const row2ContentWidth = CELL_TRIO * 3 + GUTTER * 2
     const contentWidth = Math.max(row1ContentWidth, row2ContentWidth)
     const baseWidth = MARGIN * 2 + contentWidth
     const baseHeight = MARGIN * 2 + (LABEL_H + CELL_PAIR) + GUTTER + (LABEL_H + CELL_TRIO)
-    expect(Math.max(baseWidth, baseHeight)).toBeGreaterThan(MAX_LONG_SIDE)
-    expect(layout.scale).toBeLessThan(1)
+    expect(Math.max(baseWidth, baseHeight)).toBeLessThanOrEqual(MAX_LONG_SIDE)
+    expect(layout.scale).toBe(1)
+  })
+
+  it('scales the whole layout down when the (overridden) geometry would exceed MAX_LONG_SIDE', () => {
+    // No real caller overrides margin/gutter; this exercises the downscale
+    // path directly since the real constants never trigger it (see above).
+    const big = computeLayout({ margin: 200, gutter: 40 })
+    const unscaledLongSide = Math.max(
+      200 * 2 + Math.max(CELL_PAIR * 2 + 40, CELL_TRIO * 3 + 40 * 2),
+      200 * 2 + (LABEL_H + CELL_PAIR) + 40 + (LABEL_H + CELL_TRIO),
+    )
+    expect(unscaledLongSide).toBeGreaterThan(MAX_LONG_SIDE)
+    expect(big.scale).toBeLessThan(1)
+    expect(Math.max(big.width, big.height)).toBeLessThanOrEqual(MAX_LONG_SIDE)
+    expect(big.cells.reference.w).toBeLessThan(CELL_PAIR)
   })
 
   it('sizes reference/photo cells identically and front/side/top identically', () => {
@@ -53,15 +65,15 @@ describe('computeLayout', () => {
   })
 
   it('is deterministic and matches the expected pixel geometry', () => {
-    // Pinned to the current constants (MARGIN 80, GUTTER 40, LABEL_H 24,
+    // Pinned to the current constants (MARGIN 24, GUTTER 16, LABEL_H 24,
     // CELL_PAIR 700, CELL_TRIO 460) so a regression in the formula is caught.
-    expect(layout.width).toBe(1568)
-    expect(layout.height).toBe(1363)
-    expect(layout.cells.reference).toEqual({ x: 87, y: 101, w: 678, h: 678, labelY: 95 })
-    expect(layout.cells.photo).toEqual({ x: 803, y: 101, w: 678, h: 678, labelY: 95 })
-    expect(layout.cells.front).toEqual({ x: 77, y: 840, w: 445, h: 445, labelY: 834 })
-    expect(layout.cells.side).toEqual({ x: 561, y: 840, w: 445, h: 445, labelY: 834 })
-    expect(layout.cells.top).toEqual({ x: 1045, y: 840, w: 445, h: 445, labelY: 834 })
+    expect(layout.width).toBe(1464)
+    expect(layout.height).toBe(1272)
+    expect(layout.cells.reference).toEqual({ x: 24, y: 48, w: 700, h: 700, labelY: 42 })
+    expect(layout.cells.photo).toEqual({ x: 740, y: 48, w: 700, h: 700, labelY: 42 })
+    expect(layout.cells.front).toEqual({ x: 26, y: 788, w: 460, h: 460, labelY: 782 })
+    expect(layout.cells.side).toEqual({ x: 502, y: 788, w: 460, h: 460, labelY: 782 })
+    expect(layout.cells.top).toEqual({ x: 978, y: 788, w: 460, h: 460, labelY: 782 })
   })
 })
 
@@ -112,7 +124,7 @@ describe('buildSheet', () => {
     const url = await buildSheet('data:image/jpeg;base64,PHOTO', renders, { createCanvas, loadImage })
 
     expect(url).toBe('data:image/jpeg;base64,FAKE')
-    expect(createCanvas).toHaveBeenCalledWith(1568, 1363)
+    expect(createCanvas).toHaveBeenCalledWith(1464, 1272)
     expect(canvas.toDataURL).toHaveBeenCalledWith('image/jpeg', JPEG_QUALITY)
     expect(loadImage).toHaveBeenCalledTimes(5)
     // The photo (job.image) is loaded, not just the renders.
@@ -120,7 +132,7 @@ describe('buildSheet', () => {
 
     expect(drawCalls).toHaveLength(5)
     const layout = computeLayout()
-    // reference cell (row1 left): 1000x500 fit into 678x678 -> width-constrained.
+    // reference cell (row1 left): 1000x500 fit into 700x700 -> width-constrained.
     const referenceDraw = drawCalls[0]!
     const fitScale = layout.cells.reference.w / 1000
     expect(referenceDraw.dw).toBeCloseTo(1000 * fitScale)

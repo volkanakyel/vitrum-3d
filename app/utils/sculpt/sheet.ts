@@ -15,8 +15,8 @@
 export const CELL_PAIR = 700
 export const CELL_TRIO = 460
 export const LABEL_H = 24
-export const GUTTER = 40
-export const MARGIN = 80
+export const GUTTER = 16
+export const MARGIN = 24
 export const MAX_LONG_SIDE = 1568
 export const JPEG_QUALITY = 0.85
 
@@ -34,10 +34,24 @@ export interface SheetLayout {
   }
 }
 
-/** Pure layout geometry, already scaled to respect `MAX_LONG_SIDE`. */
-export function computeLayout(): SheetLayout {
-  const row1ContentWidth = CELL_PAIR * 2 + GUTTER
-  const row2ContentWidth = CELL_TRIO * 3 + GUTTER * 2
+export interface LayoutOverrides {
+  margin?: number
+  gutter?: number
+}
+
+/**
+ * Pure layout geometry, already scaled to respect `MAX_LONG_SIDE`. With the
+ * real constants (margin 24, gutter 16) the 700/460 grid already fits under
+ * 1568 on its long side, so `buildSheet` never actually downscales; the
+ * `overrides` parameter exists only so tests can force the overflow path
+ * (a real caller never passes it).
+ */
+export function computeLayout(overrides: LayoutOverrides = {}): SheetLayout {
+  const margin = overrides.margin ?? MARGIN
+  const gutter = overrides.gutter ?? GUTTER
+
+  const row1ContentWidth = CELL_PAIR * 2 + gutter
+  const row2ContentWidth = CELL_TRIO * 3 + gutter * 2
   const contentWidth = Math.max(row1ContentWidth, row2ContentWidth)
   const row1Offset = (contentWidth - row1ContentWidth) / 2
   const row2Offset = (contentWidth - row2ContentWidth) / 2
@@ -45,20 +59,20 @@ export function computeLayout(): SheetLayout {
   const row1TotalH = LABEL_H + CELL_PAIR
   const row2TotalH = LABEL_H + CELL_TRIO
 
-  const baseWidth = MARGIN * 2 + contentWidth
-  const baseHeight = MARGIN * 2 + row1TotalH + GUTTER + row2TotalH
+  const baseWidth = margin * 2 + contentWidth
+  const baseHeight = margin * 2 + row1TotalH + gutter + row2TotalH
   const longSide = Math.max(baseWidth, baseHeight)
   const scale = Math.min(1, MAX_LONG_SIDE / longSide)
 
-  const row1Y = MARGIN + LABEL_H
-  const row2Y = MARGIN + row1TotalH + GUTTER + LABEL_H
+  const row1Y = margin + LABEL_H
+  const row2Y = margin + row1TotalH + gutter + LABEL_H
 
-  const referenceX = MARGIN + row1Offset
-  const photoX = referenceX + CELL_PAIR + GUTTER
+  const referenceX = margin + row1Offset
+  const photoX = referenceX + CELL_PAIR + gutter
 
-  const frontX = MARGIN + row2Offset
-  const sideX = frontX + CELL_TRIO + GUTTER
-  const topX = sideX + CELL_TRIO + GUTTER
+  const frontX = margin + row2Offset
+  const sideX = frontX + CELL_TRIO + gutter
+  const topX = sideX + CELL_TRIO + gutter
 
   const cell = (x: number, y: number, size: number): SheetCell => ({
     x: Math.round(x * scale),
@@ -165,7 +179,7 @@ export async function buildSheet(
     ctx.drawImage(img, dx, dy, dw, dh)
 
     ctx.fillStyle = '#000000'
-    ctx.font = `${Math.round(LABEL_H * layout.scale * 0.7)}px sans-serif`
+    ctx.font = `${Math.round(LABEL_H * layout.scale)}px sans-serif`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'alphabetic'
     ctx.fillText(entry.label, entry.cell.x, entry.cell.labelY)
