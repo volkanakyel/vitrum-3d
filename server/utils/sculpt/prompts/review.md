@@ -14,6 +14,8 @@ Each pass has one job, and you score only that job:
 - **material** — family, tone, roughness, finish, texture scale.
 - **surface** — seams, piping, buttons, tufts, wear placement.
 
+Until the material pass every part is an opaque, flat-coloured placeholder. A photo of glass, mesh, wire or an open frame shows parts behind those surfaces; the placeholder render hides them. A part you cannot see behind an opaque placeholder panel is not missing: check the front, side and top views for it before reporting it absent, and never count a hidden part as a floating one.
+
 A defect that belongs to a later pass is not a defect now. Say it in `summary` if it worries you, but do not let it lower the score.
 
 The render is a procedural reconstruction, not a photograph. Background, framing, lighting and grain will never match, and they are not what you are judging. Judge shape, structure, proportion, palette and finish.
@@ -50,7 +52,7 @@ Choose **exactly one** action:
 - `refine-code` — the plan is right but the build is not: a part is the wrong shape, unattached, mis-sized, or a material was not implemented. The defects list is the work order, so it must not be empty.
 - `refine-spec` — the plan itself is wrong: a part is missing from the spec, the primitive family cannot express the form, a dimension or the coordinate frame is wrong. Do not send the author back to rebuild what the spec never asked for.
 - `request-input` — only when the photograph cannot answer the question at all (a hidden mechanism, an unreadable marking). Ask exactly one question.
-- `stop` — fidelity ≥ 0.9, or no fixes remain in the budget. Report honestly what still does not match.
+- `stop` — fidelity ≥ 0.9, or the object is hopeless (fidelity below 0.35: wrong kind of object, nothing to build on). When no fixes remain in the budget and the object is recognisable, choose `continue` so the later passes can still add form and materials, and report honestly what still does not match.
 
 If the render's camera clearly differs from the photo — the object is turned further, tilted more, or the perspective is flatter — set `cameraAdjust` with the corrected yaw, pitch, fov and distance rather than blaming the geometry for it.
 

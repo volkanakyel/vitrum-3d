@@ -26,6 +26,8 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024
  * any line breaks.
  */
 const MAX_IMAGE_BASE64_CHARS = Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 1024
+/** Below this a reviewer's `stop` is honoured before the surface pass. */
+const HOPELESS_FIDELITY = 0.35
 
 /** A tally that grows across the retries of one request. */
 class Tally {
@@ -323,8 +325,17 @@ export async function reviewCore(
   }
   // A reviewer that waves a weak render through is the most expensive failure in
   // the loop, so a low-fidelity `continue` is spent on another fix instead.
-  if (review.action === 'continue' && review.fidelity < 0.7) {
-    review.action = fixesLeft > 0 ? 'refine-code' : 'stop'
+  // With no fixes left the pass moves on anyway: an imperfect structure with
+  // real materials beats a stopped job with placeholder colours.
+  if (review.action === 'continue' && review.fidelity < 0.7 && fixesLeft > 0) {
+    review.action = 'refine-code'
+  }
+  // `stop` ends the whole job. Before the surface pass that leaves an
+  // unfinished, unmaterialised model, so it is honoured only when the object
+  // is hopeless; otherwise the remaining passes run and the job ends
+  // 'approximate'.
+  if (review.action === 'stop' && body.pass !== 'surface' && review.fidelity >= HOPELESS_FIDELITY) {
+    review.action = 'continue'
   }
 
   return tally.ok(review)

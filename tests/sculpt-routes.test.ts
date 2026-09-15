@@ -255,7 +255,7 @@ describe('reviewCore', () => {
     expect(res.data.action).toBe('refine-code')
   })
 
-  it('downgrades continue at fidelity 0.6 to stop when no fixes remain', async () => {
+  it('lets a weak pass continue when no fixes remain, so later passes still run', async () => {
     const { callTool } = makeFake([makeReview({ action: 'continue', fidelity: 0.6 })])
     const res = await reviewCore(
       { spec: makeSpec(), pass: 'blockout', sheet: pngBase64(), image: pngBase64(), fixesLeft: 0 },
@@ -263,7 +263,33 @@ describe('reviewCore', () => {
     )
     expect(res.ok).toBe(true)
     if (!res.ok) return
-    expect(res.data.action).toBe('stop')
+    expect(res.data.action).toBe('continue')
+  })
+
+  it('turns a recognisable stop before the surface pass into continue', async () => {
+    const { callTool } = makeFake([makeReview({ action: 'stop', fidelity: 0.5 })])
+    const res = await reviewCore(
+      { spec: makeSpec(), pass: 'structural', sheet: pngBase64(), image: pngBase64(), fixesLeft: 0 },
+      callTool,
+    )
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.data.action).toBe('continue')
+  })
+
+  it('honours stop for a hopeless object and at the surface pass', async () => {
+    const hopeless = makeFake([makeReview({ action: 'stop', fidelity: 0.2 })])
+    const a = await reviewCore(
+      { spec: makeSpec(), pass: 'blockout', sheet: pngBase64(), image: pngBase64(), fixesLeft: 2 },
+      hopeless.callTool,
+    )
+    expect(a.ok && a.data.action).toBe('stop')
+    const last = makeFake([makeReview({ action: 'stop', fidelity: 0.6 })])
+    const b = await reviewCore(
+      { spec: makeSpec(), pass: 'surface', sheet: pngBase64(), image: pngBase64(), fixesLeft: 0 },
+      last.callTool,
+    )
+    expect(b.ok && b.data.action).toBe('stop')
   })
 
   it('turns a defect-free refine-code into continue', async () => {
