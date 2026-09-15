@@ -10,6 +10,7 @@ Nothing else at the top level. No export, no call, no wrapper. It runs in a sand
 
 - **Exactly one** top-level `function createModel(kit, THREE, options)`, declared with exactly those three parameters.
 - No imports or module syntax, no DOM, no network, no timers with string bodies, no `Function` or `eval`. These identifiers are rejected by the validator and the file is thrown away: `{{FORBIDDEN}}`.
+- **That list is lexical.** A name on it is rejected anywhere it appears as an identifier — a local variable, a function parameter, or a property read (`mesh.parent`, `obj.top`) — not only where it means the global. Never name a parameter or variable `parent`, `top`, `self`, `location`, `window`; use `base`/`support`, `topY`, `me`, `where` instead, and never read `.parent` off a mesh. Where the kit doc writes `restOn(child, parent, overlap)` that is a signature describing the argument's role, not a name to reuse in your own code.
 - **Metres, +Y up, +Z front.** The reference camera looks at the model from +Z rotated by the spec's yaw. Keep the root's scale at 1 — never scale the model to fit; author it at life size.
 - Build every mesh through `kit.part(id, geometry, material, { position, rotation })`, and use the **spec's component ids verbatim** as the part ids. The review pipeline names defects by those ids; an invented id makes a defect unfixable.
 - Use the kit's builders for geometry. `THREE` is in scope for `Math`-level helpers, `Vector3`, and `Math.PI` rotations — not for constructing geometry the kit already provides.

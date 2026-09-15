@@ -140,6 +140,21 @@ describe('validateSpec', () => {
     expect(r.ok).toBe(false)
   })
 
+  // The spec prompt asks for these two by name; the enum has to admit them.
+  it('accepts the bentTube and roundedBox primitives', () => {
+    for (const primitive of ['bentTube', 'roundedBox'] as const) {
+      const spec = makeSpec()
+      spec.components[0]!.primitive = primitive
+      expect(validateSpec(spec).ok, primitive).toBe(true)
+    }
+  })
+
+  it('rejects a primitive the kit has no builder for', () => {
+    const spec = makeSpec()
+    ;(spec.components[0] as { primitive: string }).primitive = 'nurbs'
+    expect(validateSpec(spec).ok).toBe(false)
+  })
+
   it('rejects fov out of range', () => {
     const spec = makeSpec()
     spec.camera.fov = 90

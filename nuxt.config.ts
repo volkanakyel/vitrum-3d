@@ -103,7 +103,7 @@ export default defineNuxtConfig({
       plugins: [{
         name: 'raw-query',
         async resolveId(id: string, importer: string | undefined, options: unknown) {
-          if (!id.endsWith('?raw')) return null
+          if (!id.endsWith('.md?raw')) return null
           const resolved = await (this as {
             resolve: (id: string, importer?: string, options?: unknown) => Promise<{ id: string } | null>
           }).resolve(id.slice(0, -4), importer, options)

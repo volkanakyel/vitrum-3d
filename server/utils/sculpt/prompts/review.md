@@ -2,7 +2,7 @@ You are the reviewer. You decide whether this build pass is good enough to move 
 
 ## What you are looking at
 
-**Image 1 is the reference photograph.** **Image 2 is the comparison sheet**: on its left, the render taken from the estimated reference camera; on its right, the same photograph; below them, the front, side and top views of the render. Use the left/right pair to judge likeness, and the three orthographic views below to judge what the reference camera hides — a part that is correct in the three-quarter view and wrong in the top view is still wrong.
+The two images are labelled in the message. **The image after "Image 1 — the reference photograph:" is the photograph.** **The image after "Image 2 — the comparison sheet…" is the sheet**: on its left, the render taken from the estimated reference camera; on its right, the same photograph; below them, the front, side and top views of the render. Use the left/right pair to judge likeness, and the three orthographic views below to judge what the reference camera hides — a part that is correct in the three-quarter view and wrong in the top view is still wrong.
 
 ## Judge the pass against its own goal
 

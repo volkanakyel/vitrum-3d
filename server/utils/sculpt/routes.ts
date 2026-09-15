@@ -112,7 +112,7 @@ export async function intakeCore(
       schema: toolSchema(intakeSchema),
     },
     model: cfg.modelAuthor,
-    maxTokens: 8000,
+    maxTokens: 16_000,
   }))
 
   const parsed = intakeSchema.safeParse(raw)
@@ -226,7 +226,7 @@ export async function buildCore(
         schema: toolSchema(buildSchema),
       },
       model: cfg.modelAuthor,
-      maxTokens: 32_000,
+      maxTokens: 64_000,
     }))
 
     const parsed = buildSchema.safeParse(raw)
@@ -266,7 +266,7 @@ export async function reviewCore(
     : 0
 
   const text = [
-    `Review the "${body.pass}" pass. Image 1 is the reference photograph; image 2 is the comparison sheet.`,
+    `Review the "${body.pass}" pass.`,
     `Fixes left in the budget: ${fixesLeft}.`,
     `Spec:\n\`\`\`json\n${JSON.stringify(spec.spec, null, 2)}\n\`\`\``,
   ].join('\n\n')
@@ -274,14 +274,22 @@ export async function reviewCore(
   const tally = new Tally()
   const raw = tally.add(await callTool<unknown>({
     system: PROMPTS.review,
-    user: [photo.part, sheet.part, { type: 'text', text }],
+    // Each image is introduced by its own label, so "image 1" and "image 2" in the
+    // system prompt refer to something the model can actually see named.
+    user: [
+      { type: 'text', text: 'Image 1 — the reference photograph:' },
+      photo.part,
+      { type: 'text', text: 'Image 2 — the comparison sheet (left: render from the estimated reference camera; right: the photo; below: front/side/top renders):' },
+      sheet.part,
+      { type: 'text', text },
+    ],
     tool: {
       name: 'review',
       description: 'Score the render against the reference and choose the next action.',
       schema: toolSchema(reviewSchema),
     },
     model: cfg.modelReview,
-    maxTokens: 8000,
+    maxTokens: 16_000,
   }))
 
   const parsed = reviewSchema.safeParse(raw)

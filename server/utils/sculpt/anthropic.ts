@@ -13,15 +13,18 @@ export interface ToolCall<T> {
   tool: { name: string, description: string, schema: Record<string, unknown> }
   model: string
   maxTokens: number
-  /**
-   * Ask for extended thinking. The 5-series takes adaptive thinking only — a
-   * `budget_tokens` budget is rejected with a 400 — so a number here is read as
-   * "yes, think", not as a budget.
-   */
-  thinking?: boolean | number
   /** Present only to keep `T` load-bearing at call sites. */
   readonly _result?: T
 }
+
+/** The slice of an API message this module reads — the seam the tests stub. */
+export interface MessageLike {
+  content: { type: string, input?: unknown }[]
+  usage: { input_tokens?: number, output_tokens?: number }
+  stop_reason?: string | null
+}
+
+export type StreamFn = (params: Record<string, unknown>) => { finalMessage: () => Promise<MessageLike> }
 
 export interface ToolResult<T> {
   data: T
@@ -42,15 +45,20 @@ export const DEFAULT_PRICES: Prices = {
   haiku: { input: 1, output: 5 },
 }
 
-/** `claude-opus-5-...` → `opus`. Unknown families cost nothing rather than guessing high. */
+/** `claude-opus-5-...` → `opus`; an id from no known family yields `unknown`, which is unpriced. */
 export function priceKey(model: string): string {
   const m = /^claude-(opus|sonnet|haiku)/.exec(model)
   return m?.[1] ?? 'unknown'
 }
 
 export function costFor(model: string, usage: Usage, prices: Prices): number {
-  const price = prices[priceKey(model)]
-  if (!price) return 0
+  const key = priceKey(model)
+  const price = prices[key]
+  // Silently costing a call at zero hides a typo in runtimeConfig until the bill
+  // arrives, so an unpriced model is an error.
+  if (!price) {
+    throw new Error(`no price for model "${model}" (family "${key}"); known families: ${Object.keys(prices).join(', ') || 'none'}`)
+  }
   return (usage.input * price.input + usage.output * price.output) / 1_000_000
 }
 
@@ -77,12 +85,32 @@ export class NoToolCallError extends Error {
   }
 }
 
-export function makeCallTool(cfg: { apiKey: string, prices?: Prices, workspaceId?: string }): CallTool {
+/** The turn hit `max_tokens` before the tool call closed: the input is unusable. */
+export class TruncatedError extends Error {
+  constructor() {
+    super('response truncated at max_tokens')
+    this.name = 'TruncatedError'
+  }
+}
+
+export interface CallToolConfig {
+  apiKey: string
+  prices?: Prices
+  workspaceId?: string
+  /** Seam for the tests: defaults to the SDK client's streaming messages call. */
+  stream?: StreamFn
+}
+
+export function makeCallTool(cfg: CallToolConfig): CallTool {
   // A key that is not scoped to a workspace is refused unless the request names one.
-  const client = new Anthropic({
-    apiKey: cfg.apiKey,
-    ...(cfg.workspaceId ? { defaultHeaders: { 'anthropic-workspace-id': cfg.workspaceId } } : {}),
-  })
+  const client = cfg.stream
+    ? null
+    : new Anthropic({
+        apiKey: cfg.apiKey,
+        ...(cfg.workspaceId ? { defaultHeaders: { 'anthropic-workspace-id': cfg.workspaceId } } : {}),
+      })
+  const stream: StreamFn = cfg.stream
+    ?? (params => client!.messages.stream(params as never) as unknown as { finalMessage: () => Promise<MessageLike> })
   const prices = cfg.prices ?? DEFAULT_PRICES
 
   return async function callTool<T>(call: ToolCall<T>): Promise<ToolResult<T>> {
@@ -99,12 +127,10 @@ export function makeCallTool(cfg: { apiKey: string, prices?: Prices, workspaceId
     // alongside it, so the tool is always requested rather than forced, and the
     // system prompt carries the instruction instead. A turn that answers in prose
     // is retried once below.
-    const thinking = call.thinking ? { thinking: { type: 'adaptive' as const } } : {}
-    const toolChoice = { type: 'auto' as const }
     const system = `${call.system}\n\nAlways answer by calling the \`${call.tool.name}\` tool. Never reply with prose instead of the tool call.`
 
     const run = async (): Promise<ToolResult<T>> => {
-      const stream = client.messages.stream({
+      const message = await stream({
         model: call.model,
         max_tokens: call.maxTokens,
         system,
@@ -112,12 +138,14 @@ export function makeCallTool(cfg: { apiKey: string, prices?: Prices, workspaceId
         tools: [{
           name: call.tool.name,
           description: call.tool.description,
-          input_schema: call.tool.schema as never,
+          input_schema: call.tool.schema,
         }],
-        tool_choice: toolChoice,
-        ...thinking,
-      })
-      const message = await stream.finalMessage()
+        tool_choice: { type: 'auto' },
+      }).finalMessage()
+
+      // A truncated turn can still carry a half-parsed tool block, so this is
+      // checked before the block is trusted.
+      if (message.stop_reason === 'max_tokens') throw new TruncatedError()
 
       const block = message.content.find(b => b.type === 'tool_use')
       if (!block) throw new NoToolCallError()
@@ -127,23 +155,25 @@ export function makeCallTool(cfg: { apiKey: string, prices?: Prices, workspaceId
         output: message.usage.output_tokens ?? 0,
       }
       return {
-        data: (block as { input: unknown }).input as T,
+        data: block.input as T,
         usage,
         costUsd: costFor(call.model, usage, prices),
-        raw: JSON.stringify((block as { input: unknown }).input),
+        raw: JSON.stringify(block.input),
       }
     }
 
     let lastError: unknown
-    let noToolRetried = false
+    let softRetried = false
     for (let attempt = 0; attempt < RETRIES; attempt++) {
       try {
         return await run()
       }
       catch (error) {
         lastError = error
-        if (error instanceof NoToolCallError && !noToolRetried) {
-          noToolRetried = true
+        // A prose answer or a truncated one is worth exactly one more attempt;
+        // repeating it usually means the request itself is too big.
+        if ((error instanceof NoToolCallError || error instanceof TruncatedError) && !softRetried) {
+          softRetried = true
           continue
         }
         if (!isTransient(error) || attempt === RETRIES - 1) throw error

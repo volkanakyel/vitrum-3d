@@ -23,7 +23,7 @@ export interface SculptComponent {
   parent: string | null
   importance: number
   confidence: number
-  primitive: 'box' | 'pillow' | 'cylinder' | 'capsule' | 'torus' | 'tube' | 'lathe' | 'extrude' | 'sweep' | 'instanced'
+  primitive: 'box' | 'roundedBox' | 'pillow' | 'cylinder' | 'capsule' | 'torus' | 'tube' | 'bentTube' | 'lathe' | 'extrude' | 'sweep' | 'instanced'
   dimensions: { w: number; h: number; d: number }
   position: [number, number, number]
   rotation: [number, number, number]

@@ -81,7 +81,7 @@ const componentSchema = z.strictObject({
   parent: z.string().nullable(),
   importance: z.number(),
   confidence: z.number(),
-  primitive: z.enum(['box', 'pillow', 'cylinder', 'capsule', 'torus', 'tube', 'lathe', 'extrude', 'sweep', 'instanced']),
+  primitive: z.enum(['box', 'roundedBox', 'pillow', 'cylinder', 'capsule', 'torus', 'tube', 'bentTube', 'lathe', 'extrude', 'sweep', 'instanced']),
   dimensions: componentDimensionsSchema,
   position: vec3Schema,
   rotation: vec3Schema,

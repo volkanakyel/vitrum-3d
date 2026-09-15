@@ -224,16 +224,19 @@ describe('buildCore', () => {
 })
 
 describe('reviewCore', () => {
-  it('sends the photo before the sheet', async () => {
+  it('labels each image and sends the photo before the sheet', async () => {
     const { callTool, calls } = makeFake([makeReview()])
     const res = await reviewCore(
       { spec: makeSpec(), pass: 'surface', sheet: pngBase64(), image: pngBase64(), fixesLeft: 2 },
       callTool,
     )
     expect(res.ok).toBe(true)
-    const images = calls[0]!.user.filter(p => p.type === 'image')
-    expect(images).toHaveLength(2)
-    expect(calls[0]!.user.indexOf(images[0]!)).toBeLessThan(calls[0]!.user.indexOf(images[1]!))
+    const parts = calls[0]!.user
+    expect(parts.map(p => p.type)).toEqual(['text', 'image', 'text', 'image', 'text'])
+    expect((parts[0] as { text: string }).text).toBe('Image 1 — the reference photograph:')
+    expect((parts[2] as { text: string }).text).toContain('Image 2 — the comparison sheet')
+    expect((parts[2] as { text: string }).text).toContain('front/side/top renders')
+    expect((parts[4] as { text: string }).text).toContain('Fixes left in the budget: 2')
   })
 
   it('downgrades continue at fidelity 0.6 to refine-code while fixes remain', async () => {

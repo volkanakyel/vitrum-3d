@@ -4,7 +4,7 @@ The test of a good spec is this: **it must describe this object and no other**. 
 
 ## Frame and units
 
-Metres, radians, +Y up, +Z toward the camera when yaw is 0. Every `position` is the **centre of that part**, expressed in the root component's frame. The root is the one component with `parent: null` — normally the largest part that rests on the ground. Every other component names its parent, and its position is still given in the root frame (the builder resolves contacts from there).
+Metres, radians, +Y up, +Z toward the camera when yaw is 0 (positive yaw swings the camera toward +X, so it sees more of the flank on the right-hand side of a frontal view; positive pitch puts it above the object). Every `position` is the **centre of that part**, expressed in the root component's frame. The root is the one component with `parent: null` — normally the largest part that rests on the ground. Every other component names its parent, and its position is still given in the root frame (the builder resolves contacts from there).
 
 ## Components
 
@@ -14,6 +14,7 @@ Build a tree, macro first. **At most 6 macro components; at most 24 components i
 - `primitive`, chosen by **form**, not by habit:
   - soft cushions, mattresses, upholstered masses → `pillow`
   - slabs, panels, boxy frames, blockout masses → `box`
+  - table tops, shelves, plinths and any slab whose edges are visibly eased → `roundedBox`
   - legs, posts, spindles, dowels → `cylinder` (or `capsule` when both ends are domed)
   - frames, rails, handles, bent tube legs, hoops → `bentTube` for polylines with corners, `tube` for a smooth curve, `torus` for a true ring
   - turned or revolved parts — knobs, vases, finials, tapered feet → `lathe`
@@ -34,7 +35,7 @@ One material per **distinct surface**, not per part — parts that share a surfa
 
 ## Repetition
 
-Use `repetition` for anything the builder should duplicate rather than author twice: a `mirror` entry for each left/right pair (straps, legs, arms, buttons) naming the visible one as `target`, a `linear` entry for a row (slats, rivets) with count, pitch in metres and axis. Author the visible instance; let repetition make the rest.
+Use `repetition` for anything the builder should duplicate rather than author twice: a `mirror` entry for each left/right pair (straps, legs, arms, buttons) naming the visible one as `target`, a `linear` entry for a row (slats, rivets) with count, pitch in metres and axis. A `mirror` entry still needs `count: 2`, `pitch: 0` and the mirror plane’s `axis` (`x` for a left/right pair). Author the visible instance; let repetition make the rest.
 
 ## mustMatch
 
