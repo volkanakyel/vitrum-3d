@@ -352,8 +352,18 @@ async function hookDiagnosis(page: Page, diag: Diagnostics): Promise<string> {
 async function preflight(page: Page, base: string, diag: Diagnostics) {
   await page.goto(`${base}/studio/product`, { waitUntil: 'domcontentloaded' })
   await waitForHook(page, diag)
-  const available = await page.evaluate(() => !!(window as unknown as EvalWindow).__vitrum?.sculpt.available.value)
-  if (!available) throw new Error('sculpt is disabled — set NUXT_ANTHROPIC_KEY')
+  // `available` starts false and flips when `/api/sculpt/status` answers, so
+  // the hook appearing is not yet the answer; give the round trip a moment.
+  try {
+    await page.waitForFunction(
+      () => !!(window as unknown as EvalWindow).__vitrum?.sculpt.available.value,
+      null,
+      { timeout: 10_000 },
+    )
+  }
+  catch {
+    throw new Error('sculpt is disabled — set NUXT_ANTHROPIC_KEY (the server reported no key)')
+  }
 }
 
 async function waitForHook(page: Page, diag: Diagnostics) {

@@ -419,7 +419,10 @@ export class JobRunner {
           else if (review.action === 'request-input') {
             job.status = 'waiting-input'
             job.question = review.question ?? ''
-            await this.commit()
+            // Best-effort: this pass is paid for and the question is on
+            // screen either way; a full store must not turn it into a
+            // rejected run().
+            await this.commitBestEffort()
             return this.snapshot()
           }
           else {
@@ -449,7 +452,10 @@ export class JobRunner {
         job.quality = 'approximate'
       }
       job.status = 'done'
-      await this.commit()
+      // The run is finished and the GLB is in hand; a save that fails here
+      // costs the cached copy, not the result, so it must not be reported as
+      // a failed run.
+      await this.commitBestEffort()
       return this.snapshot()
     }
     catch (err) {

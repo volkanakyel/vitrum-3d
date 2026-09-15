@@ -12,6 +12,7 @@
 import type * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { toApiImage } from '~/utils/sculpt/apiImage'
+import { glbHasExternalUris } from '~/utils/sculpt/glb'
 import { JobRunner, createJob, type JobStatus, type SculptJob } from '~/utils/sculpt/job'
 import { Sandbox } from '~/utils/sculpt/sandbox'
 import { buildSheet } from '~/utils/sculpt/sheet'
@@ -42,8 +43,19 @@ const RUNNING_STATUSES: JobStatus[] = ['intake', 'spec', 'building', 'rendering'
 export function useSculpt(deps: SculptDeps) {
   const job = shallowRef<SculptJob | null>(null)
   const jobs = ref<JobSummary[]>([])
-  const enabled = !!useRuntimeConfig().public.sculptEnabled
-  const available = computed(() => enabled)
+  // Two sources, either of which is enough. The public flag is a deploy-time
+  // override (NUXT_PUBLIC_SCULPT_ENABLED); the usual case is that only the
+  // server knows, because the key is server-only, so the client asks it once.
+  const publicEnabled = !!useRuntimeConfig().public.sculptEnabled
+  const serverEnabled = ref(false)
+  const available = computed(() => publicEnabled || serverEnabled.value)
+  if (import.meta.client && !publicEnabled) {
+    void $fetch<{ enabled?: boolean }>('/api/sculpt/status')
+      .then((res) => { serverEnabled.value = !!res?.enabled })
+      // A status endpoint that is missing or failing means no sculpt; the
+      // button stays hidden, which is the same as the key being unset.
+      .catch(() => {})
+  }
   /** A run is in flight: the panel shows stages and a Cancel, `start` is refused. */
   /** True from the moment a run is started until its `run()` settles. */
   const inFlight = ref(false)
@@ -100,6 +112,12 @@ export function useSculpt(deps: SculptDeps) {
 
   /** Put the finished GLB on the stage in place of the carve. */
   async function showModel(glb: ArrayBuffer) {
+    // The GLB was produced by model-written code. Parsing it here is parsing
+    // it on the app's origin, so anything the loader would go and FETCH is
+    // refused before the loader sees it; see `glb.ts`.
+    if (glbHasExternalUris(glb)) {
+      throw new Error('the exported model asks for external files')
+    }
     const loader = new GLTFLoader()
     const gltf = await loader.parseAsync(glb, '')
     deps.viewer.value?.setExternalModel(gltf.scene)
@@ -147,10 +165,24 @@ export function useSculpt(deps: SculptDeps) {
       await finish(await runner.run())
     }
     catch (e) {
-      // A canvas the browser would not give us, a sandbox that never came up:
-      // the run never started, so there is nothing to resume.
-      if (fresh && job.value?.id === fresh.id) job.value = null
-      deps.notify(`Could not start the run: ${(e as Error).message}`)
+      const message = (e as Error).message
+      const current = job.value
+      const mine = fresh && current?.id === fresh.id ? current : null
+      // Two different failures wear the same catch. A canvas the browser would
+      // not give us or a sandbox that never came up means the run never
+      // started: there is nothing to keep and nothing to resume, so the job
+      // goes. But once a pass has been paid for, throwing the job away throws
+      // away work the user could resume from — that one is reported as a
+      // failed run instead.
+      const started = !!mine && (mine.passes.length > 0 || !!mine.intake || !!mine.spec)
+      if (mine && !started) {
+        job.value = null
+        deps.notify(`Could not start the run: ${message}`)
+      }
+      else {
+        if (mine) job.value = { ...mine, status: 'failed', error: message }
+        deps.notify(`The run failed: ${message}`)
+      }
     }
     finally {
       inFlight.value = false
