@@ -102,6 +102,9 @@ function buildStage(): {
   key.castShadow = true
   key.shadow.mapSize.set(2048, 2048)
   key.shadow.bias = -0.0002
+  // A hard shadow edge across a flat face reads as a seam or a fin to the
+  // reviewer model; a wide penumbra keeps cast shadows looking like light.
+  key.shadow.radius = 8
   scene.add(key)
 
   const fill = new THREE.DirectionalLight(0xFFF4EC, 0.8)

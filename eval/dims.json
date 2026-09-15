@@ -10,5 +10,8 @@
     "widthMm": 680,
     "heightMm": 1000,
     "depthMm": 820
+  },
+  "desk": {
+    "hint": "tinted amber glass slab desk: glass top on two glass side panels, dark bronze L-brackets"
   }
 }

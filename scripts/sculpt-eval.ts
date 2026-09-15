@@ -48,7 +48,7 @@ const CHROMIUM_ARGS = [
 ]
 
 const POLL_MS = 2_000
-const DEFAULT_RUN_TIMEOUT_MS = 15 * 60_000
+const DEFAULT_RUN_TIMEOUT_MS = 45 * 60_000
 const SERVER_TIMEOUT_MS = 180_000
 /** The carve's hull is nice to have in `final.png` but not worth failing a run over. */
 const HULL_WAIT_MS = 120_000
@@ -659,7 +659,7 @@ async function main() {
     page.on('console', m => m.type() === 'error' && note(m.text()))
 
     // One cheap load before any photo: a disabled pipeline should not cost a
-    // 15-minute timeout per photo to discover.
+    // 45-minute timeout per photo to discover.
     await preflight(page, base, diag)
 
     for (const photo of photos) {

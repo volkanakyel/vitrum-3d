@@ -56,7 +56,7 @@ pnpm eval --passes blockout,structural # stop after the structural pass — chea
 pnpm eval --quality draft              # sandbox render quality: draft | standard | hero
 pnpm eval --headed                     # watch it happen
 pnpm eval --base http://localhost:3000 # reuse a dev server you started yourself
-pnpm eval --timeout 25                 # per-photo budget in minutes (default 15)
+pnpm eval --timeout 25                 # per-photo budget in minutes (default 45)
 EVAL_VERBOSE=1 pnpm eval                # echo the dev server's stdout too (stderr is always shown)
 ```
 

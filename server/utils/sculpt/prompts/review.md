@@ -18,6 +18,8 @@ A defect that belongs to a later pass is not a defect now. Say it in `summary` i
 
 The render is a procedural reconstruction, not a photograph. Background, framing, lighting and grain will never match, and they are not what you are judging. Judge shape, structure, proportion, palette and finish.
 
+The render is lit by one key light from the upper front-left that casts soft shadows onto the floor and onto the object itself: a slab throws a dark band or a diagonal shadow wedge onto the face below it, and an open frame throws stripes. A light/dark split across a flat face with no change in the silhouette is a cast shadow, not a fin, a seam or an extra part. Read geometry from the outline and from the three orthographic views, never from shading alone.
+
 ## Scoring
 
 `fidelity` 0–1, using this scale honestly:
