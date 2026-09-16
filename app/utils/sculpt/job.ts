@@ -47,6 +47,8 @@ export interface SculptJob {
   createdAt: number
   /** data URL <=1568 */
   image: string
+  /** SHA-256 of `image`, so the same photo dropped again finds its stored model. */
+  imageHash: string
   hint: string
   dims: Dims | null
   /** Review and fix after the first build; off is one build and done. */
@@ -86,11 +88,12 @@ export interface JobRunnerDeps {
 /** A review at or above this has nothing worth another opus call. */
 export const GOOD_FIDELITY = 0.85
 
-export function createJob(image: string, hint: string, dims: Dims | null, polish = true): SculptJob {
+export function createJob(image: string, hint: string, dims: Dims | null, polish = true, imageHash = ''): SculptJob {
   return {
     id: crypto.randomUUID(),
     createdAt: Date.now(),
     image,
+    imageHash,
     hint,
     dims,
     polish,
@@ -136,6 +139,7 @@ export function plainJob(job: SculptJob): SculptJob {
     id: job.id,
     createdAt: job.createdAt,
     image: job.image,
+    imageHash: job.imageHash,
     hint: job.hint,
     dims: job.dims ? clonePlain(job.dims) : null,
     polish: job.polish,

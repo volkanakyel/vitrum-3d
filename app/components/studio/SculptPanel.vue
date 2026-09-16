@@ -96,7 +96,9 @@ const fidelity = computed(() => {
 })
 
 function start() {
-  void props.sculpt.start(hint.value, undefined, { polish: polish.value })
+  // From the panel it is always a new run: the automatic build on import is
+  // what reuses a stored model for the same photo.
+  void props.sculpt.start(hint.value, undefined, { polish: polish.value, reuse: false })
 }
 function openJob(id: string) {
   void props.sculpt.reopen(id)

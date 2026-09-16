@@ -22,6 +22,10 @@ export interface JobSummary {
   costUsd: number
   /** data URL */
   thumbnail: string
+  /** SHA-256 of the photo the run was built from; absent on jobs stored before the field existed. */
+  imageHash?: string
+  /** A model is stored and can go straight onto the stage. */
+  hasModel: boolean
 }
 
 function hasIndexedDB(): boolean {
@@ -141,6 +145,8 @@ export async function listJobs(): Promise<JobSummary[]> {
       status: job.status,
       costUsd: job.costUsd,
       thumbnail: job.image,
+      imageHash: job.imageHash || undefined,
+      hasModel: !!job.glb,
     }))
   }
   finally {

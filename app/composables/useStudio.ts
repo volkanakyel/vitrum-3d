@@ -240,6 +240,12 @@ export function useStudio(initialMode: StudioMode = 'icon') {
       image.value = img
       tracer.setSource(img)
       fileName.value = file.name
+      // The product studio's real output is the parts model, and the model
+      // call is the long part: it starts the moment the photo has decoded,
+      // while the trace and the carve (the fallback) run alongside.
+      if ((opts.build ?? true) && mode.value === 'product' && autoBuild.value && sculpt.available.value) {
+        void sculpt.start('')
+      }
       traceOpts.mode = MODE_PROFILES[mode.value].traceMode
       const hold = IMPORT_MIN_MS / 3
       await sleep(Math.max(0, hold - (performance.now() - started)))
@@ -255,10 +261,6 @@ export function useStudio(initialMode: StudioMode = 'icon') {
       // Depth after the silhouette hull is shown; it rebuilds the hull when the map lands.
       void runDepth()
       await sleep(Math.max(0, IMPORT_MIN_MS - (performance.now() - started)))
-      // The product studio's real output is the parts model; the carve is the fallback.
-      if ((opts.build ?? true) && mode.value === 'product' && autoBuild.value && sculpt.available.value && trace.value) {
-        void sculpt.start('')
-      }
     } catch (e) {
       error.value = (e as Error).message
       busy.value = false

@@ -107,6 +107,7 @@ describe('draftCore', () => {
     expect(calls).toHaveLength(1)
     expect(imageCount(calls[0]!)).toBe(1)
     expect(calls[0]!.tool.name).toBe('draft')
+    expect(calls[0]!.model).toBe('claude-opus-5')
     expect(calls[0]!.system).toBe(PROMPTS.draft)
     expect(calls[0]!.maxTokens).toBe(24_000)
     expect(userText(calls[0]!)).toContain('a chair bed')
@@ -194,6 +195,7 @@ describe('buildCore', () => {
     const { callTool, calls } = makeFake([{ code: goodCode, notes: [] }])
     const defects = [{ component: 'base', what: 'too short', measured: '0.30 m', fix: 'raise to 0.35' }]
     await buildCore({ spec: makeSpec(), image: pngBase64(), code: 'function createModel(kit, THREE, options) { return kit.root([]) }', defects, partBounds: bounds }, callTool)
+    expect(calls[0]!.model).toBe('claude-opus-5')
     const text = userText(calls[0]!)
     expect(text).toContain('Fix the model')
     expect(text).toContain('The current file')

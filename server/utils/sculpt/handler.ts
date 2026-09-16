@@ -71,6 +71,7 @@ export async function runSculptRoute<T>(event: H3Event, core: Core<T>): Promise<
   }
 
   const cfg: RouteCfg = {
+    modelDraft: runtime.public.sculptModelDraft,
     modelAuthor: runtime.public.sculptModelAuthor,
     modelReview: runtime.public.sculptModelReview,
   }

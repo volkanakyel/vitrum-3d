@@ -5,13 +5,20 @@ import { PROMPTS } from './prompts'
 import type { CallTool, ImageMediaType, ToolResult, UserPart } from './anthropic'
 
 export interface RouteCfg {
-  /** Model that writes the plan and the code. */
+  /**
+   * Model that writes the draft (plan + first build): the call the user waits
+   * for. Measured on the tube photo: Opus 5 at medium effort 55 s / 4.5k output
+   * tokens; Sonnet 5 wrote 9.6k tokens in 103 s and a worse model. Opus it is.
+   */
+  modelDraft: string
+  /** Model that writes the fix from the reviewer's defects. */
   modelAuthor: string
   /** Model that reviews the renders. */
   modelReview: string
 }
 
 export const DEFAULT_ROUTE_CFG: RouteCfg = {
+  modelDraft: 'claude-opus-5',
   modelAuthor: 'claude-opus-5',
   modelReview: 'claude-sonnet-5',
 }
@@ -173,7 +180,7 @@ export async function draftCore(
         // The spec grammar is too large for strict mode; zod plus one retry covers it.
         strict: false,
       },
-      model: cfg.modelAuthor,
+      model: cfg.modelDraft,
       maxTokens: DRAFT_MAX_TOKENS,
       effort: 'medium',
     }))

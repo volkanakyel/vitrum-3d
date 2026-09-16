@@ -181,7 +181,18 @@ export function useSculpt(deps: SculptDeps) {
     }
   }
 
-  async function start(hint: string, dims: Dims | null = deps.dims(), opts: { quality?: SculptQuality, polish?: boolean } = {}) {
+  /** SHA-256 of the photo as the API sees it, hex. */
+  async function hashImage(dataUrl: string): Promise<string> {
+    try {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(dataUrl))
+      return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')
+    }
+    catch {
+      return ''
+    }
+  }
+
+  async function start(hint: string, dims: Dims | null = deps.dims(), opts: { quality?: SculptQuality, polish?: boolean, reuse?: boolean } = {}) {
     if (!available.value || running.value) return
     const img = deps.image.value
     if (!img) {
@@ -191,7 +202,23 @@ export function useSculpt(deps: SculptDeps) {
     inFlight.value = true
     let fresh: SculptJob | null = null
     try {
-      fresh = createJob(toApiImage(img), hint.trim(), dims, opts.polish ?? true)
+      const image = toApiImage(img)
+      const imageHash = await hashImage(image)
+      // The same photo was built before: its model goes straight onto the
+      // stage, no call. `reuse: false` (the panel's "Build again") skips this.
+      if ((opts.reuse ?? true) && imageHash) {
+        await refreshJobs()
+        const stored = jobs.value
+          .filter(j => j.imageHash === imageHash && j.hasModel && j.status === 'done')
+          .sort((a, b) => b.createdAt - a.createdAt)[0]
+        if (stored) {
+          inFlight.value = false
+          await reopen(stored.id)
+          deps.notify('Built before: loaded from this device')
+          return
+        }
+      }
+      fresh = createJob(image, hint.trim(), dims, opts.polish ?? true, imageHash)
       startedFrom = fresh.id
       job.value = fresh
       runner = runnerFor(fresh, opts.quality)

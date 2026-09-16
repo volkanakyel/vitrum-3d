@@ -114,8 +114,9 @@ The loop is three model calls at most, and the model is on the stage after the f
    with the defects and the measured box of every part; it replaces the draft. A fix that will not
    load leaves the draft standing.
 
-In the product studio a dropped photo starts this on its own; the carve stays off the stage while
-a run stands or is under way.
+In the product studio a dropped photo starts this the moment it decodes, alongside the trace; the
+carve stays off the stage while a run stands or is under way. A photo that was built before on this
+device (same pixels, by SHA-256) puts its stored model on the stage at once, no call.
 
 Scene controls, GLB/STL/PNG export and the size fields all work on the model unchanged. The run
 (spec, code, sheets, review, GLB) is cached in IndexedDB and can be reopened without paying again.

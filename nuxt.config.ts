@@ -139,7 +139,13 @@ export default defineNuxtConfig({
     public: {
       /** Depth model id on the Hugging Face hub, or a path under `/models/` when self-hosted. */
       depthModel: 'onnx-community/depth-anything-v2-small',
-      /** Writes the intake, the spec and the factory code. */
+      /**
+       * Writes the draft — the plan and the first model in one call, the call
+       * the user waits for. Sonnet 5 was tried here and was both slower (it
+       * writes twice the tokens) and worse; see RouteCfg.
+       */
+      sculptModelDraft: 'claude-opus-5',
+      /** Writes the fix from the reviewer's defects. */
       sculptModelAuthor: 'claude-opus-5',
       /** Scores the renders — cheaper, and the judgement is vision-bound, not authoring-bound. */
       sculptModelReview: 'claude-sonnet-5',
