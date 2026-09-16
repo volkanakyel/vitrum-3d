@@ -282,6 +282,7 @@ interface EvalWindow {
       retry: () => Promise<void>
     }
     studio?: {
+      setAutoBuild: (on: boolean) => void
       state: () => { hasTrace: boolean, hasHull: boolean, busy: boolean, importing: boolean, error: string, size: { widthMm: number, heightMm: number, depthMm: number } }
       screenshot: () => Promise<string | null>
     }
@@ -577,6 +578,8 @@ async function runPhoto(page: Page, base: string, file: string, opts: Options, d
     : null
   console.log(`\n[eval] ${name} — hint ${hint ? JSON.stringify(hint) : '(none)'}, dims ${size ? `${size.widthMm}×${size.heightMm}×${size.depthMm} mm` : '(estimated)'}`)
 
+  // The studio would start a run on import with no hint and no dims; the harness starts its own.
+  await page.evaluate(() => (window as unknown as EvalWindow).__vitrum?.studio?.setAutoBuild(false))
   await importPhoto(page, base, file, diag)
 
   const started = Date.now()

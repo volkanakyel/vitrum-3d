@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import SculptStage from '~/components/studio/SculptStage.vue'
 import { STUDIO_MODES, type StudioMode } from '~/composables/useStudio'
 
 // No `validate` here: a runtime validator makes Nuxt load this page module (and the WebGL
@@ -19,7 +20,7 @@ if (requested && requested !== initial) void router.replace('/studio/icon')
 const studio = useStudio(initial)
 const {
   mode, image, fileName, trace, traceOpts, reliefOpts, relief, views, viewOpts, cameraSide, hull, depthState, depthProgress, depthDevice, hullSources, glass, dims, busy, importing, error,
-  dragging, exporting, toast, view, viewer, heightMm, sculpt, sculpted,
+  dragging, exporting, toast, view, viewer, heightMm, sculpt, sculpted, stageTrace, stageRelief, stageHull, building,
   setView, clearImage, onDrop, onPick, onPickView, removeView, flipView, loadSample, doExport, setHeight,
 } = studio
 
@@ -215,14 +216,22 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
         <main class="relative min-h-0 min-w-0 flex-1">
           <GlassViewer
             ref="viewer"
-            :trace="trace"
-            :relief="relief"
-            :hull="hull"
+            :trace="stageTrace"
+            :relief="stageRelief"
+            :hull="stageHull"
             :hull-sources="hullSources"
             :params="glass"
             :source="image"
             @dimensions="dims = $event"
           />
+
+          <AnimatePresence>
+            <SculptStage
+              v-if="building && !importing && sculpt.job.value"
+              key="building"
+              :job="sculpt.job.value"
+            />
+          </AnimatePresence>
 
           <AnimatePresence>
             <StageLoader

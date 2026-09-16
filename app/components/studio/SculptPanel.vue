@@ -121,7 +121,7 @@ function when(ms: number) {
           name="sparkle"
           :size="14"
         />
-        Build the parts model
+        {{ job ? 'Build again' : 'Build the parts model' }}
       </Button>
       <p
         v-if="!sculpt.available.value"
@@ -143,8 +143,8 @@ function when(ms: number) {
           <Switch v-model="polish" />
         </label>
         <p class="text-[11.5px] leading-relaxed text-ink-3">
-          Claude reads the photo, plans the parts and writes the model in one go: a draft stands
-          on the stage in about a minute. {{ polish ? 'Polish adds one review and one fix.' : '' }}
+          A dropped photo builds on its own. Claude reads it, plans the parts and writes the model
+          in one go: a draft stands on the stage in about a minute. {{ polish ? 'Polish adds one review and one fix.' : '' }}
           Uses W/H/D from the size section when set. Four calls at most, about $0.30–0.90.
         </p>
       </template>

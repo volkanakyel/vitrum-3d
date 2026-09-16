@@ -180,6 +180,24 @@ export function useStudio(initialMode: StudioMode = 'icon') {
   })
   /** The built-in armchair stands on the stage as a ready-made parts model (no run, no upload). */
   const sampleModel = ref(false)
+  /**
+   * Product studio: an upload starts the parts build at once, so the first thing on the stage is
+   * the product, not a carve of its outline. Off for the eval harness, which starts runs itself.
+   */
+  const autoBuild = ref(true)
+  /** A parts run owns the stage: the carve stays off it until the run fails or is cancelled without a model. */
+  const partsOwnStage = computed(() => {
+    if (sampleModel.value) return true
+    const j = sculpt.job.value
+    if (mode.value !== 'product' || !j) return false
+    return !!j.glb || (j.status !== 'failed' && j.status !== 'cancelled')
+  })
+  /** What the viewer carves: nothing while a parts model stands or is being built. */
+  const stageTrace = computed(() => (partsOwnStage.value ? null : trace.value))
+  const stageRelief = computed(() => (partsOwnStage.value ? null : relief.value))
+  const stageHull = computed(() => (partsOwnStage.value ? null : hull.value))
+  /** A run is on its way to the stage: the photo and the steps show where the model will be. */
+  const building = computed(() => mode.value === 'product' && sculpt.running.value && !sculpt.job.value?.glb)
   /** A parts model (draft, finished or the sample) stands on the stage: the carve controls no longer describe it. */
   const sculpted = computed(() => sampleModel.value || (!!sculpt.job.value?.glb && sculpt.job.value.status !== 'cancelled'))
 
@@ -196,7 +214,7 @@ export function useStudio(initialMode: StudioMode = 'icon') {
   const nextFrame = () => new Promise<void>(r => requestAnimationFrame(() => r()))
   const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
-  async function useFile(file: File) {
+  async function useFile(file: File, opts: { build?: boolean } = {}) {
     error.value = ''
     if (!file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.svg')) {
       error.value = 'Use a PNG, JPG, WebP or SVG.'
@@ -237,6 +255,10 @@ export function useStudio(initialMode: StudioMode = 'icon') {
       // Depth after the silhouette hull is shown; it rebuilds the hull when the map lands.
       void runDepth()
       await sleep(Math.max(0, IMPORT_MIN_MS - (performance.now() - started)))
+      // The product studio's real output is the parts model; the carve is the fallback.
+      if ((opts.build ?? true) && mode.value === 'product' && autoBuild.value && sculpt.available.value && trace.value) {
+        void sculpt.start('')
+      }
     } catch (e) {
       error.value = (e as Error).message
       busy.value = false
@@ -569,7 +591,7 @@ export function useStudio(initialMode: StudioMode = 'icon') {
   async function loadSample(id?: string) {
     const wanted = id ?? STUDIO_MODES.find(m => m.id === mode.value)!.sample
     const sample = SAMPLES.find(s => s.id === wanted) ?? SAMPLES[0]!
-    await useFile(await sampleFile(sample))
+    await useFile(await sampleFile(sample), { build: false })
     // The product sample is the orange chair-bed the parts pipeline was modelled on: its
     // procedural model stands on the stage straight away, in place of the carve.
     if (sample.id === 'armchair' && mode.value === 'product' && image.value) {
@@ -663,6 +685,7 @@ export function useStudio(initialMode: StudioMode = 'icon') {
         dims: dims.value ? { ...dims.value } : null,
         size: { widthMm: glass.widthMm, heightMm: heightMm.value, depthMm: glass.depthMm },
       }),
+      setAutoBuild: (on: boolean) => { autoBuild.value = on },
       screenshot: async () => {
         const blob = await viewer.value?.capture()
         if (!blob) return null
@@ -683,7 +706,7 @@ export function useStudio(initialMode: StudioMode = 'icon') {
 
   return {
     mode, image, fileName, trace, traceOpts, reliefOpts, relief, views, viewOpts, cameraSide, hull, depthState, depthProgress, depthDevice, hullSources, glass, dims, busy, importing, error,
-    dragging, exporting, toast, view, viewer, heightMm, sculpt, sculpted,
+    dragging, exporting, toast, view, viewer, heightMm, sculpt, sculpted, stageTrace, stageRelief, stageHull, building,
     setView, setMode, useFile, clearImage, onDrop, onPick, onPickView, removeView, flipView, loadSample, doExport, setHeight, notify,
   }
 }
@@ -702,6 +725,8 @@ export interface StudioDevHook {
     dims: ModelDimensions | null
     size: { widthMm: number, heightMm: number, depthMm: number }
   }
+  /** Product studio starts a run on import; the eval harness turns that off and starts its own. */
+  setAutoBuild: (on: boolean) => void
   /** The viewer render as a PNG data URL, or `null` before the viewer is up. */
   screenshot: () => Promise<string | null>
 }
