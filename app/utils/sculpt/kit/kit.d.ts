@@ -10,6 +10,8 @@ export interface KitOptions {
   seed: number
   /** square texture resolution for the generated maps */
   textureSize: 512 | 1024 | 2048
+  /** the uploaded photo, for `print`; absent when a stored run is reopened without one */
+  photo?: ImageBitmap | HTMLImageElement
 }
 
 /**
@@ -72,6 +74,15 @@ export interface Kit {
   plastic(o: { color: string, gloss?: number }): MeshPhysicalMaterial
   /** Clear glass: transmission 1, roughness 0.05, thickness 0.01 m. tint is a faint body colour. */
   glass(o?: { tint?: string }): MeshPhysicalMaterial
+  /**
+   * The photo's own printed artwork on a plastic body — labels, logos, text. Never model glyphs: use this.
+   * `photo` is the plan's print box, [x0, y0, x1, y1] in 0..1 of the image (origin top-left); `band` is where it
+   * sits on the part, [bottom, top] in 0..1 of the part's height; `radius` (mean over the band) and `height` are
+   * the part's, in metres — the artwork keeps the photo's aspect and wraps as far around as that needs, centred on
+   * the front (+Z). `mode` 'ink' (default) keeps only the dark print on the body colour; 'photo' keeps full colour.
+   * Apply it as the material of a `lathe` or `cylinder` part.
+   */
+  print(o: { color: string, photo: [number, number, number, number], band: [number, number], radius: number, height: number, mode?: 'ink' | 'photo', gloss?: number }): MeshPhysicalMaterial
   /** A named mesh, registered in the model's part table. position in metres, rotation in radians. */
   part(id: string, geometry: BufferGeometry, material: Material, o?: { position?: V3, rotation?: V3 }): Mesh
   /** Mirror a part across the x = 0 (default) or z = 0 plane; the clone's id is the original's plus "-mirror". */

@@ -28,6 +28,8 @@ There is exactly one round of fixes after this review, so list what matters most
 
 > component `cap`, "cap floats 0.01 m above the body's shoulder", fix: "restOn the body with overlap 0.005"
 
+Highlights, reflections, gloss bands and shadows are what the studio's lights do to the surface, not things the builder can model: never list a missing highlight or a flat-looking finish as a defect unless the material family itself is wrong (fabric where the photo shows plastic). Printed artwork that is present but partly turned away from the camera is not missing.
+
 Not "proportions look off". Not "improve the materials". If you cannot name the component and the number, say so in `summary` and leave it out. An empty list means the model is done.
 
 Say what matches, say what does not, and never call a feature right when it is only close. Output only by calling the `review` tool.

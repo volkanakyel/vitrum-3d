@@ -443,3 +443,76 @@ describe('kit-api renderer', () => {
     expect(renderKitApi(readFileSync(KIT_TYPES_PATH, 'utf8'))).toBe(readFileSync(KIT_API_PATH, 'utf8'))
   })
 })
+
+/* ------------------------------------------------------------------- print */
+
+import { paintPrintAtlas } from '~/utils/sculpt/kit/print'
+
+describe('kit.print', () => {
+  it('without a photo is a plain plastic in the body colour, so a reopened run still builds', () => {
+    const kit = makeKit()
+    const material = kit.print({ color: '#ff0000', photo: [0.2, 0.2, 0.8, 0.8], band: [0.1, 0.9], radius: 0.025, height: 0.17 })
+    expect(material.map).toBeNull()
+    expect(material.color.getHexString()).toBe('ff0000')
+  })
+
+  it('with a photo wears the atlas, seam at the back, colour left to the map', () => {
+    const photo = { width: 400, height: 800 } as unknown as ImageBitmap
+    const kit = makeKit({ photo })
+    const material = kit.print({ color: '#ffffff', photo: [0.3, 0.1, 0.7, 0.6], band: [0.2, 0.8], radius: 0.025, height: 0.17 })
+    expect(material.map).toBeTruthy()
+    expect(material.map!.offset.x).toBe(0.5)
+    expect(material.map!.wrapS).toBe(THREE.RepeatWrapping)
+    expect(material.map!.colorSpace).toBe(THREE.SRGBColorSpace)
+  })
+
+  it('paints the crop centred on the front at the photo aspect, and ink mode keeps only the print', () => {
+    // A stub whose scratch canvas reads back as white paper with one black
+    // pixel of print and one grey pixel of body shading.
+    const draws: unknown[][] = []
+    const canvases: { put: StubImageData[] }[] = []
+    const factory = (w: number, h: number) => {
+      const ctx = stubContext(w, h)
+      ctx.drawImage = ((...args: unknown[]) => { draws.push([w, h, ...args]) }) as typeof ctx.drawImage
+      ctx.getImageData = (_x, _y, gw, gh) => {
+        const data = new Uint8ClampedArray(gw * gh * 4).fill(250)
+        data[0] = data[1] = data[2] = 10 // print
+        data[4] = data[5] = data[6] = 200 // shading on the body
+        return { data, width: gw, height: gh }
+      }
+      const put: StubImageData[] = []
+      ctx.putImageData = ((image: StubImageData) => { put.push(image) }) as typeof ctx.putImageData
+      const canvas = { width: w, height: h, getContext: () => ctx, put }
+      canvases.push(canvas)
+      return canvas as unknown as HTMLCanvasElement
+    }
+    const photo = { width: 1000, height: 2000 } as unknown as ImageBitmap
+    const size = 512
+    // Crop 200 × 400 photo px; band 0.5 of a 0.2 m part = 0.1 m tall → 0.05 m wide; radius 0.05 → arc = 0.05 / (2π·0.05) ≈ 0.159.
+    paintPrintAtlas(THREE, factory, photo, { color: '#ffffff', photo: [0.4, 0.1, 0.6, 0.3], band: [0.25, 0.75], radius: 0.05, height: 0.2 }, size)
+    // First draw: photo crop into the scratch; second: scratch onto the atlas.
+    expect(draws).toHaveLength(2)
+    const [scratchW, scratchH, , sx, sy, sw, sh] = draws[0]! as number[]
+    expect([sx, sy, sw, sh]).toEqual([400, 200, 200, 400])
+    expect(scratchH).toBe(256)
+    expect(scratchW).toBe(Math.round(0.05 / (2 * Math.PI * 0.05) * 1024))
+    const [, , , dx, dy] = draws[1]! as number[]
+    expect(dx).toBe(Math.round(1024 / 2 - scratchW! / 2))
+    expect(dy).toBe(128)
+    // Ink pass on the scratch canvas: black print survives, body shading is pulled back toward the paper.
+    const scratch = canvases[1]!.put[0]!.data
+    expect(scratch[0]).toBeLessThan(40)
+    expect(scratch[4]).toBeGreaterThan(225)
+    expect(scratch[8]).toBe(255)
+  })
+
+  it('lathe v runs by height, not by profile point, so a band is a share of the height', () => {
+    const kit = makeKit()
+    const geometry = kit.lathe([[0.02, 0], [0.025, 0.01], [0.025, 0.17], [0.02, 0.2]])
+    const position = geometry.getAttribute('position')
+    const uv = geometry.getAttribute('uv')
+    for (let i = 0; i < uv.count; i += 1) {
+      expect(uv.getY(i)).toBeCloseTo(position.getY(i) / 0.2, 5)
+    }
+  })
+})

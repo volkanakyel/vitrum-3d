@@ -39,6 +39,9 @@ export interface SculptDeps {
   onLanded?: (job: SculptJob) => void
 }
 
+/** Long side of the photo handed to the kit for printed artwork. */
+const PRINT_PHOTO_MAX = 2048
+
 /** Statuses that mean the runner is working. */
 const RUNNING_STATUSES: JobStatus[] = ['planning', 'building', 'rendering', 'reviewing', 'fixing']
 
@@ -91,6 +94,31 @@ export function useSculpt(deps: SculptDeps) {
     }
   }
 
+  /**
+   * The photo the kit prints from, at up to 2048 px. The imported image when
+   * it is this job's (a fresh run); the job's own copy otherwise (a run
+   * resumed or reopened after another import).
+   */
+  async function photoFor(target: SculptJob): Promise<ImageBitmap | undefined> {
+    try {
+      const img = deps.image.value
+      const source: ImageBitmapSource = img && target.id === startedFrom ? img : await (await fetch(target.image)).blob()
+      const bitmap = await createImageBitmap(source)
+      const long = Math.max(bitmap.width, bitmap.height)
+      if (long <= PRINT_PHOTO_MAX) return bitmap
+      const k = PRINT_PHOTO_MAX / long
+      const sized = await createImageBitmap(bitmap, { resizeWidth: Math.round(bitmap.width * k), resizeHeight: Math.round(bitmap.height * k), resizeQuality: 'high' })
+      bitmap.close()
+      return sized
+    }
+    catch {
+      // No photo only costs the printed artwork; the model still builds.
+      return undefined
+    }
+  }
+  /** Id of the job `start` created from the current import; other jobs use their stored photo. */
+  let startedFrom = ''
+
   function runnerFor(target: SculptJob, quality: SculptQuality = 'standard'): JobRunner {
     const box = ensureSandbox()
     return new JobRunner(target, {
@@ -99,7 +127,7 @@ export function useSculpt(deps: SculptDeps) {
       // studio always renders at the standard quality (the eval harness can ask
       // for another), always at seed 1, so two runs of the same code match.
       renderer: {
-        load: code => box.load(code, quality, 1),
+        load: async code => box.load(code, quality, 1, await photoFor(target)),
         render: views => box.render(views),
         exportGLB: () => box.exportGLB(),
       },
@@ -164,6 +192,7 @@ export function useSculpt(deps: SculptDeps) {
     let fresh: SculptJob | null = null
     try {
       fresh = createJob(toApiImage(img), hint.trim(), dims, opts.polish ?? true)
+      startedFrom = fresh.id
       job.value = fresh
       runner = runnerFor(fresh, opts.quality)
       await finish(await runner.run())

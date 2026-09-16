@@ -46,6 +46,7 @@ Every component carries:
 - `material`: the id of one entry in `materials`.
 - `localFeatures`: kind (`seam`, `piping`, `button`, `tuft`, `groove`, `stitch`, `bevel`, `wear`, `stain`, `label`, `text`, `crimp`), a description carrying placement and size, and the evidence.
 - `importance` and `confidence`, 0–1.
+- `print`, on the part that carries printed artwork — a label, a logo, a line of text, a graphic. The photo's own pixels are wrapped onto the part, so **measure it, do not describe it**: `photo` is the box around the artwork in the image, `[x0, y0, x1, y1]` in 0..1 of the image with the origin top-left, tight to the ink; `band` is where that box sits on the part, `[bottom, top]` in 0..1 of the part's height; `mode` is `ink` for dark print on a plain body (most packaging), `photo` for full-colour artwork. One `print` per face of artwork; a tube whose whole front face is printed gets one box around all of it. Never turn text into components or `localFeatures`.
 
 ## Repetition
 

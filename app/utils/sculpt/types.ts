@@ -21,6 +21,17 @@ export interface SculptComponent {
   attachment: { parent: string; contact: 'rests-on' | 'inserted' | 'wrapped' | 'bolted'; overlap: number } | null
   material: string
   localFeatures: { id: string; kind: string; description: string; evidence: string }[]
+  /** Printed artwork on this part, cut from the photo: see `kit.print`. */
+  print?: PrintRegion
+}
+
+export interface PrintRegion {
+  /** Crop of the photo carrying the artwork: [x0, y0, x1, y1] in 0..1 of the image, origin top-left. */
+  photo: [number, number, number, number]
+  /** Where it sits on the part: [bottom, top] in 0..1 of the part's height. */
+  band: [number, number]
+  /** `ink`: dark print on a plain body. `photo`: full-colour artwork. */
+  mode: 'ink' | 'photo'
 }
 
 export interface SculptMaterial {

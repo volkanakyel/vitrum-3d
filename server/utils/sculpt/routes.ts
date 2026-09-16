@@ -323,5 +323,7 @@ export async function reviewCore(
     return tally.fail(`review failed validation: ${parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`)
   }
   const review = parsed.data
-  return tally.ok({ ...review, defects: review.defects.slice(0, MAX_DEFECTS) })
+  // A closing tag sometimes trails the prose; the panel shows this text verbatim.
+  const summary = review.summary.replace(/<\/?[a-z][\w-]*>/gi, '').trim()
+  return tally.ok({ ...review, summary, defects: review.defects.slice(0, MAX_DEFECTS) })
 }

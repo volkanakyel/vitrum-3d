@@ -233,7 +233,7 @@ export class Sandbox {
     })
   }
 
-  load(code: string, quality: KitOptions['quality'], seed: number): Promise<SandboxLoaded> {
+  load(code: string, quality: KitOptions['quality'], seed: number, photo?: ImageBitmap): Promise<SandboxLoaded> {
     return this.#enqueue(async () => {
       if (this.#disposed) throw new Error('sandbox disposed')
       // A fresh document per model: the previous one ran code that may have
@@ -241,7 +241,7 @@ export class Sandbox {
       this.#recreate('sandbox restarted for a new load')
       await this.ready()
       return this.#request<'loaded'>(
-        (id, nonce) => ({ type: 'load', id, nonce, code, quality, seed }),
+        (id, nonce) => ({ type: 'load', id, nonce, code, quality, seed, photo }),
         LOAD_TIMEOUT_MS,
         'load',
       )

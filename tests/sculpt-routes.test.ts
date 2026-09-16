@@ -225,6 +225,13 @@ describe('reviewCore', () => {
     expect(text).toContain('base: x -0.400..0.400')
   })
 
+  it('strips stray tags from the summary', async () => {
+    const { callTool } = makeFake([makeReview({ summary: 'close to the photo.</summary>' })])
+    const res = await reviewCore({ spec: makeSpec(), sheet: pngBase64() }, callTool)
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.data.summary).toBe('close to the photo.')
+  })
+
   it('caps the defect list at eight', async () => {
     const defects = Array.from({ length: 12 }, (_, i) => ({ component: `p${i}`, what: 'w', measured: 'm', fix: 'f' }))
     const { callTool } = makeFake([makeReview({ fidelity: 0.5, defects })])

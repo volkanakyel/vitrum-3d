@@ -156,6 +156,16 @@ describe('validateSpec', () => {
     expect(validateSpec(spec).ok).toBe(false)
   })
 
+  it('accepts a print box and rejects one outside 0..1 or inverted', () => {
+    const spec = makeSpec()
+    spec.components[0]!.print = { photo: [0.3, 0.1, 0.7, 0.6], band: [0.2, 0.9], mode: 'ink' }
+    expect(validateSpec(spec).ok).toBe(true)
+    spec.components[0]!.print = { photo: [0.7, 0.1, 0.3, 0.6], band: [0.2, 0.9], mode: 'ink' }
+    expect(validateSpec(spec).ok).toBe(false)
+    spec.components[0]!.print = { photo: [0.3, 0.1, 0.7, 0.6], band: [0.2, 1.4], mode: 'photo' }
+    expect(validateSpec(spec).ok).toBe(false)
+  })
+
   it('rejects fov out of range', () => {
     const spec = makeSpec()
     spec.camera.fov = 90

@@ -29,7 +29,7 @@ export interface SandboxView {
 interface Envelope { id: number, nonce: string }
 
 export type SandboxRequest =
-  | (Envelope & { type: 'load', code: string, quality: KitOptions['quality'], seed: number })
+  | (Envelope & { type: 'load', code: string, quality: KitOptions['quality'], seed: number, photo?: ImageBitmap })
   | (Envelope & { type: 'render', views: SandboxView[], size: number })
   | (Envelope & { type: 'export' })
 
@@ -318,7 +318,7 @@ export class SandboxRuntime {
 
     const kit = createKit(
       THREE,
-      { quality: request.quality, seed: request.seed, textureSize: 1024 },
+      { quality: request.quality, seed: request.seed, textureSize: 1024, photo: request.photo },
       createCanvas,
     )
 

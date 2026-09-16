@@ -18,6 +18,7 @@ import {
 } from './geometry'
 import { createMaterials, mulberry32 } from './materials'
 import { buttonGeometry, seamGeometry, tuftGeometry } from './surface'
+import { printMaterial } from './print'
 import { createGroup, createPart, createRoot, ensureUv1, mirrorPart, restOnObject } from './assembly'
 import type { PartRegistry } from './assembly'
 import type { Kit } from './kit'
@@ -111,6 +112,9 @@ export const createKit: typeof import('./kit').createKit = function createKit(TH
     brushedMetal: materials.brushedMetal,
     plastic: materials.plastic,
     glass: materials.glass,
+    print(o) {
+      return printMaterial(THREE, canvasFactory, options.photo ?? null, textureSize, o)
+    },
     part(id, geometry, material, o) {
       return createPart(THREE, registry, id, geometry, material, o)
     },

@@ -239,7 +239,20 @@ export function latheGeometry(
   segments: number,
 ): import('three').BufferGeometry {
   const points = profile.map(([r, y]) => new THREE.Vector2(Math.max(0, r), y))
-  return new THREE.LatheGeometry(points, segments)
+  const geometry = new THREE.LatheGeometry(points, segments)
+  // three spreads v evenly over the profile's points, however unevenly they
+  // are spaced in y. A print band is a share of the height, so v is remapped
+  // to height: 0 at the bottom of the profile, 1 at its top.
+  const ys = points.map(p => p.y)
+  const minY = Math.min(...ys)
+  const span = Math.max(1e-9, Math.max(...ys) - minY)
+  const position = geometry.getAttribute('position')
+  const uv = geometry.getAttribute('uv')
+  for (let i = 0; i < uv.count; i += 1) {
+    uv.setY(i, (position.getY(i) - minY) / span)
+  }
+  uv.needsUpdate = true
+  return geometry
 }
 
 /* ----------------------------------------------------------------- extrude */

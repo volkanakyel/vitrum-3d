@@ -54,6 +54,12 @@ const localFeatureSchema = z.strictObject({
   evidence: z.string(),
 })
 
+const printSchema = z.strictObject({
+  photo: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  band: z.tuple([z.number(), z.number()]),
+  mode: z.enum(['ink', 'photo']),
+})
+
 const componentSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
@@ -69,6 +75,7 @@ const componentSchema = z.strictObject({
   attachment: attachmentSchema,
   material: z.string(),
   localFeatures: z.array(localFeatureSchema),
+  print: printSchema.optional(),
 })
 
 const patternSchema = z.strictObject({
@@ -230,6 +237,18 @@ export function validateSpec(spec: unknown): { ok: true; spec: SculptSpec } | { 
 
   if (!(s.dimensions.widthM > 0) || !(s.dimensions.heightM > 0) || !(s.dimensions.depthM > 0)) {
     errors.push('dimensions must be positive')
+  }
+
+  for (const c of s.components) {
+    const p = c.print
+    if (!p) continue
+    const unit = (v: number) => v >= 0 && v <= 1
+    if (!p.photo.every(unit) || p.photo[2] <= p.photo[0] || p.photo[3] <= p.photo[1]) {
+      errors.push(`component ${c.id}: print.photo must be [x0, y0, x1, y1] in 0..1 with x1 > x0 and y1 > y0`)
+    }
+    if (!p.band.every(unit) || p.band[1] <= p.band[0]) {
+      errors.push(`component ${c.id}: print.band must be [bottom, top] in 0..1 with top > bottom`)
+    }
   }
 
   const macroCount = s.components.filter(c => c.level === 'macro').length

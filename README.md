@@ -103,7 +103,10 @@ The loop is four model calls at most, and the model is on the stage after the se
 1. **Plan.** Claude reads the photo and writes a `SculptSpec`: components, dimensions, materials,
    what must match.
 2. **Build.** Claude writes the whole model as one file of procedural three.js against an in-repo
-   kit (`app/utils/sculpt/kit/`), looking at the photo as it writes. The file runs in an
+   kit (`app/utils/sculpt/kit/`), looking at the photo as it writes. Printed artwork — labels,
+   logos, text — is never modelled: the plan measures its box in the photo, and `kit.print` wraps
+   the photo's own pixels onto the part (dark print kept, body shading dropped), so the mockup
+   carries the real typography. The file runs in an
    opaque-origin `<iframe sandbox="allow-scripts">` (`/sandbox`), is exported as a GLB and
    **lands on the stage as a draft**, on the turntable, about a minute in.
 3. **Review** (with *Polish* on, the default). The sandbox renders four views, pasted into one
@@ -162,7 +165,7 @@ for the design.
 | `app/utils/trace.ts`, `tracer.ts`, `relief.ts`, `printTexture.ts` | tracing, worker client, height fields, colour textures |
 | `app/utils/surface.ts` | colour finish PBR maps from the picture: de-lit albedo, grain normal and roughness |
 | `app/utils/hull.ts` | multi-view visual hull: outline distance fields → marching cubes, per-view projection (uv + weight per vertex) |
-| `app/utils/sculpt/kit/*` | the sculpt kit: the geometry, surface, material and assembly helpers generated code is allowed to call |
+| `app/utils/sculpt/kit/*` | the sculpt kit: the geometry, surface, material, print (photo artwork on a part) and assembly helpers generated code is allowed to call |
 | `app/utils/sculpt/{job,sandbox,sandboxRuntime,sheet,store,transport,glb}.ts` | job state machine, the sandbox host and its page-side runtime, comparison sheets, IndexedDB cache, route client, GLB safety check |
 | `app/composables/useSculpt.ts` | Vue glue for a sculpt run: reactive job, start/cancel/answer/reopen |
 | `server/utils/sculpt/*` | route cores, zod schemas, the Anthropic client, `validateCode`, the CSP strings, the rate-limit/budget guard |

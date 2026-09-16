@@ -71,3 +71,14 @@ Budget per run: ~$0.4–0.9, 1–4 minutes. Hard cap by construction, not by cou
 `sculpt-job`, `sculpt-routes`, `sculpt-schema`, `sculpt-store` rewritten for the new shapes.
 `scripts/sculpt-eval.ts` and `sculpt-smoke.mjs` follow the new routes. One live run on the
 Akielle tube photo is the acceptance check.
+
+## Printed artwork (added the same day)
+
+Glyph geometry cannot carry a label. A component may carry `print: { photo: [x0, y0, x1, y1],
+band: [bottom, top], mode }`: the planner measures the artwork's box in the photo, the builder
+gives that part `kit.print(...)` as its material. The kit cuts the crop from the uploaded photo
+(passed into the sandbox as an `ImageBitmap`, up to 2048 px), cleans it (`ink`: keep only what is
+darker than the body; `photo`: flatten the column shading) and paints it on a 2:1 UV atlas centred
+on the front, sized so the crop keeps its aspect on a part of the given radius and height. Lathe
+UVs are remapped to height so `band` means what it says. A reopened run without a photo falls
+back to the plain body colour.
