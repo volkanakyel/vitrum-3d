@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createJob, GOOD_FIDELITY, JobRunner, plainJob } from '../app/utils/sculpt/job'
 import type { Renderer, SculptJob, Transport } from '../app/utils/sculpt/job'
-import type { ApiResult, BuildOutput, Review, SculptSpec } from '../app/utils/sculpt/types'
+import type { ApiResult, BuildOutput, DraftOutput, Review, SculptSpec } from '../app/utils/sculpt/types'
 
 // ---------------------------------------------------------------------------
 // fixtures
@@ -38,6 +38,10 @@ function review(overrides: Partial<Review> = {}): Review {
 
 const DEFECT = { component: 'legs', what: 'too thin', measured: '10mm', fix: 'thicken to 20mm' }
 
+function drafted(code: string, notes: string[] = []): DraftOutput {
+  return { spec: baseSpec(), code, notes }
+}
+
 function ok<T>(data: T, usage = { input: 10, output: 20 }, costUsd = 0.01): ApiResult<T> {
   return { ok: true, data, usage, costUsd }
 }
@@ -52,24 +56,24 @@ function fail(error: string): ApiResult<never> {
 
 interface Fake {
   transport: Transport
-  queues: { plan: ApiResult<SculptSpec>[], build: ApiResult<BuildOutput>[], review: ApiResult<Review>[] }
+  queues: { draft: ApiResult<DraftOutput>[], build: ApiResult<BuildOutput>[], review: ApiResult<Review>[] }
   calls: {
-    plan: Parameters<Transport['plan']>[0][]
+    draft: Parameters<Transport['draft']>[0][]
     build: Parameters<Transport['build']>[0][]
     review: Parameters<Transport['review']>[0][]
   }
 }
 
 function makeTransport(): Fake {
-  const queues: Fake['queues'] = { plan: [], build: [], review: [] }
-  const calls: Fake['calls'] = { plan: [], build: [], review: [] }
+  const queues: Fake['queues'] = { draft: [], build: [], review: [] }
+  const calls: Fake['calls'] = { draft: [], build: [], review: [] }
   const take = <T>(q: ApiResult<T>[], name: string): ApiResult<T> => {
     const next = q.shift()
     if (!next) throw new Error(`${name} queue exhausted`)
     return next
   }
   const transport: Transport = {
-    plan: vi.fn(async (req) => { calls.plan.push(req); return take(queues.plan, 'plan') }),
+    draft: vi.fn(async (req) => { calls.draft.push(req); return take(queues.draft, 'draft') }),
     build: vi.fn(async (req) => { calls.build.push(req); return take(queues.build, 'build') }),
     review: vi.fn(async (req) => { calls.review.push(req); return take(queues.review, 'review') }),
   }
@@ -125,11 +129,10 @@ function fresh(polish = true): SculptJob {
 // ---------------------------------------------------------------------------
 
 describe('JobRunner: the happy path', () => {
-  it('plans, builds, lands the draft, reviews, and finishes in three calls when the review is clean', async () => {
+  it('drafts, lands it, reviews, and finishes in two calls when the review is clean', async () => {
     const fake = makeTransport()
     const r = makeRenderer()
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(ok({ code: 'v1', notes: ['built'] }))
+    fake.queues.draft.push(ok(drafted('v1', ['built'])))
     fake.queues.review.push(ok(review({ fidelity: 0.9 })))
     const { runner, landed, changes } = makeRunner(fresh(), fake, r)
 
@@ -141,16 +144,17 @@ describe('JobRunner: the happy path', () => {
     expect(result.code).toBe('v1')
     expect(result.glb).toBeInstanceOf(ArrayBuffer)
     expect(result.sheets).toHaveLength(1)
-    expect(fake.calls.plan).toHaveLength(1)
-    expect(fake.calls.build).toHaveLength(1)
+    expect(fake.calls.draft).toHaveLength(1)
+    expect(fake.calls.build).toHaveLength(0)
     expect(fake.calls.review).toHaveLength(1)
+    expect(result.spec?.name).toBe('Oak stool')
     // The draft reached the stage before the review was asked for.
     expect(landed).toHaveLength(1)
     expect(landed[0]!.draft).toBe(true)
     const order = changes.map(c => c.status)
     expect(order.indexOf('reviewing')).toBeGreaterThan(order.indexOf('rendering'))
-    expect(result.usage).toEqual({ input: 30, output: 60 })
-    expect(result.costUsd).toBeCloseTo(0.03)
+    expect(result.usage).toEqual({ input: 20, output: 40 })
+    expect(result.costUsd).toBeCloseTo(0.02)
     // The reviewer gets the sheet and the measured table, never the photo again.
     expect(fake.calls.review[0]!.partBounds).toHaveLength(1)
     expect('image' in fake.calls.review[0]!).toBe(false)
@@ -159,8 +163,8 @@ describe('JobRunner: the happy path', () => {
   it('spends the one fix when the review lists defects below the bar, and lands the fix', async () => {
     const fake = makeTransport()
     const r = makeRenderer()
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(ok({ code: 'v1', notes: [] }), ok({ code: 'v2', notes: ['fixed'] }))
+    fake.queues.draft.push(ok(drafted('v1')))
+    fake.queues.build.push(ok({ code: 'v2', notes: ['fixed'] }))
     fake.queues.review.push(ok(review({ fidelity: 0.6, defects: [DEFECT] })))
     const { runner, landed } = makeRunner(fresh(), fake, r)
 
@@ -171,8 +175,8 @@ describe('JobRunner: the happy path', () => {
     expect(result.fixed).toBe(true)
     expect(result.quality).toBe('approximate')
     expect(result.sheets).toHaveLength(2)
-    expect(fake.calls.build).toHaveLength(2)
-    const fix = fake.calls.build[1]!
+    expect(fake.calls.build).toHaveLength(1)
+    const fix = fake.calls.build[0]!
     expect(fix.code).toBe('v1')
     expect(fix.defects).toEqual([DEFECT])
     expect(fix.partBounds).toHaveLength(1)
@@ -185,21 +189,19 @@ describe('JobRunner: the happy path', () => {
   it('skips the fix when the review scores at the bar even with defects listed', async () => {
     const fake = makeTransport()
     const r = makeRenderer()
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(ok({ code: 'v1', notes: [] }))
+    fake.queues.draft.push(ok(drafted('v1')))
     fake.queues.review.push(ok(review({ fidelity: GOOD_FIDELITY, defects: [DEFECT] })))
     const { runner } = makeRunner(fresh(), fake, r)
     const result = await runner.run()
     expect(result.status).toBe('done')
     expect(result.fixed).toBe(false)
-    expect(fake.calls.build).toHaveLength(1)
+    expect(fake.calls.build).toHaveLength(0)
   })
 
-  it('without polish it is two calls and done', async () => {
+  it('without polish it is one call and done', async () => {
     const fake = makeTransport()
     const r = makeRenderer()
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(ok({ code: 'v1', notes: [] }))
+    fake.queues.draft.push(ok(drafted('v1')))
     const { runner, landed } = makeRunner(fresh(false), fake, r)
     const result = await runner.run()
     expect(result.status).toBe('done')
@@ -209,14 +211,13 @@ describe('JobRunner: the happy path', () => {
     expect(result.draft).toBe(false)
   })
 
-  it('the plan carries the hint and the dims', async () => {
+  it('the draft carries the hint and the dims', async () => {
     const fake = makeTransport()
     const r = makeRenderer()
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(ok({ code: 'v1', notes: [] }))
+    fake.queues.draft.push(ok(drafted('v1')))
     const job = createJob('img', 'a stool', { widthMm: 400, heightMm: 450, depthMm: 400 }, false)
     await makeRunner(job, fake, r).runner.run()
-    expect(fake.calls.plan[0]).toEqual({ image: 'img', hint: 'a stool', dims: { widthMm: 400, heightMm: 450, depthMm: 400 } })
+    expect(fake.calls.draft[0]).toEqual({ image: 'img', hint: 'a stool', dims: { widthMm: 400, heightMm: 450, depthMm: 400 } })
   })
 })
 
@@ -225,14 +226,14 @@ describe('JobRunner: broken code', () => {
     const fake = makeTransport()
     const r = makeRenderer()
     r.broken.add('bad')
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(ok({ code: 'bad', notes: [] }), ok({ code: 'good', notes: [] }))
+    fake.queues.draft.push(ok(drafted('bad')))
+    fake.queues.build.push(ok({ code: 'good', notes: [] }))
     const { runner, landed } = makeRunner(fresh(), fake, r)
     const result = await runner.run()
     expect(result.status).toBe('done')
     expect(result.code).toBe('good')
-    expect(fake.calls.build[1]!.defects?.[0]?.what).toContain('boom: bad')
-    expect(fake.calls.build[1]!.code).toBe('bad')
+    expect(fake.calls.build[0]!.defects?.[0]?.what).toContain('boom: bad')
+    expect(fake.calls.build[0]!.code).toBe('bad')
     // No render happened, so there is nothing to review; the fix is the result.
     expect(fake.calls.review).toHaveLength(0)
     expect(landed).toHaveLength(1)
@@ -242,23 +243,23 @@ describe('JobRunner: broken code', () => {
     const fake = makeTransport()
     const r = makeRenderer()
     r.broken.add('bad1').add('bad2')
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(ok({ code: 'bad1', notes: [] }), ok({ code: 'bad2', notes: [] }))
+    fake.queues.draft.push(ok(drafted('bad1')))
+    fake.queues.build.push(ok({ code: 'bad2', notes: [] }))
     const { runner, landed } = makeRunner(fresh(), fake, r)
     const result = await runner.run()
     expect(result.status).toBe('failed')
     expect(result.error).toContain('boom: bad2')
     expect(result.glb).toBeNull()
     expect(landed).toHaveLength(0)
-    expect(fake.calls.build).toHaveLength(2)
+    expect(fake.calls.build).toHaveLength(1)
   })
 
   it('a fix that will not load keeps the draft and finishes', async () => {
     const fake = makeTransport()
     const r = makeRenderer()
     r.broken.add('v2')
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(ok({ code: 'v1', notes: [] }), ok({ code: 'v2', notes: [] }))
+    fake.queues.draft.push(ok(drafted('v1')))
+    fake.queues.build.push(ok({ code: 'v2', notes: [] }))
     fake.queues.review.push(ok(review({ fidelity: 0.5, defects: [DEFECT] })))
     const { runner, landed } = makeRunner(fresh(), fake, r)
     const result = await runner.run()
@@ -271,9 +272,9 @@ describe('JobRunner: broken code', () => {
 })
 
 describe('JobRunner: failures and resume', () => {
-  it('a failed plan ends the run with the error', async () => {
+  it('a failed draft ends the run with the error', async () => {
     const fake = makeTransport()
-    fake.queues.plan.push(fail('rate limited'))
+    fake.queues.draft.push(fail('rate limited'))
     const { runner } = makeRunner(fresh(), fake, makeRenderer())
     const result = await runner.run()
     expect(result.status).toBe('failed')
@@ -282,38 +283,37 @@ describe('JobRunner: failures and resume', () => {
 
   it('a failed route still counts what it spent', async () => {
     const fake = makeTransport()
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push({ ok: false, error: 'generated code failed validation twice', usage: { input: 5, output: 7 }, costUsd: 0.2 })
+    fake.queues.draft.push({ ok: false, error: 'draft failed validation twice', usage: { input: 5, output: 7 }, costUsd: 0.2 })
     const { runner } = makeRunner(fresh(), fake, makeRenderer())
     const result = await runner.run()
     expect(result.status).toBe('failed')
-    expect(result.usage).toEqual({ input: 15, output: 27 })
-    expect(result.costUsd).toBeCloseTo(0.21)
+    expect(result.usage).toEqual({ input: 5, output: 7 })
+    expect(result.costUsd).toBeCloseTo(0.2)
   })
 
-  it('resumes a failed build without re-planning, and a failed review without rebuilding', async () => {
+  it('resumes a failed review without re-drafting, and a plan without code builds from the plan', async () => {
     const fake = makeTransport()
     const r = makeRenderer()
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(fail('upstream'))
-    const job = fresh()
-    const first = await makeRunner(job, fake, r).runner.run()
-    expect(first.status).toBe('failed')
-    expect(first.spec).not.toBeNull()
-
-    fake.queues.build.push(ok({ code: 'v1', notes: [] }))
+    fake.queues.draft.push(ok(drafted('v1')))
     fake.queues.review.push(fail('upstream again'))
-    const second = await makeRunner({ ...first, error: null }, fake, r).runner.run()
-    expect(second.status).toBe('failed')
-    expect(fake.calls.plan).toHaveLength(1)
-    expect(second.glb).toBeInstanceOf(ArrayBuffer)
-    expect(second.sheets).toHaveLength(1)
+    const first = await makeRunner(fresh(), fake, r).runner.run()
+    expect(first.status).toBe('failed')
+    expect(first.glb).toBeInstanceOf(ArrayBuffer)
+    expect(first.sheets).toHaveLength(1)
 
     fake.queues.review.push(ok(review({ fidelity: 0.9 })))
-    const third = await makeRunner({ ...second, error: null }, fake, r).runner.run()
-    expect(third.status).toBe('done')
-    expect(fake.calls.build).toHaveLength(2)
+    const second = await makeRunner({ ...first, error: null }, fake, r).runner.run()
+    expect(second.status).toBe('done')
+    expect(fake.calls.draft).toHaveLength(1)
     expect(r.loads).toHaveLength(1)
+
+    // A stored job that has a plan but lost its code (a v2 job) builds from the plan.
+    fake.queues.build.push(ok({ code: 'v1', notes: [] }))
+    const orphan = { ...fresh(false), spec: baseSpec() }
+    const third = await makeRunner(orphan, fake, r).runner.run()
+    expect(third.status).toBe('done')
+    expect(fake.calls.draft).toHaveLength(1)
+    expect(fake.calls.build).toHaveLength(1)
   })
 
   it('a done job is a no-op', async () => {
@@ -321,31 +321,30 @@ describe('JobRunner: failures and resume', () => {
     const job = { ...fresh(), status: 'done' as const }
     const result = await makeRunner(job, fake, makeRenderer()).runner.run()
     expect(result.status).toBe('done')
-    expect(fake.calls.plan).toHaveLength(0)
+    expect(fake.calls.draft).toHaveLength(0)
   })
 })
 
 describe('JobRunner: cancel', () => {
-  it('a cancel during the plan stops before the build', async () => {
+  it('a cancel during the draft stops before anything renders', async () => {
     const fake = makeTransport()
     const r = makeRenderer()
-    let release!: (v: ApiResult<SculptSpec>) => void
-    fake.transport.plan = vi.fn(() => new Promise<ApiResult<SculptSpec>>((resolve) => { release = resolve }))
+    let release!: (v: ApiResult<DraftOutput>) => void
+    fake.transport.draft = vi.fn(() => new Promise<ApiResult<DraftOutput>>((resolve) => { release = resolve }))
     const { runner } = makeRunner(fresh(), fake, r)
     const run = runner.run()
     await new Promise(resolve => setTimeout(resolve, 0))
     runner.cancel()
-    release(ok(baseSpec()))
+    release(ok(drafted('v1')))
     const result = await run
     expect(result.status).toBe('cancelled')
-    expect(fake.calls.build).toHaveLength(0)
+    expect(r.loads).toHaveLength(0)
   })
 
   it('a cancel after the draft landed keeps the draft', async () => {
     const fake = makeTransport()
     const r = makeRenderer()
-    fake.queues.plan.push(ok(baseSpec()))
-    fake.queues.build.push(ok({ code: 'v1', notes: [] }))
+    fake.queues.draft.push(ok(drafted('v1')))
     let release!: (v: ApiResult<Review>) => void
     fake.transport.review = vi.fn(() => new Promise<ApiResult<Review>>((resolve) => { release = resolve }))
     const { runner, landed } = makeRunner(fresh(), fake, r)
@@ -357,7 +356,7 @@ describe('JobRunner: cancel', () => {
     const result = await run
     expect(result.status).toBe('cancelled')
     expect(result.glb).toBeInstanceOf(ArrayBuffer)
-    expect(fake.calls.build).toHaveLength(1)
+    expect(fake.calls.build).toHaveLength(0)
   })
 })
 

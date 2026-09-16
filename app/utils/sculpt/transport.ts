@@ -46,7 +46,7 @@ function isErrorBody(value: unknown): value is { error: string } {
 
 export function fetchTransport(base = '/api/sculpt'): Transport {
   return {
-    plan: (req, signal) => post(`${base}/plan`, req, signal),
+    draft: (req, signal) => post(`${base}/draft`, req, signal),
     build: (req, signal) => post(`${base}/build`, req, signal),
     review: (req, signal) => post(`${base}/review`, req, signal),
   }

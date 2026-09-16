@@ -34,18 +34,17 @@ onScopeDispose(() => window.removeEventListener('keydown', onKey))
  * The run's four steps. Rendering belongs to the build (the model lands on the
  * stage at the end of it) and to the fix; neither gets its own row.
  */
-const STEPS: { id: 'plan' | 'build' | 'review' | 'fix', label: string }[] = [
-  { id: 'plan', label: 'Reading the photo' },
-  { id: 'build', label: 'Building the model' },
+const STEPS: { id: 'build' | 'review' | 'fix', label: string }[] = [
+  { id: 'build', label: 'Reading the photo, writing the model' },
   { id: 'review', label: 'Comparing to the photo' },
   { id: 'fix', label: 'Fixing what differs' },
 ]
-const stepIndex: Partial<Record<JobStatus, number>> = { planning: 0, building: 1, rendering: 1, reviewing: 2, fixing: 3 }
+const stepIndex: Partial<Record<JobStatus, number>> = { building: 0, rendering: 0, reviewing: 1, fixing: 2 }
 const activeStep = computed(() => {
   const j = job.value
   if (!j) return -1
   const i = stepIndex[j.status]
-  if (i !== undefined) return j.status === 'rendering' && j.fixed ? 3 : i
+  if (i !== undefined) return j.status === 'rendering' && j.fixed ? 2 : i
   return -1
 })
 const steps = computed(() => {
@@ -82,8 +81,7 @@ const elapsed = computed(() => {
 
 const statusLabel: Record<JobStatus, string> = {
   'idle': 'Starting',
-  'planning': 'Reading the photo',
-  'building': 'Writing the model',
+  'building': 'Reading the photo, writing the model',
   'rendering': 'Rendering',
   'reviewing': 'Comparing',
   'fixing': 'Fixing',
@@ -143,9 +141,9 @@ function when(ms: number) {
           <Switch v-model="polish" />
         </label>
         <p class="text-[11.5px] leading-relaxed text-ink-3">
-          A dropped photo builds on its own. Claude reads it, plans the parts and writes the model
-          in one go: a draft stands on the stage in about a minute. {{ polish ? 'Polish adds one review and one fix.' : '' }}
-          Uses W/H/D from the size section when set. Four calls at most, about $0.30–0.90.
+          A dropped photo builds on its own. Claude reads it and writes the model in one call: a
+          draft stands on the stage in under a minute. {{ polish ? 'Polish adds one review and one fix.' : '' }}
+          Uses W/H/D from the size section when set. Three calls at most, about $0.30–0.60.
         </p>
       </template>
       <p class="text-[11.5px] leading-relaxed text-ink-3">

@@ -1,5 +1,5 @@
-import type { ApiResult, BuildOutput, Defect, PartBounds, Review, SculptSpec, Usage } from '../../../app/utils/sculpt/types'
-import { buildSchema, reviewSchema, specSchema, toolSchema, validateSpec } from './schema'
+import type { ApiResult, BuildOutput, Defect, DraftOutput, PartBounds, Review, Usage } from '../../../app/utils/sculpt/types'
+import { buildSchema, draftSchema, reviewSchema, toolSchema, validateSpec } from './schema'
 import { validateCode } from './validateCode'
 import { PROMPTS } from './prompts'
 import type { CallTool, ImageMediaType, ToolResult, UserPart } from './anthropic'
@@ -26,12 +26,12 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024
  */
 const MAX_IMAGE_BASE64_CHARS = Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 1024
 /**
- * Output ceilings. The plan is a JSON document of at most 24 components; the
- * build is a file capped at 40 kB by the validator (~12k tokens), so a ceiling
- * twice that leaves room for the tool-call envelope and is never the limit a
+ * Output ceilings. The draft is a plan of at most 24 components plus a file
+ * capped at 40 kB by the validator (~12k tokens); a fix is the file alone. The
+ * ceilings leave room for the tool-call envelope and are never the limit a
  * healthy answer hits. The review is a short scored list.
  */
-const PLAN_MAX_TOKENS = 12_000
+const DRAFT_MAX_TOKENS = 24_000
 const BUILD_MAX_TOKENS = 24_000
 const REVIEW_MAX_TOKENS = 4_000
 /** Defects past this many are noise; the review prompt says eight. */
@@ -130,14 +130,14 @@ function partBoundsTable(bounds: PartBounds[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// plan
+// draft: the plan and the first build in one call
 // ---------------------------------------------------------------------------
 
-export async function planCore(
+export async function draftCore(
   body: unknown,
   callTool: CallTool,
   cfg: RouteCfg = DEFAULT_ROUTE_CFG,
-): Promise<ApiResult<SculptSpec>> {
+): Promise<ApiResult<DraftOutput>> {
   if (!isRecord(body)) return fail('request body must be an object')
 
   const image = parseImage(body.image, 'image')
@@ -146,7 +146,7 @@ export async function planCore(
   const hint = typeof body.hint === 'string' ? body.hint.slice(0, 2000) : ''
   const dims = isRecord(body.dims) ? body.dims : null
 
-  const base = ['Read this photograph and write the SculptSpec.']
+  const base = ['Read this photograph, write the plan, then write the finished model from it.']
   if (hint) base.push(`What the owner says it is: ${hint}`)
   if (dims) {
     base.push(`Measured dimensions supplied by the owner (millimetres): ${JSON.stringify(dims)}. Convert to metres, use them exactly and set dimensions.source to "user".`)
@@ -161,29 +161,35 @@ export async function planCore(
   for (let attempt = 0; attempt < 2; attempt++) {
     const text = attempt === 0
       ? base.join('\n\n')
-      : `${base.join('\n\n')}\n\nThe previous plan failed validation:\n${errors.map(e => `- ${e}`).join('\n')}\n\nReturn a corrected plan.`
+      : `${base.join('\n\n')}\n\nThe previous answer failed validation:\n${errors.map(e => `- ${e}`).join('\n')}\n\nReturn a corrected plan and model.`
 
     const raw = tally.add(await callTool<unknown>({
-      system: PROMPTS.plan,
+      system: PROMPTS.draft,
       user: [image.part, { type: 'text', text }],
       tool: {
-        name: 'plan',
-        description: 'Report the reading of the photographed object and the buildable plan for it.',
-        schema: toolSchema(specSchema),
+        name: 'draft',
+        description: 'Report the plan for the photographed object and the complete createModel factory that builds it.',
+        schema: toolSchema(draftSchema),
         // The spec grammar is too large for strict mode; zod plus one retry covers it.
         strict: false,
       },
       model: cfg.modelAuthor,
-      maxTokens: PLAN_MAX_TOKENS,
+      maxTokens: DRAFT_MAX_TOKENS,
       effort: 'medium',
     }))
 
-    const result = validateSpec(raw)
-    if (result.ok) return tally.ok(result.spec)
-    errors = result.errors
+    const parsed = draftSchema.safeParse(raw)
+    if (!parsed.success) {
+      errors = parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`)
+      continue
+    }
+    const spec = validateSpec(parsed.data.spec)
+    const code = validateCode(parsed.data.code)
+    if (spec.ok && code.ok) return tally.ok({ spec: spec.spec, code: parsed.data.code, notes: parsed.data.notes })
+    errors = [...(spec.ok ? [] : spec.errors.map(e => `spec: ${e}`)), ...(code.ok ? [] : code.errors.map(e => `code: ${e}`))]
   }
 
-  return tally.fail(`plan failed validation twice: ${errors.join('; ')}`)
+  return tally.fail(`draft failed validation twice: ${errors.join('; ')}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -202,9 +208,10 @@ function parseDefects(value: unknown): Defect[] {
 }
 
 /**
- * One route, two jobs: without `code` it writes the whole model from the plan
- * and the photo; with `code` and `defects` it fixes exactly those defects in
- * that file. The photo travels both times — the author is meant to look at it.
+ * The fix: rewrites the current file to close the reviewer's defects, with the
+ * photo alongside so the author can look at what it is matching. (Without
+ * `code` it still writes a whole model from the plan — the resume path for a
+ * job whose draft was lost.)
  */
 export async function buildCore(
   body: unknown,

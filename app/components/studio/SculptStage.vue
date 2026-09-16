@@ -12,22 +12,21 @@ const props = defineProps<{ job: SculptJob }>()
 
 const label: Partial<Record<JobStatus, string>> = {
   idle: 'Starting',
-  planning: 'Reading the photo',
-  building: 'Writing the model',
+  building: 'Reading the photo, writing the model',
   rendering: 'Rendering the draft',
   reviewing: 'Comparing to the photo',
   fixing: 'Fixing what differs',
 }
 const status = computed(() => label[props.job.status] ?? 'Working')
 
-const STEPS: JobStatus[] = ['planning', 'building', 'reviewing', 'fixing']
+const STEPS: JobStatus[] = ['building', 'reviewing', 'fixing']
 const stepIndex = computed(() => {
   const s = props.job.status
-  if (s === 'rendering') return props.job.fixed ? 3 : 1
+  if (s === 'rendering') return props.job.fixed ? 2 : 0
   const i = STEPS.indexOf(s)
   return i < 0 ? 0 : i
 })
-const stepCount = computed(() => (props.job.polish ? 4 : 2))
+const stepCount = computed(() => (props.job.polish ? 3 : 1))
 
 const now = ref(Date.now())
 const ticker = setInterval(() => { now.value = Date.now() }, 1000)

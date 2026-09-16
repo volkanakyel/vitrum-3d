@@ -98,26 +98,28 @@ opt-in per press: in the product studio, **Build the parts model** sends the imp
 Anthropic's API and asks Claude to rebuild the object as a *parts model* — a chair with a seat, a
 back, four legs and its own materials, instead of one carved blob wearing the photo.
 
-The loop is four model calls at most, and the model is on the stage after the second:
+The loop is three model calls at most, and the model is on the stage after the first:
 
-1. **Plan.** Claude reads the photo and writes a `SculptSpec`: components, dimensions, materials,
-   what must match.
-2. **Build.** Claude writes the whole model as one file of procedural three.js against an in-repo
-   kit (`app/utils/sculpt/kit/`), looking at the photo as it writes. Printed artwork — labels,
-   logos, text — is never modelled: the plan measures its box in the photo, and `kit.print` wraps
-   the photo's own pixels onto the part (dark print kept, body shading dropped), so the mockup
-   carries the real typography. The file runs in an
-   opaque-origin `<iframe sandbox="allow-scripts">` (`/sandbox`), is exported as a GLB and
-   **lands on the stage as a draft**, on the turntable, about a minute in.
-3. **Review** (with *Polish* on, the default). The sandbox renders four views, pasted into one
+1. **Draft.** One Opus call reads the photo, writes the `SculptSpec` (components, dimensions,
+   materials, what must match) and, in the same answer, the whole model as one file of procedural
+   three.js against an in-repo kit (`app/utils/sculpt/kit/`). Printed artwork — labels, logos,
+   text — is never modelled: the plan measures its box in the photo, and `kit.print` wraps the
+   photo's own pixels onto the part (dark print kept, body shading dropped), so the mockup
+   carries the real typography. The file runs in an opaque-origin
+   `<iframe sandbox="allow-scripts">` (`/sandbox`), is exported as a GLB and **lands on the
+   stage as a draft**, on the turntable, about a minute in.
+2. **Review** (with *Polish* on, the default). The sandbox renders four views, pasted into one
    comparison sheet next to the photo; a cheaper model scores it and lists measured defects.
-4. **Fix** (only when the review scored under 0.85 with defects). One rebuild of the same file,
+3. **Fix** (only when the review scored under 0.85 with defects). One rebuild of the same file,
    with the defects and the measured box of every part; it replaces the draft. A fix that will not
    load leaves the draft standing.
 
+In the product studio a dropped photo starts this on its own; the carve stays off the stage while
+a run stands or is under way.
+
 Scene controls, GLB/STL/PNG export and the size fields all work on the model unchanged. The run
 (spec, code, sheets, review, GLB) is cached in IndexedDB and can be reopened without paying again.
-Expect 1–4 minutes and $0.30–0.90 per run.
+Expect about a minute to the draft and 2–3 minutes to the finish, $0.20–0.50 per run.
 
 **The photo goes to Anthropic.** The panel says so, and only this button does it: tracing, carving
 and depth all still stay in the browser.
@@ -169,8 +171,8 @@ for the design.
 | `app/utils/sculpt/{job,sandbox,sandboxRuntime,sheet,store,transport,glb}.ts` | job state machine, the sandbox host and its page-side runtime, comparison sheets, IndexedDB cache, route client, GLB safety check |
 | `app/composables/useSculpt.ts` | Vue glue for a sculpt run: reactive job, start/cancel/answer/reopen |
 | `server/utils/sculpt/*` | route cores, zod schemas, the Anthropic client, `validateCode`, the CSP strings, the rate-limit/budget guard |
-| `server/utils/sculpt/prompts/*.md` | the plan, build and review prompts; `kit-api.md` is generated, `exemplar.md` is the kit fixture |
-| `server/api/sculpt/*` | `plan`, `build`, `review` (POST) and `status` (GET) |
+| `server/utils/sculpt/prompts/*.md` | the plan, build and review prompts (the draft call is plan + build joined); `kit-api.md` is generated, `exemplar.md` is the kit fixture |
+| `server/api/sculpt/*` | `draft` (plan + first build), `build` (the fix), `review` (POST) and `status` (GET) |
 | `app/components/studio/*` | control panel, viewer, loader, fields |
 | `app/components/site/*` | navigation and footer |
 | `app/components/ui/*` | generated shadcn-vue primitives |

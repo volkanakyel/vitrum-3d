@@ -1,25 +1,26 @@
 /**
  * Sculpt job orchestrator.
  *
- * `JobRunner` walks a `SculptJob` through plan → build → render → (review →
- * fix → render) → done, driving injected `Transport` (the `/api/sculpt/*`
- * routes) and `Renderer` (the sandbox) implementations so the whole thing is
- * unit-testable without a browser or a network.
+ * `JobRunner` walks a `SculptJob` through draft (plan + build in one call) →
+ * render → (review → fix → render) → done, driving injected `Transport` (the
+ * `/api/sculpt/*` routes) and `Renderer` (the sandbox) implementations so the
+ * whole thing is unit-testable without a browser or a network.
  *
- * The loop is bounded by construction: at most four model calls (plan, build,
+ * The loop is bounded by construction: at most three model calls (draft,
  * review, one fix), and the model is on the stage — `deps.onModel` — as soon
- * as the first build renders, before the review has even started. A fix that
- * fails leaves the draft standing.
+ * as the draft renders, before the review has even started. A fix that fails
+ * leaves the draft standing.
  *
- * Resume is coarse: `run()` looks at what the job already holds — a spec
- * skips the plan, code skips the build, a review skips the review — so a
- * failed run picks up from the last paid step.
+ * Resume is coarse: `run()` looks at what the job already holds — code skips
+ * the draft, a review skips the review — so a failed run picks up from the
+ * last paid step.
  */
 
-import type { ApiResult, BuildOutput, Defect, Dims, PartBounds, Review, SculptSpec, Usage, View } from './types'
+import type { ApiResult, BuildOutput, Defect, Dims, DraftOutput, PartBounds, Review, SculptSpec, Usage, View } from './types'
 
 export interface Transport {
-  plan: (req: { image: string, hint?: string, dims?: Dims }, signal: AbortSignal) => Promise<ApiResult<SculptSpec>>
+  /** Plan and first build in one call. */
+  draft: (req: { image: string, hint?: string, dims?: Dims }, signal: AbortSignal) => Promise<ApiResult<DraftOutput>>
   build: (req: { spec: SculptSpec, image: string, code?: string, defects?: Defect[], partBounds?: PartBounds[] }, signal: AbortSignal) => Promise<ApiResult<BuildOutput>>
   review: (req: { spec: SculptSpec, sheet: string, partBounds?: PartBounds[] }, signal: AbortSignal) => Promise<ApiResult<Review>>
 }
@@ -33,7 +34,6 @@ export interface Renderer {
 
 export type JobStatus =
   | 'idle'
-  | 'planning'
   | 'building'
   | 'rendering'
   | 'reviewing'
@@ -263,24 +263,26 @@ export class JobRunner {
   private async execute(): Promise<SculptJob> {
     const job = this.job
     try {
-      if (!job.spec) {
-        job.status = 'planning'
-        if (!(await this.commit())) return this.snapshot()
-        job.spec = await this.call(signal => this.deps.transport.plan(
-          { image: job.image, hint: job.hint || undefined, dims: job.dims ?? undefined },
-          signal,
-        ))
-        if (this.cancelled) return this.snapshot()
-        if (!(await this.commit())) return this.snapshot()
-      }
-
       if (!job.code) {
         job.status = 'building'
         if (!(await this.commit())) return this.snapshot()
-        const built = await this.call(signal => this.deps.transport.build({ spec: job.spec!, image: job.image }, signal))
-        if (this.cancelled) return this.snapshot()
-        job.code = built.code
-        job.notes = built.notes
+        if (job.spec) {
+          // A plan without code (a run that lost its draft): build from the plan.
+          const built = await this.call(signal => this.deps.transport.build({ spec: job.spec!, image: job.image }, signal))
+          if (this.cancelled) return this.snapshot()
+          job.code = built.code
+          job.notes = built.notes
+        }
+        else {
+          const drafted = await this.call(signal => this.deps.transport.draft(
+            { image: job.image, hint: job.hint || undefined, dims: job.dims ?? undefined },
+            signal,
+          ))
+          if (this.cancelled) return this.snapshot()
+          job.spec = drafted.spec
+          job.code = drafted.code
+          job.notes = drafted.notes
+        }
         if (!(await this.commit())) return this.snapshot()
       }
 

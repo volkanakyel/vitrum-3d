@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { buildCore, planCore, reviewCore } from '../server/utils/sculpt/routes'
+import { buildCore, draftCore, reviewCore } from '../server/utils/sculpt/routes'
 import { PROMPTS } from '../server/utils/sculpt/prompts'
 import { FORBIDDEN } from '../server/utils/sculpt/validateCode'
 import type { CallTool, ToolCall } from '../server/utils/sculpt/anthropic'
@@ -93,42 +93,50 @@ function makeReview(over: Partial<Review> = {}): Review {
 const goodCode = 'function createModel(kit, THREE, options) {\n  return kit.root([])\n}\n'
 const bounds = [{ id: 'base', min: [-0.4, 0, -0.375], max: [0.4, 0.3, 0.375] }]
 
-describe('planCore', () => {
-  it('returns the spec with usage and cost, and sends the photo', async () => {
-    const { callTool, calls } = makeFake([makeSpec()])
-    const res = await planCore({ image: pngBase64(), hint: 'a chair bed' }, callTool)
+describe('draftCore', () => {
+  const good = () => ({ spec: makeSpec(), code: goodCode, notes: ['built'] })
+
+  it('returns the plan and the code with usage and cost, and sends the photo once', async () => {
+    const { callTool, calls } = makeFake([good()])
+    const res = await draftCore({ image: pngBase64(), hint: 'a chair bed' }, callTool)
     expect(res.ok).toBe(true)
     if (!res.ok) return
-    expect(res.data.name).toBe('Orange chair bed')
+    expect(res.data.spec.name).toBe('Orange chair bed')
+    expect(res.data.code).toBe(goodCode)
     expect(res.usage).toEqual({ input: 10, output: 20 })
     expect(calls).toHaveLength(1)
     expect(imageCount(calls[0]!)).toBe(1)
-    expect(calls[0]!.tool.name).toBe('plan')
+    expect(calls[0]!.tool.name).toBe('draft')
+    expect(calls[0]!.system).toBe(PROMPTS.draft)
+    expect(calls[0]!.maxTokens).toBe(24_000)
     expect(userText(calls[0]!)).toContain('a chair bed')
     expect(userText(calls[0]!)).toContain('estimated')
   })
 
   it('passes supplied dimensions through and asks for source "user"', async () => {
-    const { callTool, calls } = makeFake([makeSpec()])
-    await planCore({ image: pngBase64(), dims: { widthMm: 800, heightMm: 900, depthMm: 750 } }, callTool)
+    const { callTool, calls } = makeFake([good()])
+    await draftCore({ image: pngBase64(), dims: { widthMm: 800, heightMm: 900, depthMm: 750 } }, callTool)
     expect(userText(calls[0]!)).toContain('"widthMm":800')
     expect(userText(calls[0]!)).toContain('"user"')
   })
 
-  it('retries once with the validation errors and sums usage', async () => {
-    const bad = { ...makeSpec(), components: [] }
-    const { callTool, calls } = makeFake([bad, makeSpec()])
-    const res = await planCore({ image: pngBase64() }, callTool)
+  it('retries once with both the plan and the code errors, and sums usage', async () => {
+    const bad = { spec: { ...makeSpec(), components: [] }, code: 'function nope() {}', notes: [] }
+    const { callTool, calls } = makeFake([bad, good()])
+    const res = await draftCore({ image: pngBase64() }, callTool)
     expect(res.ok).toBe(true)
     expect(calls).toHaveLength(2)
-    expect(userText(calls[1]!)).toContain('failed validation')
+    const retry = userText(calls[1]!)
+    expect(retry).toContain('failed validation')
+    expect(retry).toContain('spec:')
+    expect(retry).toContain('code:')
     if (res.ok) expect(res.usage).toEqual({ input: 20, output: 40 })
   })
 
-  it('fails after two invalid plans, still reporting the spend', async () => {
-    const bad = { ...makeSpec(), components: [] }
+  it('fails after two invalid answers, still reporting the spend', async () => {
+    const bad = { spec: makeSpec(), code: 'x', notes: [] }
     const { callTool } = makeFake([bad, bad])
-    const res = await planCore({ image: pngBase64() }, callTool)
+    const res = await draftCore({ image: pngBase64() }, callTool)
     expect(res.ok).toBe(false)
     if (!res.ok) {
       expect(res.error).toContain('twice')
@@ -138,15 +146,15 @@ describe('planCore', () => {
 
   it('rejects a 5 MB image before calling the model', async () => {
     const { callTool, calls } = makeFake([])
-    const res = await planCore({ image: pngBase64(5 * 1024 * 1024) }, callTool)
+    const res = await draftCore({ image: pngBase64(5 * 1024 * 1024) }, callTool)
     expect(res.ok).toBe(false)
     expect(calls).toHaveLength(0)
   })
 
   it('rejects a non-object body and a non-image payload', async () => {
     const { callTool } = makeFake([])
-    expect((await planCore('x', callTool)).ok).toBe(false)
-    expect((await planCore({ image: 'not base64!' }, callTool)).ok).toBe(false)
+    expect((await draftCore('x', callTool)).ok).toBe(false)
+    expect((await draftCore({ image: 'not base64!' }, callTool)).ok).toBe(false)
   })
 })
 
@@ -251,12 +259,26 @@ describe('reviewCore', () => {
 
 describe('prompts', () => {
   it('ships a non-empty document for every call', () => {
-    for (const key of ['plan', 'build', 'review', 'kitApi'] as const) {
+    for (const key of ['plan', 'build', 'draft', 'review', 'kitApi'] as const) {
       expect(PROMPTS[key].length, key).toBeGreaterThan(200)
     }
     expect(PROMPTS.plan).toContain('detailInventory')
     expect(PROMPTS.plan).toContain('mustMatch')
     expect(PROMPTS.review).toContain('one round of fixes')
+  })
+
+  // The draft is the plan prompt followed by the build prompt with a single
+  // tool line, so the one-call path asks for exactly what the two-call path did.
+  it('the draft prompt is the plan then the build, asking for the draft tool only', () => {
+    const d = PROMPTS.draft
+    expect(d).toContain('# Part one — the plan')
+    expect(d).toContain('# Part two — the model')
+    expect(d).toContain('detailInventory')
+    expect(d).toContain('function createModel(kit, THREE, options)')
+    expect(d).toContain('Example of a complete, correct factory')
+    expect(d).not.toContain('calling the `plan` tool')
+    expect(d).not.toContain('calling the `build` tool')
+    expect(d.trim().endsWith('Output only by calling the `draft` tool, with `spec`, `code` and `notes`.')).toBe(true)
   })
 
   it('states the build contract and every forbidden identifier', () => {

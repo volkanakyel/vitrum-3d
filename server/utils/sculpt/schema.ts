@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { BuildOutput, Review, SculptSpec } from '../../../app/utils/sculpt/types'
+import type { BuildOutput, DraftOutput, Review, SculptSpec } from '../../../app/utils/sculpt/types'
 
 const suitabilitySchema = z.strictObject({
   verdict: z.enum(['pass', 'conditional', 'reject']),
@@ -157,6 +157,12 @@ export const reviewSchema: z.ZodType<Review> = z.strictObject({
 })
 
 export const buildSchema: z.ZodType<BuildOutput> = z.strictObject({
+  code: z.string(),
+  notes: z.array(z.string()),
+})
+
+export const draftSchema: z.ZodType<DraftOutput> = z.strictObject({
+  spec: specSchema,
   code: z.string(),
   notes: z.array(z.string()),
 })

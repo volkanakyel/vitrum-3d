@@ -43,7 +43,7 @@ export interface SculptDeps {
 const PRINT_PHOTO_MAX = 2048
 
 /** Statuses that mean the runner is working. */
-const RUNNING_STATUSES: JobStatus[] = ['planning', 'building', 'rendering', 'reviewing', 'fixing']
+const RUNNING_STATUSES: JobStatus[] = ['building', 'rendering', 'reviewing', 'fixing']
 
 export function useSculpt(deps: SculptDeps) {
   const job = shallowRef<SculptJob | null>(null)

@@ -506,6 +506,16 @@ describe('kit.print', () => {
     expect(scratch[8]).toBe(255)
   })
 
+  it('a chamfered cylinder also runs v by height (it is a lathe underneath)', () => {
+    const kit = makeKit()
+    const geometry = kit.cylinder(0.025, 0.2, { topRadius: 0.02, edge: 0.004 })
+    const position = geometry.getAttribute('position')
+    const uv = geometry.getAttribute('uv')
+    for (let i = 0; i < uv.count; i += 1) {
+      expect(uv.getY(i)).toBeCloseTo((position.getY(i) + 0.1) / 0.2, 5)
+    }
+  })
+
   it('lathe v runs by height, not by profile point, so a band is a share of the height', () => {
     const kit = makeKit()
     const geometry = kit.lathe([[0.02, 0], [0.025, 0.01], [0.025, 0.17], [0.02, 0.2]])

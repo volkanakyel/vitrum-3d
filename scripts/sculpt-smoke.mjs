@@ -6,21 +6,19 @@
  *   # a key that is not scoped to a workspace also needs NUXT_ANTHROPIC_WORKSPACE_ID
  *   node scripts/sculpt-smoke.mjs <image.jpg|png> [--base=http://localhost:3000] [--build]
  *
- * Posts the photo to /api/sculpt/plan and prints the plan with its tokens and
- * cost. With --build it also asks /api/sculpt/build for the model and writes
- * it next to the photo as <name>.sculpt.js. Pass a photo of one object on a
- * plain background.
+ * Posts the photo to /api/sculpt/draft (plan + model in one call) and prints
+ * the plan with its tokens and cost; the model is written next to the photo
+ * as <name>.sculpt.js. Pass a photo of one object on a plain background.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 
 const args = process.argv.slice(2)
 const baseArg = args.find(a => a.startsWith('--base='))
 const base = baseArg ? baseArg.slice('--base='.length) : 'http://localhost:3000'
-const build = args.includes('--build')
 const imagePath = args.find(a => !a.startsWith('--'))
 
 if (!imagePath) {
-  console.error('usage: node scripts/sculpt-smoke.mjs <image.jpg|png> [--base=http://localhost:3000] [--build]')
+  console.error('usage: node scripts/sculpt-smoke.mjs <image.jpg|png> [--base=http://localhost:3000]')
   process.exit(2)
 }
 
@@ -50,8 +48,8 @@ console.log(`image: ${imagePath} (${(image.length * 0.75 / 1024).toFixed(0)} kB)
 console.log(`server: ${base}`)
 
 const started = Date.now()
-const plan = report('plan', await post('/api/sculpt/plan', { image }))
-const spec = plan.data
+const draft = report('draft', await post('/api/sculpt/draft', { image }))
+const spec = draft.data.spec
 console.log(`  ${spec.name} — ${spec.objectClass}, verdict ${spec.suitability.verdict}`)
 console.log(`  dimensions: ${spec.dimensions.widthM} × ${spec.dimensions.heightM} × ${spec.dimensions.depthM} m (${spec.dimensions.source})`)
 console.log(`  camera: yaw ${spec.camera.yaw}, pitch ${spec.camera.pitch}, fov ${spec.camera.fov}, distance ${spec.camera.distance}`)
@@ -60,19 +58,9 @@ console.log(`  materials: ${spec.materials.map(m => `${m.id}(${m.family})`).join
 console.log('  mustMatch:')
 for (const fact of spec.mustMatch) console.log(`    - ${fact}`)
 
-let totalIn = plan.usage.input
-let totalOut = plan.usage.output
-let totalCost = plan.costUsd
+const out = imagePath.replace(/\.[^.]+$/, '') + '.sculpt.js'
+writeFileSync(out, draft.data.code)
+console.log(`  ${draft.data.code.length} chars → ${out}`)
+for (const note of draft.data.notes) console.log(`    - ${note}`)
 
-if (build) {
-  const built = report('build', await post('/api/sculpt/build', { spec, image }))
-  const out = imagePath.replace(/\.[^.]+$/, '') + '.sculpt.js'
-  writeFileSync(out, built.data.code)
-  console.log(`  ${built.data.code.length} chars → ${out}`)
-  for (const note of built.data.notes) console.log(`    - ${note}`)
-  totalIn += built.usage.input
-  totalOut += built.usage.output
-  totalCost += built.costUsd
-}
-
-console.log(`\ntotal: ${totalIn} in / ${totalOut} out tokens, $${totalCost.toFixed(4)}, ${Math.round((Date.now() - started) / 1000)}s`)
+console.log(`\ntotal: ${draft.usage.input} in / ${draft.usage.output} out tokens, $${draft.costUsd.toFixed(4)}, ${Math.round((Date.now() - started) / 1000)}s`)
