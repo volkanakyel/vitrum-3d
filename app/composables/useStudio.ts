@@ -10,6 +10,7 @@ import { Tracer } from '~/utils/tracer'
 import { Depther } from '~/utils/depther'
 import type { DepthMap } from '~/utils/depth'
 import type { Dims } from '~/utils/sculpt/types'
+import { createOrangeChairBedModel } from '~/utils/samples/orangeChairBed'
 import type { DepthDevice } from '~/workers/depth.worker'
 
 /**
@@ -177,8 +178,10 @@ export function useStudio(initialMode: StudioMode = 'icon') {
       viewer.value?.frame()
     },
   })
-  /** A parts model (draft or finished) stands on the stage: the carve controls no longer describe it. */
-  const sculpted = computed(() => !!sculpt.job.value?.glb && sculpt.job.value.status !== 'cancelled')
+  /** The built-in armchair stands on the stage as a ready-made parts model (no run, no upload). */
+  const sampleModel = ref(false)
+  /** A parts model (draft, finished or the sample) stands on the stage: the carve controls no longer describe it. */
+  const sculpted = computed(() => sampleModel.value || (!!sculpt.job.value?.glb && sculpt.job.value.status !== 'cancelled'))
 
   function thumbnail(img: HTMLImageElement, size = 160): string {
     const iw = img.naturalWidth || img.width
@@ -205,6 +208,7 @@ export function useStudio(initialMode: StudioMode = 'icon') {
     // A new object: the last run's parts model is not this one's. The run itself stays in the
     // history and can be reopened.
     sculpt.clear()
+    sampleModel.value = false
     trace.value = null
     relief.value = null
     // A new object: its side and top photos are not this one's.
@@ -531,6 +535,7 @@ export function useStudio(initialMode: StudioMode = 'icon') {
   function clearImage() {
     // The parts model was built from this photo: it goes with it.
     sculpt.clear()
+    sampleModel.value = false
     image.value = null
     tracer.setSource(null)
     trace.value = null
@@ -565,6 +570,14 @@ export function useStudio(initialMode: StudioMode = 'icon') {
     const wanted = id ?? STUDIO_MODES.find(m => m.id === mode.value)!.sample
     const sample = SAMPLES.find(s => s.id === wanted) ?? SAMPLES[0]!
     await useFile(await sampleFile(sample))
+    // The product sample is the orange chair-bed the parts pipeline was modelled on: its
+    // procedural model stands on the stage straight away, in place of the carve.
+    if (sample.id === 'armchair' && mode.value === 'product' && image.value) {
+      setView('angle')
+      viewer.value?.setExternalModel(createOrangeChairBedModel())
+      sampleModel.value = true
+      glass.autoRotate = true
+    }
   }
 
   async function doExport(kind: ExportKind) {
