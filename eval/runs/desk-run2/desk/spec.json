@@ -1,0 +1,438 @@
+{
+  "name": "Tinted amber glass slab desk",
+  "id": "amber-glass-slab-desk",
+  "camera": {
+    "yaw": -38,
+    "pitch": 17,
+    "fov": 34,
+    "distance": 2.7,
+    "confidence": 0.62
+  },
+  "dimensions": {
+    "widthM": 1.4,
+    "heightM": 0.72,
+    "depthM": 0.65,
+    "source": "estimated"
+  },
+  "symmetry": "left-right",
+  "suitability": {
+    "verdict": "conditional",
+    "reasons": [
+      "Single three-quarter view; the back long edge, the rear faces of both end panels and the whole slab underside are inferred by mirroring.",
+      "Transmissive tinted glass: read colour mixes body tint with the backdrop, so albedo hexes are estimates with transmission stacking removed.",
+      "Bronze L-brackets are small and motion-soft: plate outline is readable, fastener count and bracket width are approximated.",
+      "Macro silhouette (open inverted-U of three glass planes) is unambiguous and bilaterally symmetric, so the hidden half is safely inferable."
+    ]
+  },
+  "detailInventory": [
+    {
+      "id": "bracket-near-front",
+      "zone": "inner face of -X (near) end panel, front top corner",
+      "kind": "dark bronze L-bracket",
+      "evidence": "a dark angular wedge ~0.13 m down the panel and ~0.10 m along the underside of the top, immediately under the slab at the front corner of the near panel"
+    },
+    {
+      "id": "bracket-near-back",
+      "zone": "inner face of -X (near) end panel, back top corner",
+      "kind": "dark bronze L-bracket",
+      "evidence": "second dark wedge of the same size ~0.40 m behind the first, reading as a pair on the same panel"
+    },
+    {
+      "id": "bracket-far-front",
+      "zone": "inner face of +X (far) end panel, front top corner",
+      "kind": "dark bronze L-bracket",
+      "evidence": "dark angular fitting under the top slab at the near-top corner of the far panel, same silhouette as the near pair"
+    },
+    {
+      "id": "bracket-far-back",
+      "zone": "inner face of +X (far) end panel, back top corner",
+      "kind": "dark bronze L-bracket",
+      "evidence": "a second dark fitting further back along the far panel top edge, partly overlapped by the slab"
+    },
+    {
+      "id": "top-edge-band",
+      "zone": "front long edge of top slab",
+      "kind": "polished flat-ground glass edge, ~0.015 m thick",
+      "evidence": "a continuous darker amber line of even thickness runs the full front edge of the top, distinct from the lighter top face"
+    },
+    {
+      "id": "top-overhang",
+      "zone": "both ends of top slab",
+      "kind": "overhang of top past end panels, ~0.035 m",
+      "evidence": "at the near end the slab visibly projects past the outer plane of the end panel before terminating"
+    },
+    {
+      "id": "foot-pads",
+      "zone": "underside corners of each end panel",
+      "kind": "frosted/clear protective pads, ~0.03 m long",
+      "evidence": "two pale desaturated squares at the lower front and lower back corners of the near panel, lighter than the surrounding amber"
+    },
+    {
+      "id": "panel-tint-gradient",
+      "zone": "outer face of each end panel",
+      "kind": "vertical tonal gradient in the tinted glass",
+      "evidence": "the panel reads lighter and more orange across its upper-middle band and visibly darker, browner and more saturated along the bottom 0.15 m"
+    },
+    {
+      "id": "panel-inner-shadow-line",
+      "zone": "junction of top slab underside and end panel top edge",
+      "kind": "contact seam / shadow line",
+      "evidence": "a thin dark line follows the top edge of each end panel where it meets the slab underside, uninterrupted between brackets"
+    },
+    {
+      "id": "panel-corner-square",
+      "zone": "all four vertical corners of each end panel",
+      "kind": "crisp 90 degree arris, no radius",
+      "evidence": "the near panel's front vertical edge is a single straight hard line with no rounded highlight"
+    }
+  ],
+  "components": [
+    {
+      "id": "top-slab",
+      "name": "Tinted glass top slab",
+      "level": "macro",
+      "parent": null,
+      "importance": 1,
+      "confidence": 0.93,
+      "primitive": "box",
+      "dimensions": {
+        "w": 1.4,
+        "h": 0.015,
+        "d": 0.65
+      },
+      "position": [
+        0,
+        0.7125,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "edge": {
+        "radius": 0.0015,
+        "segments": 2
+      },
+      "attachment": null,
+      "material": "glass-amber-top",
+      "localFeatures": [
+        {
+          "id": "top-edge-band",
+          "kind": "bevel",
+          "description": "flat-ground polished arris 0.0015 m on all four slab edges; the exposed 0.015 m edge band reads one tone darker (#8C4418) than the top face along the full 1.40 m front edge and both 0.65 m ends",
+          "evidence": "a continuous darker amber line of even thickness runs the full front edge of the top"
+        },
+        {
+          "id": "top-overhang",
+          "kind": "groove",
+          "description": "slab ends project 0.035 m past the outer face of each end panel (slab half-width 0.70 m, panel outer face at x = 0.665 m)",
+          "evidence": "at the near end the slab visibly projects past the outer plane of the end panel"
+        }
+      ]
+    },
+    {
+      "id": "end-panel",
+      "name": "Tinted glass end panel (-X, near)",
+      "level": "macro",
+      "parent": "top-slab",
+      "importance": 0.95,
+      "confidence": 0.9,
+      "primitive": "box",
+      "dimensions": {
+        "w": 0.015,
+        "h": 0.702,
+        "d": 0.6
+      },
+      "position": [
+        -0.6575,
+        0.354,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "edge": {
+        "radius": 0.001,
+        "segments": 1
+      },
+      "attachment": {
+        "parent": "top-slab",
+        "contact": "rests-on",
+        "overlap": 0
+      },
+      "material": "glass-amber-panel",
+      "localFeatures": [
+        {
+          "id": "panel-tint-gradient",
+          "kind": "stain",
+          "description": "vertical transmission-density gradient on both faces, stops bottom-to-top over the 0.702 m height: 0.00 #6E3312, 0.20 #8F4517, 0.55 #A85824, 0.85 #A0521F, 1.00 #98501F; darkest band is the bottom 0.15 m",
+          "evidence": "the panel reads lighter and more orange across its upper-middle band and darker, browner along the bottom 0.15 m"
+        },
+        {
+          "id": "panel-corner-square",
+          "kind": "bevel",
+          "description": "all four vertical corners are crisp 90 degree arrises, radius <= 0.001 m, no rounded highlight",
+          "evidence": "the near panel's front vertical edge is a single straight hard line"
+        },
+        {
+          "id": "panel-inner-shadow-line",
+          "kind": "seam",
+          "description": "dark contact seam 0.002 m wide running the full 0.60 m top edge where the panel's 0.015 m edge meets the slab underside, uninterrupted between the two brackets",
+          "evidence": "a thin dark line follows the top edge of each end panel where it meets the slab underside"
+        }
+      ]
+    },
+    {
+      "id": "bracket",
+      "name": "Bronze L-bracket (near panel, front)",
+      "level": "meso",
+      "parent": "end-panel",
+      "importance": 0.75,
+      "confidence": 0.6,
+      "primitive": "extrude",
+      "dimensions": {
+        "w": 0.1,
+        "h": 0.13,
+        "d": 0.03
+      },
+      "position": [
+        -0.6,
+        0.64,
+        0.2
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "edge": {
+        "radius": 0.002,
+        "segments": 2
+      },
+      "attachment": {
+        "parent": "end-panel",
+        "contact": "bolted",
+        "overlap": 0.002
+      },
+      "material": "metal-bronze",
+      "localFeatures": [
+        {
+          "id": "bracket-near-front",
+          "kind": "label",
+          "description": "L-profile plate 0.005 m thick, 0.03 m wide: vertical leg 0.13 m hugging the panel inner face at x = -0.650 m running down from the slab underside (y = 0.705 m), horizontal leg 0.10 m running inboard under the slab; outer arris flush with the panel top edge; leg ends tapered so the plate reads as a wedge",
+          "evidence": "a dark angular wedge ~0.13 m along the panel and ~0.10 m along the underside of the top at the front corner of the near panel"
+        },
+        {
+          "id": "bracket-near-back",
+          "kind": "label",
+          "description": "identical bracket mirrored about z to z = -0.20 m, i.e. the pair sits 0.40 m apart on centres on the same panel",
+          "evidence": "second dark wedge of the same size ~0.40 m behind the first"
+        },
+        {
+          "id": "bracket-far-front",
+          "kind": "label",
+          "description": "identical bracket mirrored about x onto the +X panel inner face at x = +0.650 m, z = +0.20 m",
+          "evidence": "dark angular fitting under the top slab at the near-top corner of the far panel"
+        },
+        {
+          "id": "bracket-far-back",
+          "kind": "label",
+          "description": "identical bracket mirrored about both x and z onto the +X panel at z = -0.20 m",
+          "evidence": "a second dark fitting further back along the far panel top edge"
+        },
+        {
+          "id": "bracket-screws",
+          "kind": "button",
+          "description": "four bronze pan-head screws per bracket, 0.006 m diameter, 0.0015 m proud: two on the vertical leg at 0.035 m and 0.100 m below the slab underside, two on the horizontal leg at 0.030 m and 0.080 m inboard",
+          "evidence": "inferred fastener clusters noted in intake micro parts"
+        }
+      ]
+    },
+    {
+      "id": "foot-pad",
+      "name": "Frosted floor pad (near panel, front)",
+      "level": "micro",
+      "parent": "end-panel",
+      "importance": 0.25,
+      "confidence": 0.5,
+      "primitive": "roundedBox",
+      "dimensions": {
+        "w": 0.015,
+        "h": 0.003,
+        "d": 0.03
+      },
+      "position": [
+        -0.6575,
+        0.0015,
+        0.26
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "edge": {
+        "radius": 0.001,
+        "segments": 2
+      },
+      "attachment": {
+        "parent": "end-panel",
+        "contact": "rests-on",
+        "overlap": 0.0005
+      },
+      "material": "plastic-pad",
+      "localFeatures": [
+        {
+          "id": "foot-pads",
+          "kind": "wear",
+          "description": "frosted translucent pad 0.030 m long x 0.015 m wide x 0.003 m thick adhered to the panel bottom edge, its front end 0.025 m inboard of the panel front corner; reads as a pale desaturated square against the dark amber base band",
+          "evidence": "two pale desaturated squares at the lower front and lower back corners of the near panel"
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "id": "glass-amber-top",
+      "family": "glass",
+      "subtype": "amber body-tinted float glass, polished both faces",
+      "baseColor": "#B26A33",
+      "roughness": 0.05,
+      "metalness": 0,
+      "sheen": 0,
+      "clearcoat": 0.8,
+      "pattern": {
+        "kind": "none",
+        "scale": 0,
+        "amplitude": 0
+      },
+      "wear": {
+        "edge": 0.02,
+        "dirt": 0.03
+      }
+    },
+    {
+      "id": "glass-amber-panel",
+      "family": "glass",
+      "subtype": "amber body-tinted float glass panel 0.015 m, vertical transmission gradient",
+      "baseColor": "#A0521F",
+      "roughness": 0.06,
+      "metalness": 0,
+      "sheen": 0,
+      "clearcoat": 0.75,
+      "pattern": {
+        "kind": "vertical-gradient",
+        "scale": 0.702,
+        "amplitude": 0.45
+      },
+      "wear": {
+        "edge": 0.02,
+        "dirt": 0.04
+      }
+    },
+    {
+      "id": "metal-bronze",
+      "family": "metal",
+      "subtype": "oil-rubbed / patinated dark bronze",
+      "baseColor": "#3B2A1D",
+      "roughness": 0.35,
+      "metalness": 1,
+      "sheen": 0,
+      "clearcoat": 0,
+      "pattern": {
+        "kind": "none",
+        "scale": 0,
+        "amplitude": 0
+      },
+      "wear": {
+        "edge": 0.12,
+        "dirt": 0.08
+      }
+    },
+    {
+      "id": "plastic-pad",
+      "family": "plastic",
+      "subtype": "frosted translucent polymer glide",
+      "baseColor": "#C6BCAC",
+      "roughness": 0.7,
+      "metalness": 0,
+      "sheen": 0,
+      "clearcoat": 0,
+      "pattern": {
+        "kind": "none",
+        "scale": 0,
+        "amplitude": 0
+      },
+      "wear": {
+        "edge": 0.05,
+        "dirt": 0.15
+      }
+    }
+  ],
+  "repetition": [
+    {
+      "id": "panel-pair",
+      "kind": "mirror",
+      "count": 2,
+      "pitch": 0,
+      "axis": "x",
+      "target": "end-panel"
+    },
+    {
+      "id": "bracket-lr",
+      "kind": "mirror",
+      "count": 2,
+      "pitch": 0,
+      "axis": "x",
+      "target": "bracket"
+    },
+    {
+      "id": "bracket-fb",
+      "kind": "mirror",
+      "count": 2,
+      "pitch": 0,
+      "axis": "z",
+      "target": "bracket"
+    },
+    {
+      "id": "pad-lr",
+      "kind": "mirror",
+      "count": 2,
+      "pitch": 0,
+      "axis": "x",
+      "target": "foot-pad"
+    },
+    {
+      "id": "pad-fb",
+      "kind": "mirror",
+      "count": 2,
+      "pitch": 0,
+      "axis": "z",
+      "target": "foot-pad"
+    }
+  ],
+  "reviewViews": [
+    "reference",
+    "front",
+    "side",
+    "top"
+  ],
+  "mustMatch": [
+    "Exactly three glass planes: a 1.40 x 0.65 x 0.015 m horizontal slab whose top face is 0.72 m above the floor, and two 0.60 x 0.702 x 0.015 m vertical end panels - no apron, stretcher, leg or drawer anywhere",
+    "Each end panel's outer face is 0.035 m inboard of the slab end edge (panel mid-planes at x = -0.6575 and +0.6575 m, 1.315 m apart on centres)",
+    "Each end panel is set back 0.025 m from both long edges of the slab, so 0.60 m panel depth is centred in the 0.65 m slab depth",
+    "Four bronze L-brackets only, one per inner top corner: vertical leg 0.13 m down the panel, horizontal leg 0.10 m under the slab, plate 0.005 m thick and 0.03 m wide, top arris flush with the slab underside at y = 0.705 m",
+    "The two brackets on each panel are 0.40 m apart on centres (z = +0.20 and -0.20 m)",
+    "Glass thickness is a uniform 0.015 m on slab and panels, with vertical panel corners kept as hard arrises of radius <= 0.001 m"
+  ],
+  "niceToHave": [
+    "Bottom 0.15 m of each panel reads visibly darker and browner (#6E3312) than the upper band (#A0521F), as transmission density rather than paint",
+    "Exposed 0.015 m slab edges read one step darker (#8C4418) than the top face",
+    "Thin dark contact shadow seam along the full 0.60 m top edge of each panel where it meets the slab underside",
+    "Four frosted pads, 0.03 m long, on the bottom edge of each panel near its front and back corners",
+    "Two visible screw heads per bracket leg, 0.006 m diameter, barely proud of the plate"
+  ]
+}

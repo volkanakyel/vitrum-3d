@@ -1,0 +1,26 @@
+{
+  "action": "refine-code",
+  "fidelity": 0.55,
+  "layers": {
+    "silhouetteProportion": 0.8,
+    "componentStructure": 0.45,
+    "formDetail": 0.6,
+    "materialSurface": 0.5,
+    "lightingCamera": 0.75
+  },
+  "defects": [
+    {
+      "component": "bracket",
+      "what": "The far-panel bracket protrudes above the top slab instead of sitting flush under it — it reads as a black vertical bar rising ~0.05 m above the tabletop surface in the three-quarter render, unlike the photo where all brackets are tucked under the slab.",
+      "measured": "bracket top appears ~0.05 m above y=0.7275 (slab top) vs spec requirement that the bracket's top arris be flush with the slab underside at y=0.705 m",
+      "fix": "Reposition the far-front bracket instance so its vertical leg top aligns with y=0.705 m and its horizontal leg lies at or below y=0.7125 (slab underside), eliminating any part of the bracket geometry above the tabletop plane."
+    },
+    {
+      "component": "bracket",
+      "what": "Only one of the four spec'd L-brackets (bracket-near-front, bracket-near-back, bracket-far-front, bracket-far-back) is visible in the render; the near panel shows no bracket pair and the far panel shows only one instead of two.",
+      "measured": "1 bracket rendered vs 4 required per mustMatch fact 'Four bronze L-brackets only, one per inner top corner'",
+      "fix": "Confirm the bracket-lr (mirror on x) and bracket-fb (mirror on z, 0.40 m pitch) repetitions are actually instantiated and rendered at the inner top corners of both end panels, not just the single authored bracket."
+    }
+  ],
+  "summary": "Macro silhouette is close: three glass planes with no apron/stretcher/drawer, proportions of the top slab and end panels read correctly from the reference and top/front/side views, and the estimated camera matches the photo well. However this is a structural pass and the bracket component fails the 'nothing floating, everything attached' bar: the far-panel bracket clearly floats above the tabletop instead of tucking under it, and only one of the required four brackets appears to be rendered rather than the full mirrored set. That violates the mustMatch fact about bracket flush placement and count, which caps fidelity below 0.7 regardless of the good silhouette. Material/finish (opaque vs transparent glass look) is expected to be flat at this stage and is not counted against the score.</summary>\n"
+}

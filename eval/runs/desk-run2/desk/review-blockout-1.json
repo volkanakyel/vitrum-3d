@@ -1,0 +1,20 @@
+{
+  "action": "refine-code",
+  "fidelity": 0.62,
+  "layers": {
+    "silhouetteProportion": 0.6,
+    "componentStructure": 0.8,
+    "formDetail": 0.5,
+    "materialSurface": 0.55,
+    "lightingCamera": 0.65
+  },
+  "defects": [
+    {
+      "component": "top-slab",
+      "what": "top slab reads far thicker than the 0.015 m spec in the front and side orthographic views — it occupies roughly 12-15% of total desk height as a solid band, i.e. ~0.09-0.11 m, about 6-7x the specified thickness. This is the single biggest silhouette deviation from the photo, where the top reads as a hairline compared to the panel height.",
+      "measured": "~0.10 m rendered vs 0.015 m specified (front/side views)",
+      "fix": "Force top-slab dimensions.h to 0.015 m in the actual build geometry; check that no edge bevel, shadow-seam mesh, or material layering is inflating the apparent box height, since the three-quarter render shows a correctly thin slab but the ortho views do not."
+    }
+  ],
+  "summary": "Overall macro silhouette (inverted-U of three glass planes, no apron/legs) and component count are on-target and match the mustMatch structural facts reasonably well in the three-quarter render. However the front/side orthographic views show a top slab that is dramatically thicker than the specified 0.015 m, which is a mustMatch violation on 'uniform 0.015 m glass thickness' and materially changes the proportion read of the desk from a thin floating glass top to a chunky tabletop. This needs a geometry fix before moving to the structural pass. Materials being flat is correct for this pass and not penalized; bracket/pad micro-detail is rightly absent at this stage."
+}

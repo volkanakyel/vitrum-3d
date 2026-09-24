@@ -1,0 +1,24 @@
+{
+  "name": "desk",
+  "status": "done",
+  "quality": "approximate",
+  "error": null,
+  "fidelityByPass": {
+    "blockout": 0.76,
+    "structural": 0.5
+  },
+  "layers": {
+    "silhouetteProportion": 0.75,
+    "componentStructure": 0.35,
+    "formDetail": 0.5,
+    "materialSurface": 0.55,
+    "lightingCamera": 0.6
+  },
+  "fixes": 3,
+  "tokens": {
+    "input": 154337,
+    "output": 92364
+  },
+  "costUsd": 2.570839,
+  "seconds": 1150
+}

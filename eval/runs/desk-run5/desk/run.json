@@ -1,0 +1,24 @@
+{
+  "name": "desk",
+  "status": "cancelled",
+  "quality": null,
+  "error": null,
+  "fidelityByPass": {
+    "blockout": 0.72,
+    "structural": 0.58
+  },
+  "layers": {
+    "silhouetteProportion": 0.8,
+    "componentStructure": 0.35,
+    "formDetail": 0.55,
+    "materialSurface": 0.5,
+    "lightingCamera": 0.7
+  },
+  "fixes": 2,
+  "tokens": {
+    "input": 126072,
+    "output": 63445
+  },
+  "costUsd": 1.7481280000000001,
+  "seconds": 2709
+}

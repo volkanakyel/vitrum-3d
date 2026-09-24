@@ -1,0 +1,26 @@
+{
+  "action": "refine-code",
+  "fidelity": 0.58,
+  "layers": {
+    "silhouetteProportion": 0.6,
+    "componentStructure": 0.5,
+    "formDetail": 0.55,
+    "materialSurface": 0.8,
+    "lightingCamera": 0.7
+  },
+  "defects": [
+    {
+      "component": "panel-right",
+      "what": "End panel is built as a tapered/leaning trapezoid instead of a flat vertical slab of constant 0.015 m thickness: front and side orthographic views show the panel narrowing from roughly full width at the top-slab junction to a visibly narrower footprint at the floor, an inward lean of roughly 0.10-0.15 m at the base versus the reference's dead-vertical panel.",
+      "measured": "Front-view leg splay ~20% (top span ~0.72 m vs bottom span ~0.55 m at the visible leg pair) where spec calls for parallel vertical faces 1.305 m apart top to bottom",
+      "fix": "Rebuild panel-left/panel-right as a plain roundedBox with constant w=0.015, d=0.6 through its full height and rotation [0,0,0]; remove any taper, skew or rotation currently applied so the outer face is a single vertical plane from y=0 to y=0.712"
+    },
+    {
+      "component": "bracket-right-pair",
+      "what": "A dark bracket blade pokes up above the top slab's upper surface at the right-rear corner in the three-quarter render, instead of being tucked under the slab against its underside as in the photo and as specified.",
+      "measured": "Visible tab rises roughly 0.05 m above the tabletop plane (y>0.73) versus spec's bracket vertical arm which should stay within y=0.662-0.721 (i.e. never above the top-slab underside)",
+      "fix": "Clamp the mirrored bracket's position.y so its top does not exceed the top-slab underside (0.712 m); re-derive the z-mirror/x-mirror transforms from bracket-front-left rather than authoring a separate offset for the right pair"
+    }
+  ],
+  "summary": "Three-slab structure (top + two end panels) is present and roughly attached, and camera framing is close to the reference. However the end panels read as tapered/leaning trapezoids rather than flat vertical slabs (clear in front/side views), which violates the mustMatch 'rotation 0, vertical panel' fact and hurts silhouette fidelity. A bracket on the right side also clips above the tabletop instead of sitting flush under it. Materials are appropriately flat/placeholder for this pass, so no complaints there. Fix the panel geometry and bracket placement before moving on; brackets and pads otherwise look structurally intended even if not yet detailed.</summary>\n"
+}

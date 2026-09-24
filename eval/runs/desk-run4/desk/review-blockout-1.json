@@ -1,0 +1,20 @@
+{
+  "action": "continue",
+  "fidelity": 0.78,
+  "layers": {
+    "silhouetteProportion": 0.82,
+    "componentStructure": 0.78,
+    "formDetail": 0.4,
+    "materialSurface": 0.5,
+    "lightingCamera": 0.72
+  },
+  "defects": [
+    {
+      "component": "camera",
+      "what": "Render frames the desk noticeably smaller/more centred than the tightly-cropped photo (desk fills ~70% of frame width vs ~90% in the photo)",
+      "measured": "desk occupies ~70% of image width in render vs ~90% in photo",
+      "fix": "reduce camera.distance from 3 to ~2.5 (or slightly narrow fov) to match the tighter photo framing"
+    }
+  ],
+  "summary": "Blockout is solid: the three-plate silhouette (top slab + two X-normal end panels) is present, correctly attached with no floating parts, and the width:depth:height proportions (≈2:1 top, panel height ≈ overall height) read close to the photo in the three-quarter, front, side and top views. The slab overhang beyond the panels and the panel spacing look consistent with the spec's inset dimensions. Flat, uniform amber colour is appropriate for this stage. No macro proportion errors were found that would block progress. Not scored here (expected in later passes): the four L-brackets, screws, edge bevels, tint gradient and maker-label details from the spec's detailInventory/mustMatch are all absent, since materials and fine features are out of scope for a blockout pass. Camera framing is a touch looser than the photo's crop, which is a minor, non-blocking note for the next iteration."
+}

@@ -1,0 +1,8 @@
+[
+  "Blockout contains only the three macro plates: top-slab, panel-near, panel-far. All meso/micro items (brackets, screws, seams, decals, tint gradient) deliberately omitted for this pass.",
+  "Single flat material kit.plastic('#A05224') created once for the glass-amber spec material; no glass/metal materials yet, per pass rules.",
+  "kit.box used for all three hard plates; no roundedBox / 0.002 edge easing yet.",
+  "Contact direction inverted relative to the spec's attachment field: the spec says panel rests-on top-slab, which would stack the panels above the slab. Seated the slab on the near panel instead (kit.restOn(topSlab, panelNear, 0)) so panel bottoms sit at y=0 and the slab upper face lands on 0.740 as mustMatch requires. Overlap forced to 0 rather than the spec's 0.002 for the same reason — 0.002 of sink would drop the top face to 0.738.",
+  "panel-far is not authored as a kit.mirror because the spec lists it as its own macro component with its own id; symmetry is left-right but the id must survive for review.",
+  "Inferred nothing about dimensions: every figure is read straight from the spec (panel x=±0.664, depth 0.64, height 0.728; slab 1.4 x 0.012 x 0.7 at y=0.734)."
+]

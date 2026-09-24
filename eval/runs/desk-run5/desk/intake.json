@@ -1,0 +1,146 @@
+{
+  "name": "Tinted amber glass slab desk",
+  "objectClass": "desk / table (three-slab glass panel construction); class range 1.00–1.80 m wide, 0.70–0.76 m high, 0.55–0.80 m deep",
+  "suitability": {
+    "verdict": "conditional",
+    "reasons": [
+      "Single three-quarter view: the back long edge of the top, the inner faces of both end panels and the entire underside are not directly readable.",
+      "Object is transparent/translucent tinted glass — per-zone albedo must be read through overlapping layers, so the panel hex values are approximations of a transmissive material rather than opaque albedo.",
+      "The bronze L-brackets are small in frame (each ≈0.10 m long) and partly silhouetted against the top slab; their plate outline, screw/boss count and fixing method must be approximated procedurally.",
+      "No ground contact shadow and a near-white sweep background make camera placement and absolute scale inference-based.",
+      "Form is bilaterally symmetric about the vertical plane midway along the long axis, so the hidden right-end panel is mirrored from the visible left-end panel."
+    ]
+  },
+  "symmetry": "left-right",
+  "camera": {
+    "yaw": -38,
+    "pitch": 17,
+    "fov": 34,
+    "distance": 2.7,
+    "confidence": 0.62
+  },
+  "dimensions": {
+    "widthM": 1.4,
+    "heightM": 0.73,
+    "depthM": 0.68,
+    "source": "estimated"
+  },
+  "detailInventory": [
+    {
+      "id": "top-slab-polished-edge",
+      "zone": "top slab, front long edge",
+      "kind": "edge treatment / bevel",
+      "evidence": "A continuous 0.015–0.020 m tall bright line runs the full ≈1.40 m of the front edge of the top, lighter than the face above it, indicating a flat-polished glass edge with a ≈0.002 m arris rather than a rolled or fabric-covered edge."
+    },
+    {
+      "id": "bracket-left-front",
+      "zone": "junction of top slab underside and left end panel, front corner",
+      "kind": "dark bronze L-bracket",
+      "evidence": "An angular dark-brown element, ≈0.10 m along the panel and ≈0.06 m along the underside of the top, sits immediately below the top at the front top corner of the left panel; it reads as two straight arms meeting at ≈90°."
+    },
+    {
+      "id": "bracket-left-rear",
+      "zone": "junction of top slab underside and left end panel, rear corner",
+      "kind": "dark bronze L-bracket",
+      "evidence": "A second, near-identical dark angular element appears ≈0.50 m behind the front one along the same top-of-panel line, partly overlapped by the amber glass it is seen through."
+    },
+    {
+      "id": "bracket-right-pair",
+      "zone": "junction of top slab underside and right end panel, front and rear corners",
+      "kind": "dark bronze L-bracket pair",
+      "evidence": "Two dark angular marks of the same size and spacing sit under the far end of the top where the right panel meets it, one at each corner of that panel's top edge."
+    },
+    {
+      "id": "panel-inset-overhang",
+      "zone": "top slab perimeter over both end panels",
+      "kind": "overhang / inset joint",
+      "evidence": "The vertical amber faces of both end panels start ≈0.03–0.05 m inboard of the top slab's outer edges, so the top reads as a cantilevered lid with a visible shadow gap under its perimeter."
+    },
+    {
+      "id": "panel-base-pads",
+      "zone": "left end panel, bottom edge, front and rear corners",
+      "kind": "clear glide pads",
+      "evidence": "Two small pale square patches, ≈0.02 m on a side, interrupt the dark amber at the very bottom corners of the left panel, one at each end of its bottom edge."
+    },
+    {
+      "id": "panel-vertical-tint-gradient",
+      "zone": "both end panels, outer faces",
+      "kind": "tint / transmission gradient",
+      "evidence": "The left panel is measurably lighter and warmer near its top edge and progressively darker and browner toward its bottom edge, with the darkest value in the lowest ≈0.15 m."
+    },
+    {
+      "id": "top-surface-specular-sheet",
+      "zone": "top slab, upper face",
+      "kind": "broad low-roughness reflection",
+      "evidence": "A single soft bright sheet spans most of the top face with no texture or weave breaking it, and the far half of the top face is lighter than the near half."
+    },
+    {
+      "id": "panel-bottom-edge-line",
+      "zone": "both end panels, bottom edge",
+      "kind": "polished ground edge",
+      "evidence": "The bottom edge of the left panel reads as a crisp straight line ≈0.015 m thick with no separate foot rail, plinth or leg attached."
+    },
+    {
+      "id": "etched-corner-mark",
+      "zone": "left end panel, outer face, lower front corner",
+      "kind": "small applied mark / label",
+      "evidence": "A faint pale rectangular mark, roughly 0.03 × 0.02 m, sits ≈0.04 m above the bottom edge near the front corner of the left panel, distinct from the two glide pads."
+    }
+  ],
+  "materialsSeen": [
+    {
+      "zone": "top slab, upper face",
+      "family": "glass",
+      "subtype": "amber body-tinted float glass, ≈0.018 m thick",
+      "colorHex": "#9C5A28",
+      "finish": "gloss, transmissive; roughness ≈0.04, clearcoat-like specular sheet, no sheen bloom"
+    },
+    {
+      "zone": "top slab, polished perimeter edge",
+      "family": "glass",
+      "subtype": "flat-polished glass edge with fine arris",
+      "colorHex": "#C98B50",
+      "finish": "gloss; roughness ≈0.05, edge reads lighter through internal reflection"
+    },
+    {
+      "zone": "left end panel, outer face (mirrored to right end panel)",
+      "family": "glass",
+      "subtype": "amber body-tinted float glass slab, ≈0.015 m thick",
+      "colorHex": "#8E4A1C",
+      "finish": "gloss, transmissive; roughness ≈0.05, no texture"
+    },
+    {
+      "zone": "end panels, lower third",
+      "family": "glass",
+      "subtype": "same tinted glass, deeper apparent absorption toward base",
+      "colorHex": "#6E3512",
+      "finish": "gloss; roughness ≈0.05"
+    },
+    {
+      "zone": "L-brackets (four)",
+      "family": "metal",
+      "subtype": "dark patinated / oil-rubbed bronze",
+      "colorHex": "#3A2416",
+      "finish": "satin metallic; roughness ≈0.35, metalness 1.0, faint highlight along arm folds"
+    },
+    {
+      "zone": "end panel base pads",
+      "family": "plastic",
+      "subtype": "clear or frosted polymer glide",
+      "colorHex": "#D9D2C8",
+      "finish": "satin; roughness ≈0.45, non-metallic"
+    }
+  ],
+  "notes": [
+    "Observation: three flat slabs only — one horizontal and two vertical — with no apron, stretcher, drawer or leg visible. Inference: the structure is a pure panel-leg trestle in which the top's weight is carried in compression by the two end panels and stabilised laterally by the bracket pairs.",
+    "Observation: the top face overhangs the panel faces by ≈0.03–0.05 m on all sides. Inference: overhang on the hidden back long edge is mirrored from the visible front edge.",
+    "Macro parts (3): [1] top slab, [2] left end panel, [3] right end panel. Meso parts: four L-brackets (one per panel top corner), four base glide pads (two per panel), polished perimeter edge band of the top. Micro parts: bracket arm folds and fixing bosses, top-edge arris line, small applied mark near the left panel's lower front corner.",
+    "Spatial relationships: the top slab RESTS ON the two end panels' top edges, glass-to-glass, panels standing vertical and parallel at ≈1.34 m centre-to-centre; each L-bracket is BOLTED/BONDED with one arm FLUSH AGAINST the panel's outer face and the other arm FLUSH AGAINST the top slab's underside, wrapping the 90° corner; the panels' bottom edges REST ON the floor via glide pads INSERTED into (adhered to) the bottom-edge corners; no part inserts into any mortise or socket.",
+    "Proportions against the 1.40 m top width as reference: height 0.52×, depth 0.49×, panel-to-panel span 0.96×, top thickness 0.013×, panel thickness 0.011×, bracket arm length 0.07×.",
+    "Hidden: the entire underside of the top slab, the inner (facing) surfaces of both end panels, the rear long edge of the top, and the back-corner bracket detail on the right panel. Mirrored from the visible left flank under the left-right symmetry assumption.",
+    "Uncertain: exact glass thickness (top read as 0.015–0.020 m, panels 0.012–0.018 m) — no ruler or human in frame; all dimensions inferred from desk class conventions (0.72–0.75 m working height).",
+    "Uncertain: whether the brackets are solid cast angles or folded strap; their outline is small (≈0.10 m) and silhouetted, so screw count and plate shape should be authored procedurally as a simple 90° angle plate with two bosses per arm.",
+    "Inference, not observation: the vertical darkening of the panels is absorption through greater glass path plus a darker floor reflection, not a printed gradient — model as a uniform tinted transmissive material and let lighting produce the gradient. If a baked gradient is required, use ordered stops on the panel outer face: 0.00 (top) #B06A32, 0.55 #8E4A1C, 1.00 (bottom) #6A3210.",
+    "Inference: the near-white surround with no cast shadow is a studio sweep, so the ground plane and any floor reflection in the panels should be treated as neutral, not as part of the object."
+  ]
+}

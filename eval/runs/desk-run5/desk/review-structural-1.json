@@ -1,0 +1,26 @@
+{
+  "action": "refine-code",
+  "fidelity": 0.5,
+  "layers": {
+    "silhouetteProportion": 0.65,
+    "componentStructure": 0.42,
+    "formDetail": 0.6,
+    "materialSurface": 0.6,
+    "lightingCamera": 0.68
+  },
+  "defects": [
+    {
+      "component": "bracket-front-left (and its mirrored instances bracket-front-right, bracket-rear-left, bracket-rear-right)",
+      "what": "All four bronze L-brackets specified in mustMatch are absent from the render — the top slab appears to meet both panels with a plain flat joint, no angular hardware visible under the tabletop at any corner.",
+      "measured": "0 of 4 brackets rendered vs 4 required (each 0.10 m vertical arm x 0.06 m horizontal arm)",
+      "fix": "Confirm bracket-front-left extrude geometry is actually built and its mirror repetitions (r-bracket-mirror-x, r-bracket-mirror-z) are instantiated with metal-bronze-dark material; check it is not being culled or hidden behind the panel/top meshes."
+    },
+    {
+      "component": "panel-right",
+      "what": "A small dark rectangular nub pokes above the top slab's upper surface near the back-right corner in the three-quarter render, an artifact not present in the photo where both panels terminate flush at the underside of the top.",
+      "measured": "protrusion ~0.03-0.05 m above y=0.730 (top slab's upper face) vs panel top that should stop at y=0.712, flush with the slab's underside",
+      "fix": "Verify panel-right height/position (h=0.712, center y=0.356) yields a top surface exactly at y=0.712; check for stray/duplicate geometry (e.g., a mis-transformed bracket or edge-radius artifact) rendering above the slab and remove it."
+    }
+  ],
+  "summary": "The three-slab massing and inset/overhang relationship read correctly and proportions are broadly in line with the photo, but two structural problems block progression: the four required bronze L-brackets are completely missing from the build (a mustMatch fail), and there is an unexplained floating protrusion above the tabletop near the right panel that has no counterpart in the reference. Glide pads are also not visible but are small enough to defer; not counted against this pass's budget. Fix the brackets and the stray geometry before moving to form/material passes.\""
+}

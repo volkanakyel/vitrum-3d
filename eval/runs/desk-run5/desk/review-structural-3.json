@@ -1,0 +1,32 @@
+{
+  "action": "continue",
+  "fidelity": 0.58,
+  "layers": {
+    "silhouetteProportion": 0.8,
+    "componentStructure": 0.35,
+    "formDetail": 0.55,
+    "materialSurface": 0.5,
+    "lightingCamera": 0.7
+  },
+  "defects": [
+    {
+      "component": "bracket-front-left",
+      "what": "All four bronze L-brackets required by mustMatch (one per panel top corner, 0.10 m vertical arm + 0.06 m horizontal arm) are absent from the render — not visible in the three-quarter, front, side or top views.",
+      "measured": "0 brackets rendered vs 4 specified",
+      "fix": "Instantiate the bracket-front-left mesh and its x/z mirrors at the top-slab underside / panel top-corner positions given in the spec (y ≈ 0.662, z = ±0.25 on each panel), even as a simple placeholder angle block."
+    },
+    {
+      "component": "bracket-right-pair",
+      "what": "A thin dark rectangular tab is visible protruding roughly 0.05 m ABOVE the top slab's upper surface at the rear-right corner in the three-quarter render, disconnected from any panel or the top's underside — a floating fragment rather than an under-slab bracket.",
+      "measured": "tab top sits ~0.05 m above y=0.721 (top slab upper face) instead of the required position under the slab at y≈0.662",
+      "fix": "Move this geometry so its horizontal arm sits flush under the top slab's bottom face (y ≈ 0.703) and its vertical arm lies flat against the panel's outer face, per the bracket-front-left dimensions/position in the spec."
+    },
+    {
+      "component": "pad-front-left",
+      "what": "The four 0.02x0.02 m glide pads called out in mustMatch are not visible at any panel bottom corner in front, side or top views.",
+      "measured": "0 pads rendered vs 4 specified",
+      "fix": "Add small pale roundedBox pads at each panel's bottom-corner positions (y≈0.002, z=±0.27 on each panel) even in placeholder flat colour."
+    }
+  ],
+  "summary": "Overall silhouette, top-slab proportions (1.4x0.68x0.018 at 0.73 m height) and the two end panels are close to the reference and camera framing is reasonable. However this is the structural pass and its core promise — every part present and attached — is not met: the four bronze L-brackets and four glide pads called out in mustMatch/detailInventory are absent from the render entirely, and a stray fragment of bracket geometry floats above the top slab on the right side instead of sitting under it. These are exactly the kind of 'missing/unattached part' issues this pass is meant to catch. No fixes remain in the budget, and the object is clearly recognizable as the right kind of desk, so I'm passing it forward to the form/material passes rather than blocking, but the missing brackets and pads should be picked up as outstanding structural debt in a later revision."
+}

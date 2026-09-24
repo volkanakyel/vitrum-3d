@@ -1,0 +1,26 @@
+{
+  "action": "refine-code",
+  "fidelity": 0.55,
+  "layers": {
+    "silhouetteProportion": 0.75,
+    "componentStructure": 0.4,
+    "formDetail": 0.6,
+    "materialSurface": 0.6,
+    "lightingCamera": 0.7
+  },
+  "defects": [
+    {
+      "component": "bracket",
+      "what": "The far-panel bracket geometry pokes up above the top slab's top face instead of being tucked entirely beneath it — visible in the three-quarter render as a thin black spike rising ~0.05 m above the tabletop line near the far end.",
+      "measured": "Spike top appears at roughly y≈0.75-0.78 m vs the slab top face at y=0.7125 m and the bracket's specified top arris at y=0.705 m (i.e. it should never be above y=0.705 m).",
+      "fix": "Clamp the bracket mesh so its highest point equals the slab underside (y=0.705 m); remove any part of the extrude that extends above the slab, and re-check the far-panel-front bracket's local transform for a sign/scale error that is pushing it upward."
+    },
+    {
+      "component": "bracket",
+      "what": "Front-view render shows a continuous dark band spanning almost the full 1.40 m width between the two end panels, reading as an apron/stretcher rather than four discrete corner L-brackets. This contradicts the mustMatch requirement of no apron/stretcher anywhere.",
+      "measured": "Dark band width ≈1.3 m (near full inner span between panels) vs the spec's four separate 0.10 m-long bracket plates that should only occupy the corners, leaving the middle ~1.1 m of the underside empty.",
+      "fix": "Rebuild the bracket component as four independent, non-merged extrude meshes positioned only at the four inner top corners (x=±0.650, z=±0.20), each 0.10 m horizontal leg / 0.13 m vertical leg / 0.03 m wide, with no connecting geometry between them."
+    }
+  ],
+  "summary": "Overall proportions (slab span, panel height/depth, slab overhang) read close to the photo and the front/side/top orthos confirm the panel-as-thin-edge / panel-as-face silhouettes are correctly oriented. However two structural problems break the 'nothing floating, no apron' requirement of this pass: (1) a bracket on the far panel appears to float above the tabletop plane instead of being tucked under it, and (2) the front-view render shows what looks like a continuous stretcher/apron spanning the underside between the two panels rather than four separate corner L-brackets — this directly violates a mustMatch fact ('no apron, stretcher, leg or drawer anywhere'). These are build-level errors (the spec's bracket geometry is correct), so this is a refine-code pass, not a spec problem. One fix cycle remains, so both issues should be addressed together since they likely share a root cause in the bracket extrude/placement logic."
+}

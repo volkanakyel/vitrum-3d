@@ -1,0 +1,23 @@
+{
+  "name": "desk",
+  "status": "failed",
+  "quality": null,
+  "error": "the request failed: terminated (ref ub6fansj)",
+  "fidelityByPass": {
+    "blockout": 0.78
+  },
+  "layers": {
+    "silhouetteProportion": 0.82,
+    "componentStructure": 0.78,
+    "formDetail": 0.4,
+    "materialSurface": 0.5,
+    "lightingCamera": 0.72
+  },
+  "fixes": 0,
+  "tokens": {
+    "input": 36986,
+    "output": 26548
+  },
+  "costUsd": 0.6567080000000001,
+  "seconds": 1444
+}

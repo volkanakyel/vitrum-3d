@@ -1,0 +1,477 @@
+{
+  "name": "Tinted amber glass slab desk",
+  "id": "amber-glass-slab-desk",
+  "camera": {
+    "yaw": -48,
+    "pitch": 14,
+    "fov": 36,
+    "distance": 2.6,
+    "confidence": 0.6
+  },
+  "dimensions": {
+    "widthM": 1.4,
+    "heightM": 0.74,
+    "depthM": 0.7,
+    "source": "estimated"
+  },
+  "symmetry": "left-right",
+  "suitability": {
+    "verdict": "conditional",
+    "reasons": [
+      "Single three-quarter view; the back long face, the top slab underside and the inner faces of both panels below the brackets are not directly readable.",
+      "Subject is tinted transparent glass: albedo is inferred from transmission, so the material must be approximated with an amber-tinted transmissive/gloss shader.",
+      "The far (right) panel is nearly edge-on; its bracket pair and foot pads are mirrored from the near panel under the left-right symmetry assumption.",
+      "Macro silhouette (inverted-U of three flat slabs) is unambiguous and fills the frame, so the primary form is reconstructable."
+    ]
+  },
+  "detailInventory": [
+    {
+      "id": "bracket-left-front",
+      "zone": "left panel, inner face, top front corner",
+      "kind": "bracket",
+      "evidence": "a dark brown angled strap sits against the top front corner of the near panel, reading as two arms meeting at roughly 90 degrees with a lighter highlight along its upper edge"
+    },
+    {
+      "id": "bracket-left-back",
+      "zone": "left panel, inner face, top back corner",
+      "kind": "bracket",
+      "evidence": "a second dark strap of the same shape appears further along the near panel's top edge, partly seen through the amber top slab"
+    },
+    {
+      "id": "bracket-right-front",
+      "zone": "right panel, inner face, top front corner",
+      "kind": "bracket",
+      "evidence": "a dark bronze angled form is visible at the top front corner of the far panel, its outline softened by the tinted glass it is seen through"
+    },
+    {
+      "id": "bracket-right-back",
+      "zone": "right panel, inner face, top back corner",
+      "kind": "bracket",
+      "evidence": "a second dark angular mark near the far panel's top back corner, adjacent to the top slab's back edge"
+    },
+    {
+      "id": "top-edge-polish",
+      "zone": "top slab, all four edges",
+      "kind": "bevel",
+      "evidence": "a continuous narrow darker amber line runs along the front and right edges of the top, denser than the face because the light crosses the full glass thickness"
+    },
+    {
+      "id": "top-overhang",
+      "zone": "top slab, left and right ends",
+      "kind": "groove",
+      "evidence": "the top slab's corner projects visibly beyond the outer face of the near panel, leaving a small stepped notch at the junction"
+    },
+    {
+      "id": "panel-foot-pads",
+      "zone": "left panel, bottom edge",
+      "kind": "label",
+      "evidence": "two light grey-white rectangles interrupt the dark bottom edge of the near panel, one at each end of that edge"
+    },
+    {
+      "id": "tint-density-gradient",
+      "zone": "both side panels, outer face",
+      "kind": "stain",
+      "evidence": "the near panel reads roughly #C97A3A across its upper third and roughly #7E3F1C along its lower edge, with no hard boundary"
+    },
+    {
+      "id": "panel-top-butt-line",
+      "zone": "junction of top slab and each side panel",
+      "kind": "seam",
+      "evidence": "a crisp horizontal dark line separates the top slab from each panel where their edges meet, about 0.015 m thick"
+    },
+    {
+      "id": "corner-reflection-band",
+      "zone": "top slab, upper surface",
+      "kind": "wear",
+      "evidence": "a soft continuous pale sheen crosses the top slab diagonally with no texture or grain inside it"
+    }
+  ],
+  "components": [
+    {
+      "id": "top-slab",
+      "name": "Tinted glass top slab",
+      "level": "macro",
+      "parent": null,
+      "importance": 1,
+      "confidence": 0.9,
+      "primitive": "roundedBox",
+      "dimensions": {
+        "w": 1.4,
+        "h": 0.015,
+        "d": 0.7
+      },
+      "position": [
+        0,
+        0.7325,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "edge": {
+        "radius": 0.002,
+        "segments": 2
+      },
+      "attachment": null,
+      "material": "glass-amber-top",
+      "localFeatures": [
+        {
+          "id": "top-edge-polish",
+          "kind": "bevel",
+          "description": "flat-polished perimeter edge band 0.015 m tall on all four edges, arris eased 0.002 m, reading a full stop darker than the faces",
+          "evidence": "a continuous narrow darker amber line runs along the front and right edges of the top"
+        },
+        {
+          "id": "top-overhang",
+          "kind": "groove",
+          "description": "top overhangs each panel outer face by 0.05 m in X and each panel front/back edge by 0.05 m in Z, leaving a stepped notch at every panel junction",
+          "evidence": "the top slab's corner projects visibly beyond the outer face of the near panel"
+        },
+        {
+          "id": "panel-top-butt-line",
+          "kind": "seam",
+          "description": "butt joint line on the underside where each 0.015 m panel top edge meets the slab: crisp dark line 0.015 m wide running the full 0.60 m panel depth, no fillet or gasket",
+          "evidence": "a crisp horizontal dark line separates the top slab from each panel"
+        },
+        {
+          "id": "corner-reflection-band",
+          "kind": "wear",
+          "description": "broad untextured specular sheet reflection crossing the whole 1.40 x 0.70 m upper face diagonally; roughness held at 0.04 with no grain",
+          "evidence": "a soft continuous pale sheen crosses the top slab diagonally"
+        }
+      ]
+    },
+    {
+      "id": "panel-left",
+      "name": "Left glass end panel",
+      "level": "macro",
+      "parent": "top-slab",
+      "importance": 0.95,
+      "confidence": 0.88,
+      "primitive": "roundedBox",
+      "dimensions": {
+        "w": 0.015,
+        "h": 0.725,
+        "d": 0.6
+      },
+      "position": [
+        -0.6425,
+        0.3625,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "edge": {
+        "radius": 0.002,
+        "segments": 2
+      },
+      "attachment": {
+        "parent": "top-slab",
+        "contact": "rests-on",
+        "overlap": 0
+      },
+      "material": "glass-amber-panel",
+      "localFeatures": [
+        {
+          "id": "tint-density-gradient",
+          "kind": "stain",
+          "description": "vertical body-tint gradient on both faces: #C97A3A at the 0.725 m top edge, #A0561F at 0.40 m height, #7E3F1C at the bottom edge, no hard boundary",
+          "evidence": "the near panel reads roughly #C97A3A across its upper third and #7E3F1C along its lower edge"
+        },
+        {
+          "id": "panel-edge-polish",
+          "kind": "bevel",
+          "description": "flat-polished 0.015 m wide edge band on all four panel edges, deepest tint (#5E2C11) along the bottom edge",
+          "evidence": "dark saturated line along the bottom edge of the near panel"
+        }
+      ]
+    },
+    {
+      "id": "panel-right",
+      "name": "Right glass end panel",
+      "level": "macro",
+      "parent": "top-slab",
+      "importance": 0.95,
+      "confidence": 0.72,
+      "primitive": "roundedBox",
+      "dimensions": {
+        "w": 0.015,
+        "h": 0.725,
+        "d": 0.6
+      },
+      "position": [
+        0.6425,
+        0.3625,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "edge": {
+        "radius": 0.002,
+        "segments": 2
+      },
+      "attachment": {
+        "parent": "top-slab",
+        "contact": "rests-on",
+        "overlap": 0
+      },
+      "material": "glass-amber-panel",
+      "localFeatures": [
+        {
+          "id": "tint-density-gradient-right",
+          "kind": "stain",
+          "description": "same vertical tint gradient as the left panel, mirrored; seen nearly edge-on so mostly the 0.015 m polished edge is read",
+          "evidence": "far panel matches the near panel's tone under the left-right symmetry assumption"
+        }
+      ]
+    },
+    {
+      "id": "bracket-lf",
+      "name": "L-bracket, left panel front",
+      "level": "meso",
+      "parent": "panel-left",
+      "importance": 0.8,
+      "confidence": 0.7,
+      "primitive": "extrude",
+      "dimensions": {
+        "w": 0.006,
+        "h": 0.16,
+        "d": 0.16
+      },
+      "position": [
+        -0.6315,
+        0.645,
+        0.22
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "edge": {
+        "radius": 0.003,
+        "segments": 2
+      },
+      "attachment": {
+        "parent": "panel-left",
+        "contact": "bolted",
+        "overlap": 0.003
+      },
+      "material": "metal-bronze",
+      "localFeatures": [
+        {
+          "id": "bracket-left-front",
+          "kind": "bracket",
+          "description": "L profile: vertical arm 0.16 m down the panel inner face, horizontal arm 0.16 m along the top slab underside, strap 0.04 m wide tapering to 0.022 m at each arm end, plate 0.006 m thick, arms meeting at 90 degrees",
+          "evidence": "a dark brown angled strap with two arms meeting at roughly 90 degrees at the top front corner of the near panel"
+        },
+        {
+          "id": "bracket-left-back",
+          "kind": "bracket",
+          "description": "identical bracket mirrored front-to-back, centred 0.44 m behind this one on the same panel inner face",
+          "evidence": "a second dark strap of the same shape further along the near panel's top edge"
+        },
+        {
+          "id": "bracket-right-front",
+          "kind": "bracket",
+          "description": "identical bracket on the right panel inner face, mirrored across the width centre plane",
+          "evidence": "a dark bronze angled form at the top front corner of the far panel"
+        },
+        {
+          "id": "bracket-right-back",
+          "kind": "bracket",
+          "description": "identical bracket at the right panel top back corner, 0.44 m behind bracket-right-front",
+          "evidence": "a second dark angular mark near the far panel's top back corner"
+        },
+        {
+          "id": "bracket-boss",
+          "kind": "button",
+          "description": "two raised fixing bosses of 0.014 m diameter and 0.003 m proud, one at 0.05 m along each arm from the corner, bronze fastener heads #553723",
+          "evidence": "visible fixing boss and highlight on the near bracket strap"
+        }
+      ]
+    },
+    {
+      "id": "glide-lf",
+      "name": "Glide pad, left panel front corner",
+      "level": "micro",
+      "parent": "panel-left",
+      "importance": 0.3,
+      "confidence": 0.5,
+      "primitive": "roundedBox",
+      "dimensions": {
+        "w": 0.015,
+        "h": 0.003,
+        "d": 0.03
+      },
+      "position": [
+        -0.6425,
+        0.0015,
+        0.255
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "edge": {
+        "radius": 0.001,
+        "segments": 2
+      },
+      "attachment": {
+        "parent": "panel-left",
+        "contact": "inserted",
+        "overlap": 0.001
+      },
+      "material": "plastic-glide",
+      "localFeatures": [
+        {
+          "id": "panel-foot-pads",
+          "kind": "label",
+          "description": "pale translucent glide pad about 0.03 m long and 0.003 m thick set into the panel bottom edge 0.03 m in from the corner; one at each end of each panel bottom edge, lifting the glass 0.002 m clear of the floor",
+          "evidence": "two light grey-white rectangles interrupt the dark bottom edge of the near panel"
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "id": "glass-amber-top",
+      "family": "glass",
+      "subtype": "tinted float glass, amber body tint, flat-polished, ~15 mm",
+      "baseColor": "#A85F2A",
+      "roughness": 0.04,
+      "metalness": 0,
+      "sheen": 0,
+      "clearcoat": 0.6,
+      "pattern": {
+        "kind": "vertical-gradient",
+        "scale": 0.7,
+        "amplitude": 0.18
+      },
+      "wear": {
+        "edge": 0.02,
+        "dirt": 0.02
+      }
+    },
+    {
+      "id": "glass-amber-panel",
+      "family": "glass",
+      "subtype": "tinted float glass, same amber body tint, polished edges",
+      "baseColor": "#A0561F",
+      "roughness": 0.05,
+      "metalness": 0,
+      "sheen": 0,
+      "clearcoat": 0.55,
+      "pattern": {
+        "kind": "vertical-gradient",
+        "scale": 0.725,
+        "amplitude": 0.35
+      },
+      "wear": {
+        "edge": 0.03,
+        "dirt": 0.03
+      }
+    },
+    {
+      "id": "metal-bronze",
+      "family": "metal",
+      "subtype": "antique-bronze-finished steel strap",
+      "baseColor": "#43291B",
+      "roughness": 0.45,
+      "metalness": 1,
+      "sheen": 0,
+      "clearcoat": 0,
+      "pattern": {
+        "kind": "brushed",
+        "scale": 0.004,
+        "amplitude": 0.02
+      },
+      "wear": {
+        "edge": 0.12,
+        "dirt": 0.05
+      }
+    },
+    {
+      "id": "plastic-glide",
+      "family": "plastic",
+      "subtype": "translucent nylon/PTFE glide",
+      "baseColor": "#D8D3CB",
+      "roughness": 0.75,
+      "metalness": 0,
+      "sheen": 0,
+      "clearcoat": 0,
+      "pattern": {
+        "kind": "none",
+        "scale": 0.01,
+        "amplitude": 0
+      },
+      "wear": {
+        "edge": 0.05,
+        "dirt": 0.1
+      }
+    }
+  ],
+  "repetition": [
+    {
+      "id": "brackets-front-back",
+      "kind": "mirror",
+      "count": 2,
+      "pitch": 0,
+      "axis": "z",
+      "target": "bracket-lf"
+    },
+    {
+      "id": "brackets-left-right",
+      "kind": "mirror",
+      "count": 2,
+      "pitch": 0,
+      "axis": "x",
+      "target": "bracket-lf"
+    },
+    {
+      "id": "glides-front-back",
+      "kind": "mirror",
+      "count": 2,
+      "pitch": 0,
+      "axis": "z",
+      "target": "glide-lf"
+    },
+    {
+      "id": "glides-left-right",
+      "kind": "mirror",
+      "count": 2,
+      "pitch": 0,
+      "axis": "x",
+      "target": "glide-lf"
+    }
+  ],
+  "reviewViews": [
+    "reference",
+    "front",
+    "side",
+    "top"
+  ],
+  "mustMatch": [
+    "Overall inverted-U of three flat slabs: top 1.40 m wide x 0.70 m deep x 0.015 m thick at 0.74 m total height, two end panels each 0.015 m thick.",
+    "Top slab overhangs each panel outer face by 0.050 m in width and each panel edge by 0.050 m front and back (panel depth 0.60 m against top depth 0.70 m).",
+    "Panel inner faces are 1.270 m apart; panel outer faces 1.300 m apart; no stretcher, apron or drawer anywhere between them.",
+    "Four bronze L-brackets, one at each top corner of each panel inner face, each with 0.16 m arms and a 0.04 m wide strap; the two brackets on a panel are 0.44 m apart centre to centre.",
+    "Glass thickness is uniform 0.015 m and visible as a distinct darker polished edge band on every slab edge.",
+    "Panel bottom edges stand 0.002 m clear of the floor on four glide pads, each about 0.03 m long, set 0.03 m in from the panel bottom corners."
+  ],
+  "niceToHave": [
+    "Amber tint reads transmissive: far panel and its brackets faintly visible through the top slab.",
+    "Vertical tint gradient on panel faces from #C97A3A at top to #7E3F1C at the bottom edge.",
+    "Single broad untextured specular sheet reflection crossing the top face.",
+    "Bracket fixing bosses catch a small bronze highlight."
+  ]
+}

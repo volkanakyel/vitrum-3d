@@ -1,0 +1,26 @@
+{
+  "action": "continue",
+  "fidelity": 0.72,
+  "layers": {
+    "silhouetteProportion": 0.78,
+    "componentStructure": 0.78,
+    "formDetail": 0.5,
+    "materialSurface": 0.5,
+    "lightingCamera": 0.75
+  },
+  "defects": [
+    {
+      "component": "panel-left",
+      "what": "Top slab's 0.04 m cantilever inset over the end panels (mustMatch #2) is not clearly visible — the panel's top-front corner reads flush with the top slab's corner in the render, whereas the photo shows the slab tip and bracket projecting past the panel face.",
+      "measured": "~0 m visible overhang vs 0.04 m specified",
+      "fix": "Confirm panel-left/panel-right x and z positions are inset 0.04 m from the top slab's outer edges (top width 1.4 stays fixed, panel outer faces at ±0.6525 vs slab half-width 0.70) so the shadow-gap step reads clearly from the reference camera."
+    },
+    {
+      "component": "top-slab",
+      "what": "No structural defect found otherwise; brackets, glide pads, polished edge band and tint gradient are correctly absent at this flat-placeholder stage and should not be scored yet.",
+      "measured": "n/a",
+      "fix": "n/a — defer to structural/form/material passes as planned."
+    }
+  ],
+  "summary": "Overall massing is correct: one horizontal top slab and two vertical end panels at roughly the right width (1.4 m), height (0.73 m) and depth (0.68 m), with no extraneous apron/leg/drawer parts, matching the blockout goal. The estimated camera (yaw -38, pitch 17, fov 34) reproduces the reference framing well and needs no adjustment. The one geometry-level mustMatch item worth flagging is the 0.04 m cantilever inset between the top slab and the end panels, which is not clearly readable in the render — worth confirming in code even though it's subtle. All other listed 'defects' (brackets, glide pads, tint gradient, polished edge band) are correctly deferred since this is still the flat-colour blockout stage; they are not scored against this pass. Good enough to proceed to the structural pass.</summary>\n"
+}

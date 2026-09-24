@@ -1,0 +1,7 @@
+[
+  "Blockout improved: three macro slabs only — top-slab (1.400 x 0.018 x 0.680) and the two 0.015 m end panels, 0.712 m tall, outer faces 1.305 m apart.",
+  "Materials: one flat kit.plastic per spec material id (glass-amber-top #9C5A28, glass-amber-panel #8E4A1C). No glass/metal/plastic detail materials this pass, per the blockout brief.",
+  "Contact direction inferred: the spec records panel-left/panel-right as rests-on top-slab, but physically the slab is the lid seated on the panels, so restOn(topSlab, panel, 0) is used in both directions of the pair. Overlap 0 rather than the spec's 0.002 so the exposed panel face stays 0.712 m and the top face lands at exactly 0.730 m as mustMatch requires (0.002 would have cost 2 mm of desk height).",
+  "Deliberately left out: bracket-front-left and its x/z mirrors (meso), pad-front-left and its mirrors (micro), the polished edge band, the vertical tint gradient, the etched corner mark and every edge radius — all later passes.",
+  "Boxes used instead of the spec's roundedBox primitive, as the blockout brief requires; the 0.002 m arris comes back with the edge treatment pass."
+]

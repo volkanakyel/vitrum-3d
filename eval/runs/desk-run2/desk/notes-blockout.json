@@ -1,0 +1,7 @@
+[
+  "Improved, but not confidently closed: the reported top-slab thickness defect cannot be attributed to any field in the previous file — the geometry was already kit.box(1.400, 0.015, 0.650), with no bevel, no edge radius, no seam mesh and no second stacked box.",
+  "What I changed: hoisted the spec dimensions into named constants (GLASS_T = 0.015 shared by slab height and panel thickness) so the slab height is provably the spec value, and pinned the slab centre to y = 0.7125 m immediately after restOn so no bounding-box seat can shift or restack it.",
+  "If the ortho views still show a ~0.10 m band, the inflation is downstream of this file (view scaling or a render-side outline/shadow band), not in the box height; that is the only remaining hypothesis I can offer.",
+  "Left alone deliberately: the inverted rests-on direction (slab seated on panel, which reproduces the spec's own y = 0.7125 position), panel geometry and x placement, the panel-pair x-mirror, the two flat plastic stand-in materials, and the continued omission of the meso brackets and micro foot pads.",
+  "Total blockout height remains 0.717 m (0.702 panel + 0.015 slab); the missing 0.003 m to the spec's 0.72 m is the foot-pad thickness, a later pass."
+]

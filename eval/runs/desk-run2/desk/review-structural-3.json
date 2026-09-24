@@ -1,0 +1,38 @@
+{
+  "action": "stop",
+  "fidelity": 0.5,
+  "layers": {
+    "silhouetteProportion": 0.75,
+    "componentStructure": 0.35,
+    "formDetail": 0.5,
+    "materialSurface": 0.55,
+    "lightingCamera": 0.6
+  },
+  "defects": [
+    {
+      "component": "bracket",
+      "what": "Only 1 of the 4 required L-brackets is rendered; the near panel shows no brackets at all (front or back) and the far panel is missing its back-corner bracket, violating the mustMatch 'four bronze L-brackets only, one per inner top corner'",
+      "measured": "1 bracket visible vs 4 required",
+      "fix": "Instantiate the bracket-lr (x mirror) and bracket-fb (z mirror) repetitions so brackets exist at all four inner corners: x=-0.650/z=+0.20, x=-0.650/z=-0.20, x=+0.650/z=+0.20, x=+0.650/z=-0.20."
+    },
+    {
+      "component": "bracket",
+      "what": "The single visible bracket (far panel, front corner) reads as an isolated thin blade floating in space, not touching the panel face or the slab underside",
+      "measured": "visible gap between bracket geometry and both end-panel (x=0.650) and top-slab underside (y=0.705); should be 0 m per attachment.overlap=0.002",
+      "fix": "Reposition/reshape the bracket extrude so its vertical leg (0.13 m) lies flush against the panel inner face and its horizontal leg (0.10 m) touches the slab underside at y=0.705, eliminating the floating gap."
+    },
+    {
+      "component": "end-panel",
+      "what": "In the front orthographic view a visible white gap separates the top slab from the tops of both end panels, even though spec math (position.y=0.354, h=0.702) places the panel top at y=0.705 flush with the slab bottom",
+      "measured": "~0.05 m apparent gap in front view vs 0 m specified",
+      "fix": "Check the panel mesh's actual world-space top after transform; ensure it reaches y=0.705 with no seam, matching the rests-on/overlap=0 attachment to top-slab."
+    },
+    {
+      "component": "foot-pad",
+      "what": "No frosted foot pads are visible at the base of either panel in any of the four views",
+      "measured": "0 of 4 pads rendered",
+      "fix": "Add the foot-pad geometry at the specified corner offsets (z=+0.26/-0.26 etc.) even if flat-shaded for this pass, so the part is present rather than absent."
+    }
+  ],
+  "summary": "The macro silhouette is close — one horizontal glass slab and two vertical end panels at roughly the right footprint and height, and no apron/stretcher/drawer was added, which is good. But this is a structural pass and its core promise ('every part present and attached; nothing floating') is not met: only one of the four required L-brackets renders at all, and that one floats disconnected from both the panel and the slab rather than bridging them. The front orthographic view also shows a gap between the top slab and the end panels that should be flush per the spec's own numbers, suggesting an attachment/placement bug rather than a spec error. Foot pads are absent entirely. Because a mustMatch fact (four brackets, one per inner corner) is violated and parts are floating/missing, fidelity is capped below 0.7 regardless of the decent silhouette. No fix budget remains, so reporting as-is rather than requesting another pass."
+}
