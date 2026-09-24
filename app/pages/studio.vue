@@ -4,8 +4,6 @@ import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { MATERIAL_PRESETS } from '~/utils/presets'
-import { sampleById } from '~/utils/samples'
 
 definePageMeta({ layout: 'studio', key: 'studio' })
 
@@ -13,7 +11,7 @@ const studio = useStudio()
 const {
   image, fileName, trace, traceOpts, reliefOpts, relief, glass, dims, busy, importing, error,
   dragging, exporting, toast, view, viewer, heightMm, subject, ready,
-  setView, clearImage, onDrop, onPick, loadSample, doExport, setHeight,
+  setView, clearImage, onDrop, onPick, loadSample, openLinkedSample, doExport, setHeight,
 } = studio
 
 useHead({ title: 'Icon studio · Vitrum' })
@@ -24,25 +22,11 @@ const hudDText = useSpringText(() => dims.value?.depthMm ?? 0, v => v.toFixed(1)
 const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round(v).toLocaleString('en-US'))
 
 const route = useRoute()
-onMounted(async () => {
-  const sample = typeof route.query.sample === 'string' ? sampleById(route.query.sample) : undefined
-  if (!sample) return
-  try {
-    await loadSample(sample.id)
-    const finish = MATERIAL_PRESETS.find(p => p.id === route.query.finish)
-    Object.assign(glass, (finish ?? MATERIAL_PRESETS.find(p => p.id === sample.preset))?.values)
-    // These known silhouettes have open counters; automatic tile detection can otherwise
-    // turn the camera or conversation outline into a solid badge.
-    const roundedIcon = ['camera', 'chat', 'spark', 'heart'].includes(sample.id)
-    Object.assign(glass, {
-      geometry: sample.id === 'play' ? 'stack' : 'extrude',
-      widthMm: 100,
-      depthMm: roundedIcon ? 16 : 20,
-      bevelMm: sample.id === 'vitrum' ? 0.4 : ['star', 'bolt'].includes(sample.id) ? 1.2 : sample.id === 'spark' ? 2 : 3.8,
-    })
-  } catch {
-    error.value = 'This example could not be opened. Choose a sample or upload your own artwork.'
-  }
+onMounted(() => {
+  const sample = route.query.sample
+  if (typeof sample !== 'string' || sample.length === 0) return
+  const finish = route.query.finish
+  void openLinkedSample(sample, typeof finish === 'string' ? finish : undefined)
 })
 </script>
 

@@ -4,6 +4,10 @@
 
 <template>
   <div class="page min-h-svh">
+    <span
+      class="grain pointer-events-none fixed inset-0 z-[60] opacity-[0.035] mix-blend-multiply"
+      aria-hidden="true"
+    />
     <SiteNav />
     <slot />
     <SiteFooter />

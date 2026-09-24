@@ -64,6 +64,7 @@ To add shadcn-vue components: `npx shadcn-vue@latest add <name>` (they land in
 
 | Path | Purpose |
 | --- | --- |
+| `app/data/landing.ts` | landing copy: hero finishes, example shelf, questions |
 | `app/pages/index.vue` | landing page, material selection, examples and sharing |
 | `app/components/site/LandingScene.vue` | lazy-loaded hero renderer with visibility, reduced-motion and static fallback handling |
 | `app/pages/studio.vue` | the editor shell: toolbar, stage, view dock, empty state |
@@ -78,6 +79,10 @@ To add shadcn-vue components: `npx shadcn-vue@latest add <name>` (they land in
 | `app/components/studio/*` | control panel, viewer, loader, fields |
 | `app/components/site/*` | navigation and footer |
 | `app/components/ui/*` | generated shadcn-vue primitives |
+
+## Contributing
+
+Landing copy and the example shelf live in `app/data/landing.ts`. Finishes live in `app/utils/presets.ts` and are shared by the landing page and the studio, so a new finish can show up in both. Geometry stays in `app/utils` (`extrude.ts`, `trace.ts`, `relief.ts`, `surface.ts`) with Vitest coverage in `tests/`. `app/components/ui` is generated shadcn-vue — add pieces with the CLI above rather than hand-editing them. The landing page is prerendered; `/studio` is client-only. Prefer Tailwind utilities. Tokens and the two column utilities (`frame`, `frame-nav`) live in `app/assets/main.css`.
 
 ## Landing page sharing
 

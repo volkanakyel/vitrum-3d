@@ -10,8 +10,14 @@ const canvas = ref<HTMLCanvasElement | null>(null)
 let studio: GlassStudio | null = null
 let ro: ResizeObserver | null = null
 
+function syncVisibility(): void {
+  studio?.setPageVisible(document.visibilityState === 'visible')
+}
+
 onMounted(() => {
   studio = new GlassStudio(canvas.value!)
+  syncVisibility()
+  document.addEventListener('visibilitychange', syncVisibility)
   studio.snapParams({ ...props.params })
   // Sizes ease over several frames and rebuild as they go; the HUD reads the built mesh.
   studio.onRebuild = () => emit('dimensions', studio?.getDimensions() ?? null)
@@ -19,6 +25,7 @@ onMounted(() => {
   ro.observe(canvas.value!)
 })
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', syncVisibility)
   ro?.disconnect()
   studio?.dispose()
   studio = null
@@ -51,9 +58,8 @@ defineExpose({
 </script>
 
 <template>
-  <canvas ref="canvas" class="viewer" />
+  <canvas
+    ref="canvas"
+    class="absolute inset-0 block size-full touch-none outline-none"
+  />
 </template>
-
-<style scoped>
-.viewer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
-</style>

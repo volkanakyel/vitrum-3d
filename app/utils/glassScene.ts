@@ -95,6 +95,8 @@ export class GlassStudio {
   private colorA = new THREE.Color()
   private colorB = new THREE.Color()
   private raf = 0
+  /** False while the tab is in the background, so the loop does not burn a frame it cannot show. */
+  private pageVisible = true
   private pmrem: THREE.PMREMGenerator
   private disposed = false
   private key: THREE.DirectionalLight
@@ -364,8 +366,25 @@ export class GlassStudio {
     this.setInteracting(false)
   }
 
-  private loop = (now = performance.now()) => {
+  /** Pause the render loop while the document is hidden. A visible call restarts it. */
+  setPageVisible(visible: boolean): void {
+    if (this.pageVisible === visible) return
+    this.pageVisible = visible
+    if (!visible) {
+      cancelAnimationFrame(this.raf)
+      this.raf = 0
+      return
+    }
     if (this.disposed) return
+    this.lastTime = performance.now()
+    this.loop(this.lastTime)
+  }
+
+  private loop = (now = performance.now()) => {
+    if (this.disposed || !this.pageVisible) {
+      this.raf = 0
+      return
+    }
     this.raf = requestAnimationFrame(this.loop)
     const dt = Math.min(0.1, (now - this.lastTime) / 1000 || 0.016)
     this.lastTime = now

@@ -20,7 +20,7 @@ onBeforeUnmount(() => { window.removeEventListener('scroll', onScroll); observer
 </script>
 
 <template>
-  <header class="site-header" :class="{ scrolled, 'menu-open': menuOpen }" @keydown.esc="onEscape">
+  <header class="site-header frame-nav" :class="{ scrolled, 'menu-open': menuOpen }" @keydown.esc="onEscape">
     <a class="skip-link" href="#main-content">Skip to content</a>
     <nav class="site-nav" aria-label="Main navigation">
       <NuxtLink to="/" class="site-brand" aria-label="Vitrum home" @click="closeMenu"><span class="brand-tile"><BrandMark :size="23" /></span><span>vitrum<span class="brand-period">.</span></span></NuxtLink>
@@ -32,7 +32,7 @@ onBeforeUnmount(() => { window.removeEventListener('scroll', onScroll); observer
 </template>
 
 <style scoped>
-.site-header { position: fixed; inset: max(16px, env(safe-area-inset-top)) 0 auto; z-index: 40; width: min(1320px, calc(100% - 112px)); margin-inline: auto; background: #ffffffb8; border: 1px solid #ffffffea; border-radius: 21px; backdrop-filter: blur(22px); box-shadow: 0 2px 3px #263b6703, 0 8px 32px #263b6706, inset 0 0 0 1px #ffffff80; transition: background 200ms, box-shadow 200ms; }
+.site-header { position: fixed; inset: max(16px, env(safe-area-inset-top)) 0 auto; z-index: 40; background: #ffffffb8; border: 1px solid #ffffffea; border-radius: 21px; backdrop-filter: blur(22px); box-shadow: 0 2px 3px #263b6703, 0 8px 32px #263b6706, inset 0 0 0 1px #ffffff80; transition: background 200ms, box-shadow 200ms; }
 .site-header.scrolled { background: #ffffffed; box-shadow: 0 4px 8px #263b6704, 0 12px 40px #263b670e; }
 .site-nav { height: 68px; padding: 0 13px 0 20px; display: flex; align-items: center; justify-content: space-between; gap: 25px; }
 .site-brand { display: flex; align-items: center; gap: 10px; color: #202735; }
@@ -52,8 +52,8 @@ a:focus-visible, button:focus-visible { outline: 2px solid #2662df; outline-offs
 .skip-link { position: absolute; left: 20px; top: -90px; padding: 12px; background: white; color: #20242c; border-radius: 8px; }
 .skip-link:focus { top: 10px; z-index: 50; }
 .mobile-navigation { display: none; }
-@media (max-width: 1100px) { .site-header { width: calc(100% - 72px); } .nav-links a { padding-inline: 10px; font-size: 11px; } }
-@media (max-width: 800px) { .site-header { width: calc(100% - 32px); inset-block-start: max(12px, env(safe-area-inset-top)); border-radius: 18px; } .site-nav { height: 62px; padding: 0 9px 0 13px; gap: 10px; } .nav-links { display: none; } .menu-toggle { display: flex; } .mobile-navigation { display: grid; padding: 9px 18px 17px; border-top: 1px solid #e9edf5; } .mobile-navigation a { padding-block: 15px; display: flex; justify-content: space-between; color: #394960; font-size: 14px; } .mobile-navigation p { font-size: 11px; color: #6c7686; padding-top: 10px; } }
+@media (max-width: 1100px) { .nav-links a { padding-inline: 10px; font-size: 11px; } }
+@media (max-width: 800px) { .site-header { inset-block-start: max(12px, env(safe-area-inset-top)); border-radius: 18px; } .site-nav { height: 62px; padding: 0 9px 0 13px; gap: 10px; } .nav-links { display: none; } .menu-toggle { display: flex; } .mobile-navigation { display: grid; padding: 9px 18px 17px; border-top: 1px solid #e9edf5; } .mobile-navigation a { padding-block: 15px; display: flex; justify-content: space-between; color: #394960; font-size: 14px; } .mobile-navigation p { font-size: 11px; color: #6c7686; padding-top: 10px; } }
 @media (max-width: 400px) { .site-brand { gap: 7px; } .site-brand > span:last-child { font-size: 24px; } .nav-cta { padding-left: 12px; gap: 9px; font-size: 11px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none; } }
 </style>

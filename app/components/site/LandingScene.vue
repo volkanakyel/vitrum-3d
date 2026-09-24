@@ -74,16 +74,25 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="landing-scene" :data-ready="ready">
-    <img class="scene-poster" :src="'/images/hero.webp'" width="1000" height="1000" alt="Sculptural glass camera, mint conversation bubble, pink heart and amber sparkle floating in soft studio light" fetchpriority="high">
-    <canvas ref="canvas" :class="{ 'is-ready': ready }" aria-hidden="true" @pointermove="onPointer" @pointerleave="onPointerLeave" />
+  <div
+    class="absolute inset-0 overflow-hidden"
+    :data-ready="ready"
+  >
+    <img
+      class="block size-full object-cover"
+      src="/images/hero.webp"
+      width="1000"
+      height="1000"
+      alt="Sculptural glass camera, mint conversation bubble, pink heart and amber sparkle floating in soft studio light"
+      fetchpriority="high"
+    >
+    <canvas
+      ref="canvas"
+      class="absolute inset-0 block size-full object-cover opacity-0 transition-opacity duration-[450ms] ease-[cubic-bezier(0.25,_0.1,_0.25,_1)] motion-reduce:transition-none"
+      :class="{ 'opacity-100': ready }"
+      aria-hidden="true"
+      @pointermove="onPointer"
+      @pointerleave="onPointerLeave"
+    />
   </div>
 </template>
-
-<style scoped>
-.landing-scene { position: absolute; inset: 0; overflow: hidden; }
-.scene-poster, canvas { width: 100%; height: 100%; display: block; object-fit: cover; }
-canvas { position: absolute; inset: 0; opacity: 0; transition: opacity 450ms ease; }
-canvas.is-ready { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { canvas { transition: none; } }
-</style>

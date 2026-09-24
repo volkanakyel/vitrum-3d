@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { LANDING_LOOK_IDS, landingLooks } from '~/data/landing'
 import { MATERIAL_PRESETS } from '~/utils/presets'
 import { SAMPLES, sampleById } from '~/utils/samples'
 
@@ -11,5 +12,8 @@ describe('samples', () => {
   it('finds a sample by id', () => {
     expect(sampleById('vitrum')?.label).toBe('Vitrum mark')
     expect(sampleById('nope')).toBeUndefined()
+  })
+  it('resolves the landing swatches in order', () => {
+    expect(landingLooks().map(look => look.id)).toEqual([...LANDING_LOOK_IDS])
   })
 })

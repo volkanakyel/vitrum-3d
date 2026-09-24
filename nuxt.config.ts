@@ -23,6 +23,13 @@ export default defineNuxtConfig({
   // Folder names organise the source; they are not part of the component name.
   components: [{ path: '~/components', pathPrefix: false }],
   css: ['~/assets/main.css'],
+  experimental: {
+    defaults: {
+      // The studio bundle includes Three.js. Prefetch it on hover or focus, not merely because
+      // a landing link is in view, so the prerendered page can paint before that download starts.
+      nuxtLink: { prefetchOn: { interaction: true, visibility: false } },
+    },
+  },
   routeRules: {
     // The landing page is static HTML with a WebGL layer on top; the studio is a WebGL editor
     // with nothing worth rendering on the server.

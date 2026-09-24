@@ -1,6 +1,6 @@
 import type { ImportPhase } from '~/components/studio/StageLoader.vue'
 import type { ModelDimensions, ViewName } from '~/utils/glassScene'
-import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams } from '~/utils/presets'
+import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams, type Geometry } from '~/utils/presets'
 import { DEFAULT_RELIEF_OPTIONS, reliefAspect, type ReliefData, type ReliefOptions } from '~/utils/relief'
 import { SAMPLES, sampleFile } from '~/utils/samples'
 import { DEFAULT_TRACE_OPTIONS, loadImage, type TraceOptions, type TraceResult } from '~/utils/trace'
@@ -8,6 +8,15 @@ import { Tracer } from '~/utils/tracer'
 
 /** How a fresh import opens: the pillow's rounding and the colour finish a shaded picture gets. */
 const ICON_PROFILE = { roundness: 0.6, detail: 0.35, colourPreset: 'satin' }
+/** Marks with open counters. A deeper slab lets automatic tile detection fill them in. */
+const OPEN_COUNTERS = new Set(['camera', 'chat', 'spark', 'heart'])
+
+/** Shape a landing link opens with, after the trace has chosen its own defaults. */
+function linkedSampleShape(id: string): Pick<GlassParams, 'geometry' | 'widthMm' | 'depthMm' | 'bevelMm'> {
+  const geometry: Geometry = id === 'play' ? 'stack' : 'extrude'
+  const bevelMm = id === 'vitrum' ? 0.4 : id === 'star' || id === 'bolt' ? 1.2 : id === 'spark' ? 2 : 3.8
+  return { geometry, widthMm: 100, depthMm: OPEN_COUNTERS.has(id) ? 16 : 20, bevelMm }
+}
 
 export type ExportKind = 'glb' | 'stl' | 'png'
 
@@ -251,9 +260,26 @@ export function useStudio() {
     if (file) await useFile(file)
   }
   /** Open a built-in sample mark (drawn in code, never downloaded). */
-  async function loadSample(id = 'vitrum') {
+  async function loadSample(id = 'vitrum'): Promise<void> {
     const sample = SAMPLES.find(s => s.id === id) ?? SAMPLES[0]!
     await useFile(await sampleFile(sample))
+  }
+
+  /**
+   * Open a sample from a landing link (`?sample=&finish=`). The trace runs first, then the
+   * link's finish and silhouette override what automatic detection picked.
+   */
+  async function openLinkedSample(sampleId: string, finishId?: string): Promise<void> {
+    const sample = SAMPLES.find(s => s.id === sampleId)
+    if (!sample) return
+    try {
+      await loadSample(sample.id)
+      const finish = MATERIAL_PRESETS.find(p => p.id === finishId) ?? MATERIAL_PRESETS.find(p => p.id === sample.preset)
+      if (finish) Object.assign(glass, finish.values)
+      Object.assign(glass, linkedSampleShape(sample.id))
+    } catch {
+      error.value = 'This example could not be opened. Choose a sample or upload your own artwork.'
+    }
   }
 
   async function doExport(kind: ExportKind) {
@@ -320,6 +346,6 @@ export function useStudio() {
   return {
     image, fileName, trace, traceOpts, reliefOpts, relief, glass, dims, busy, importing, error,
     dragging, exporting, toast, view, viewer, heightMm, subject, ready,
-    setView, useFile, clearImage, onDrop, onPick, loadSample, doExport, setHeight, notify,
+    setView, useFile, clearImage, onDrop, onPick, loadSample, openLinkedSample, doExport, setHeight, notify,
   }
 }

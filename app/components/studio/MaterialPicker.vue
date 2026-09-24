@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { AnimatePresence, LayoutGroup, motion } from 'motion-v'
-import { MATERIAL_PRESETS, type Finish, type GlassParams, type MaterialPreset } from '~/utils/glassScene'
+import { MATERIAL_PRESETS, type Finish, type GlassParams, type MaterialPreset } from '~/utils/presets'
 
 const props = defineProps<{ glass: GlassParams }>()
 

@@ -6,27 +6,12 @@ withDefaults(defineProps<{ size?: number }>(), { size: 28 })
 
 <template>
   <span
-    class="app-icon flex shrink-0 items-center justify-center text-foreground"
+    class="flex shrink-0 items-center justify-center bg-[linear-gradient(160deg,#fff_0%,#eef2f8_100%)] text-foreground shadow-[inset_0_1px_0_#fff,inset_0_-1px_0_rgba(13,14,18,0.05),0_0_0_1px_var(--hairline),0_2px_6px_-2px_rgba(13,14,18,0.25)]"
     :style="{ width: `${size}px`, height: `${size}px`, borderRadius: `${Math.round(size * 0.3)}px` }"
   >
     <BrandMark
       :size="Math.round(size * 0.54)"
-      class="mark"
+      class="opacity-[0.92] drop-shadow-[0_1px_0_rgba(255,255,255,0.95)]"
     />
   </span>
 </template>
-
-<style scoped>
-.app-icon {
-  background: linear-gradient(160deg, #ffffff 0%, #eef2f8 100%);
-  box-shadow:
-    inset 0 1px 0 #ffffff,
-    inset 0 -1px 0 rgba(13, 14, 18, 0.05),
-    0 0 0 1px var(--hairline),
-    0 2px 6px -2px rgba(13, 14, 18, 0.25);
-}
-.mark {
-  opacity: 0.92;
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.95));
-}
-</style>

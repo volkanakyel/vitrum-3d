@@ -1,6 +1,6 @@
 <template>
   <footer class="site-footer">
-    <div class="footer-inner">
+      <div class="footer-inner frame">
       <div class="footer-top"><div class="footer-intro"><span class="footer-symbol"><BrandMark :size="24" /></span><p>A little less flat.<br>A lot more you.</p></div><div class="footer-column"><h2>Find your inspiration</h2><a href="#examples">The collection</a><a href="#how-it-works">How it works</a><a href="#questions">Good to know</a></div><div class="footer-column"><h2>Make it your own</h2><NuxtLink to="/studio">Open the studio <Icon name="arrow-up-right" :size="13" /></NuxtLink><NuxtLink to="/studio?sample=camera&finish=sapphire">Start with an icon</NuxtLink><span>PNG, GLB & STL exports</span></div></div>
       <div class="footer-wordmark"><span>vitrum<span class="wordmark-dot">.</span></span><a href="#main-content" class="back-to-top" aria-label="Back to top"><Icon name="arrow-up" :size="24" /></a></div>
       <div class="footer-bottom"><span><Icon name="lock" :size="13" /> Made on your device. Yours to keep.</span><span>For the joy of making.</span></div>
@@ -11,7 +11,7 @@
 <style scoped>
 .site-footer { position: relative; overflow: hidden; background: linear-gradient(155deg,#edf1fa 0%,#e8edf8 58%,#e5eafa 100%); color: #57647a; padding-bottom: env(safe-area-inset-bottom); }
 .site-footer::before { content: ''; position: absolute; width: 500px; height: 500px; right: -150px; top: 50px; background: radial-gradient(circle,#d8e3ff85,transparent 65%); pointer-events: none; }
-.footer-inner { position: relative; width: min(1320px, calc(100% - 112px)); margin-inline: auto; }
+.footer-inner { position: relative; }
 .footer-top { padding-top: 57px; display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 40px; }
 .footer-intro { display: flex; align-items: start; gap: 20px; }
 .footer-symbol { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 15px; color: #3c63cc; border: 1px solid white; background: linear-gradient(140deg,#fff,#e6ecfa); box-shadow: 0 5px 12px #233f7c08, inset 0 1px 1px white; }
@@ -29,7 +29,7 @@
 .footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-block: 22px 29px; border-top: 1px solid #5369931b; color: #5d6b82; font-size: 11px; }
 .footer-bottom > span:first-child { display: flex; align-items: center; gap: 7px; }
 a:focus-visible { outline: 2px solid #2662df; outline-offset: 5px; border-radius: 3px; }
-@media (max-width: 1100px) { .footer-inner { width: calc(100% - 72px); } .footer-top { grid-template-columns: 1.2fr 1fr 1fr; gap: 25px; } .footer-intro { gap: 12px; } .footer-intro p { font-size: 22px; } }
-@media (max-width: 800px) { .footer-inner { width: calc(100% - 44px); } .footer-top { grid-template-columns: 1fr 1fr; padding-top: 37px; gap: 32px 20px; } .footer-intro { grid-column: 1 / -1; } .footer-wordmark { margin-block: 28px 18px; } .footer-wordmark > span { font-size: 22vw; } .back-to-top { width: 44px; height: 44px; margin-top: 25px; flex-shrink: 0; } .footer-bottom { font-size: 10px; flex-wrap: wrap; gap: 10px; } }
+@media (max-width: 1100px) { .footer-top { grid-template-columns: 1.2fr 1fr 1fr; gap: 25px; } .footer-intro { gap: 12px; } .footer-intro p { font-size: 22px; } }
+@media (max-width: 800px) { .footer-top { grid-template-columns: 1fr 1fr; padding-top: 37px; gap: 32px 20px; } .footer-intro { grid-column: 1 / -1; } .footer-wordmark { margin-block: 28px 18px; } .footer-wordmark > span { font-size: 22vw; } .back-to-top { width: 44px; height: 44px; margin-top: 25px; flex-shrink: 0; } .footer-bottom { font-size: 10px; flex-wrap: wrap; gap: 10px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none; } }
 </style>

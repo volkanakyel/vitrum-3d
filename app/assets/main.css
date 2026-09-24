@@ -192,15 +192,32 @@
   input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 }
 
-/* Film grain over the shell: a fixed, non-interactive layer that gives the flat slate a
-   material quality. Kept very quiet so it reads as paper, not noise. */
-.grain {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  pointer-events: none;
-  opacity: 0.035;
-  mix-blend-mode: multiply;
+/* Marketing column. One gutter scale for the landing page and footer; the nav is slightly wider
+   on phones (`.frame-nav`). Nested queries keep the narrowest breakpoint winning. */
+@utility frame {
+  width: min(1320px, calc(100% - 112px));
+  margin-inline: auto;
+  @media (max-width: 1100px) {
+    width: calc(100% - 72px);
+  }
+  @media (max-width: 800px) {
+    width: calc(100% - 44px);
+  }
+}
+@utility frame-nav {
+  width: min(1320px, calc(100% - 112px));
+  margin-inline: auto;
+  @media (max-width: 1100px) {
+    width: calc(100% - 72px);
+  }
+  @media (max-width: 800px) {
+    width: calc(100% - 32px);
+  }
+}
+
+/* Film grain tile for the landing shell. Position and blend are utilities on the element.
+   Studio pages omit it so it is not composited over the WebGL canvas. */
+@utility grain {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 160px 160px;
 }

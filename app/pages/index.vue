@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { MATERIAL_PRESETS } from '~/utils/presets'
+import { LANDING_EXAMPLES, LANDING_FAQS, landingLooks } from '~/data/landing'
 
 const route = useRoute()
 const siteUrl = useRuntimeConfig().public.siteUrl
 const socialImage = siteUrl ? new URL('/images/vitrum-social.png', siteUrl).href : '/images/vitrum-social.png'
-const looks = ['sapphire', 'crystal', 'chrome', 'gold', 'rose'].map(id => MATERIAL_PRESETS.find(p => p.id === id)!)
+const looks = landingLooks()
 const preset = ref('sapphire')
 const currentLook = computed(() => looks.find(p => p.id === preset.value)!)
 const live = ref(false)
@@ -14,17 +14,8 @@ const shareStatus = ref('')
 const shareUrl = ref('')
 let statusTimer: ReturnType<typeof setTimeout> | undefined
 const studioLink = computed(() => ({ path: '/studio', query: { sample: 'camera', finish: preset.value } }))
-const examples = [
-  { id: 'camera', name: 'A fresh perspective.', type: 'For your next big launch', material: 'Sapphire glass', preset: 'sapphire', image: 'sapphire', class: 'blue' },
-  { id: 'chat', name: 'Start a conversation.', type: 'Give your brand a voice', material: 'Polished chrome', preset: 'chrome', image: 'chrome', class: 'silver' },
-  { id: 'heart', name: 'Make them feel it.', type: 'A little love for your feed', material: 'Rosé glass', preset: 'rose', image: 'rose', class: 'pink' },
-]
-const faqs = [
-  { question: 'Do I need to know 3D?', answer: 'No. Start with a logo or icon, choose a material, and turn it around. Vitrum builds the geometry for you. You can adjust the depth, bevel, lighting and finish whenever you want.' },
-  { question: 'What can I upload?', answer: 'PNG, JPG, WebP and SVG files. Logos and icons with a clear silhouette make a great starting point. A transparent background helps, but is not required.' },
-  { question: 'Can I use it in client work?', answer: 'You can export your designs as a PNG for presentations and social posts, a GLB for 3D and web projects, or an STL for fabrication. Use artwork you own or have permission to use.' },
-  { question: 'Do my files leave my device?', answer: 'No. Tracing, modelling and rendering happen in your browser. Your uploaded artwork stays on your device. There is no account to create and nothing to install.' },
-]
+const examples = LANDING_EXAMPLES
+const faqs = LANDING_FAQS
 
 useSeoMeta({
   title: 'Vitrum — Less flat. More feeling.',
@@ -86,7 +77,7 @@ onBeforeUnmount(() => clearTimeout(statusTimer))
 
 <template>
   <main id="main-content" class="landing">
-    <section class="hero content-width" aria-labelledby="hero-title">
+    <section class="hero frame" aria-labelledby="hero-title">
       <div class="hero-copy">
         <p class="intro"><span class="intro-symbol" aria-hidden="true">✳</span> The playful side of 3D</p>
         <h1 id="hero-title">Less flat.<br>More<br><span>feeling.</span></h1>
@@ -115,19 +106,19 @@ onBeforeUnmount(() => clearTimeout(statusTimer))
       </div>
     </section>
 
-    <div class="possibilities content-width"><span>A new dimension for your next big idea.</span><div><span><i aria-hidden="true">↗</i> Brand identities</span><span><i aria-hidden="true">✳</i> Launch visuals</span><span><i aria-hidden="true">♡</i> Social moments</span><span><i aria-hidden="true">◇</i> Real-world objects</span></div></div>
+    <div class="possibilities frame"><span>A new dimension for your next big idea.</span><div><span><i aria-hidden="true">↗</i> Brand identities</span><span><i aria-hidden="true">✳</i> Launch visuals</span><span><i aria-hidden="true">♡</i> Social moments</span><span><i aria-hidden="true">◇</i> Real-world objects</span></div></div>
 
-    <section id="examples" class="examples-section content-width" aria-labelledby="examples-title">
+    <section id="examples" class="examples-section frame" aria-labelledby="examples-title">
       <div class="section-heading"><div><p class="section-kicker">The inspiration shelf</p><h2 id="examples-title">Everyday shapes.<br>Extraordinary character.</h2></div><p>Good design makes you feel something.<br>Pick a favourite. Put your own spin on it.</p></div>
       <div class="example-grid">
-        <NuxtLink v-for="example in examples" :key="example.id" :to="{ path: '/studio', query: { sample: example.id, finish: example.preset } }" class="example-card" :aria-label="`Open ${example.material} ${example.id === 'vitrum' ? 'logo' : example.id} in the studio`">
-          <div class="example-art" :class="example.class"><img :src="`/images/${example.image}.webp`" :alt="`${example.material} ${example.id === 'vitrum' ? 'Vitrum logo' : example.id} rendered in 3D`" width="720" height="720" loading="lazy"><span class="example-material">{{ example.material }}</span><span class="example-open"><Icon name="arrow-up-right" :size="18" /></span></div>
+        <NuxtLink v-for="example in examples" :key="example.id" :to="{ path: '/studio', query: { sample: example.id, finish: example.preset } }" class="example-card" :aria-label="example.label">
+          <div class="example-art" :class="example.tone"><img :src="`/images/${example.image}.webp`" :alt="example.alt" width="720" height="720" loading="lazy" decoding="async"><span class="example-material">{{ example.material }}</span><span class="example-open"><Icon name="arrow-up-right" :size="18" /></span></div>
           <div class="example-text"><h3>{{ example.name }}</h3><p>{{ example.type }}</p></div>
         </NuxtLink>
       </div>
     </section>
 
-    <section id="how-it-works" class="process-section content-width" aria-labelledby="process-title">
+    <section id="how-it-works" class="process-section frame" aria-labelledby="process-title">
       <div class="process-intro"><p class="section-kicker">Your creative shortcut</p><h2 id="process-title">From “what if”<br>to “look at this.”</h2><p>You don’t need to be a 3D artist.<br>Bring an idea. We’ll help it take shape.</p><NuxtLink to="/studio" class="action action-dark">Make something yours <span class="action-icon"><Icon name="arrow-up-right" :size="17" /></span></NuxtLink></div>
       <div class="steps">
         <div class="step"><span class="step-number">01</span><div><h3>Start with a spark.</h3><p>Drop in your logo, icon or favourite doodle. PNG, JPG, WebP or SVG. Or try one of ours.</p></div><Icon name="imagePlus" :size="23" /></div>
@@ -136,18 +127,17 @@ onBeforeUnmount(() => clearTimeout(statusTimer))
       </div>
     </section>
 
-    <section class="closing-section content-width" aria-labelledby="closing-title">
-      <div class="closing-art" aria-hidden="true"><img :src="'/images/gold.webp'" width="720" height="720" alt="" loading="lazy"></div>
+    <section class="closing-section frame" aria-labelledby="closing-title">
+      <div class="closing-art" aria-hidden="true"><img src="/images/gold.webp" width="720" height="720" alt="" loading="lazy" decoding="async"></div>
       <div class="closing-copy"><p class="section-kicker">Go on. Follow that idea.</p><h2 id="closing-title">Make something<br>worth a second look.</h2><p>The logo in your folder. The sketch on your desk. There’s another side to it. Let’s find it.</p><div class="closing-actions"><NuxtLink to="/studio" class="action action-dark">Find your dimension <span class="action-icon"><Icon name="arrow-up-right" :size="17" /></span></NuxtLink><button class="share-button" @click="shareLook"><Icon name="share" :size="17" /> Share Vitrum</button></div><p v-if="shareStatus" class="share-status" role="status">{{ shareStatus }}</p><label v-if="shareUrl" class="share-fallback">Share this link<input :value="shareUrl" readonly @focus="($event.target as HTMLInputElement).select()"></label></div>
     </section>
 
-    <section id="questions" class="faq-section content-width" aria-labelledby="faq-title"><div><p class="section-kicker">Before you jump in</p><h2 id="faq-title">Good questions.</h2></div><div class="faq-items"><details v-for="faq in faqs" :key="faq.question"><summary>{{ faq.question }}<Icon name="plus" :size="17" /></summary><p>{{ faq.answer }}</p></details></div></section>
+    <section id="questions" class="faq-section frame" aria-labelledby="faq-title"><div><p class="section-kicker">Before you jump in</p><h2 id="faq-title">Good questions.</h2></div><div class="faq-items"><details v-for="faq in faqs" :key="faq.question"><summary>{{ faq.question }}<Icon name="plus" :size="17" /></summary><p>{{ faq.answer }}</p></details></div></section>
   </main>
 </template>
 
 <style scoped>
 .landing { --paper: #f8f9fc; --text: #20242c; --subtle: #656b75; --blue: #2662df; background: var(--paper); color: var(--text); overflow: clip; }
-.content-width { width: min(1320px, calc(100% - 112px)); margin-inline: auto; }
 .hero { display: grid; grid-template-columns: 1fr 1.06fr; align-items: center; gap: 60px; padding-top: 150px; padding-bottom: 62px; }
 .hero-copy { padding: 0 0 16px; }
 .intro { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 500; margin-bottom: 26px; color: #545c69; }
@@ -252,8 +242,8 @@ h2 { font-size: clamp(34px, 3.7vw, 53px); font-weight: 500; line-height: 1.08; l
 :where(section)[id] { scroll-margin-top: 110px; }
 @media (hover: hover) and (pointer: fine) { .example-card:hover .example-art img { transform: scale(1.045); } .example-card:hover .example-open { background: white; } }
 @media (min-width: 1600px) { .hero { padding-top: 160px; padding-bottom: 80px; gap: 65px; } }
-@media (max-width: 1100px) { .content-width { width: calc(100% - 72px); } .hero { gap: 30px; padding-top: 120px; } h1 { font-size: clamp(65px, 8vw, 88px); } .hero-stage { height: 450px; } .hero-description { font-size: 14px; } .hero-actions { gap: 8px; } .action { padding-inline: 16px; gap: 12px; font-size: 12px; } .material-bar { gap: 10px; } .process-section { gap: 45px; } .possibilities > div { gap: 20px; } }
-@media (max-width: 800px) { .content-width { width: calc(100% - 44px); } .hero { gap: 27px; grid-template-columns: 1fr; padding-top: 116px; padding-bottom: 38px; } .hero-copy { padding: 0; } .intro { margin-bottom: 20px; } h1 { font-size: clamp(64px, 12vw, 92px); line-height: .98; } h1 br:nth-of-type(2) { display: none; } h1 > span::before { content: " "; } .hero-description { max-width: 430px; font-size: 15px; margin-top: 22px; } .hero-actions { margin-top: 22px; gap: 10px; } .action { font-size: 13px; padding-inline: 18px; } .hero-reassurance { margin-top: 15px; } .hero-stage { height: auto; aspect-ratio: 1.1; } .material-bar { padding-top: 15px; } .possibilities { display: block; padding-block: 22px; } .possibilities > span { max-width: none; } .possibilities > div { margin-top: 14px; flex-wrap: wrap; gap: 9px 25px; font-size: 10px; } .examples-section { padding-top: 66px; } .section-heading { align-items: start; margin-bottom: 25px; gap: 20px; } h2 { font-size: 37px; } .section-heading > p { max-width: 200px; font-size: 12px; } .example-grid { gap: 12px; } .example-art { aspect-ratio: 1 / 1.2; } .example-material { left: 12px; bottom: 15px; font-size: 9px; } .example-open { display: none; } .example-text h3 { font-size: 13px; } .example-text p { font-size: 10px; } .process-section { padding-block: 65px; gap: 30px; grid-template-columns: 1fr; } .process-intro h2 { font-size: 37px; } .steps { margin-top: 12px; } .step p { max-width: 460px; } .closing-section { gap: 0; grid-template-columns: .65fr 1fr; min-height: 340px; } .closing-copy { padding: 36px 20px 36px 0; } .closing-copy h2 { font-size: 34px; } .closing-actions { gap: 10px; } .faq-section { padding-block: 65px; grid-template-columns: 1fr; gap: 27px; } }
+@media (max-width: 1100px) { .hero { gap: 30px; padding-top: 120px; } h1 { font-size: clamp(65px, 8vw, 88px); } .hero-stage { height: 450px; } .hero-description { font-size: 14px; } .hero-actions { gap: 8px; } .action { padding-inline: 16px; gap: 12px; font-size: 12px; } .material-bar { gap: 10px; } .process-section { gap: 45px; } .possibilities > div { gap: 20px; } }
+@media (max-width: 800px) { .hero { gap: 27px; grid-template-columns: 1fr; padding-top: 116px; padding-bottom: 38px; } .hero-copy { padding: 0; } .intro { margin-bottom: 20px; } h1 { font-size: clamp(64px, 12vw, 92px); line-height: .98; } h1 br:nth-of-type(2) { display: none; } h1 > span::before { content: " "; } .hero-description { max-width: 430px; font-size: 15px; margin-top: 22px; } .hero-actions { margin-top: 22px; gap: 10px; } .action { font-size: 13px; padding-inline: 18px; } .hero-reassurance { margin-top: 15px; } .hero-stage { height: auto; aspect-ratio: 1.1; } .material-bar { padding-top: 15px; } .possibilities { display: block; padding-block: 22px; } .possibilities > span { max-width: none; } .possibilities > div { margin-top: 14px; flex-wrap: wrap; gap: 9px 25px; font-size: 10px; } .examples-section { padding-top: 66px; } .section-heading { align-items: start; margin-bottom: 25px; gap: 20px; } h2 { font-size: 37px; } .section-heading > p { max-width: 200px; font-size: 12px; } .example-grid { gap: 12px; } .example-art { aspect-ratio: 1 / 1.2; } .example-material { left: 12px; bottom: 15px; font-size: 9px; } .example-open { display: none; } .example-text h3 { font-size: 13px; } .example-text p { font-size: 10px; } .process-section { padding-block: 65px; gap: 30px; grid-template-columns: 1fr; } .process-intro h2 { font-size: 37px; } .steps { margin-top: 12px; } .step p { max-width: 460px; } .closing-section { gap: 0; grid-template-columns: .65fr 1fr; min-height: 340px; } .closing-copy { padding: 36px 20px 36px 0; } .closing-copy h2 { font-size: 34px; } .closing-actions { gap: 10px; } .faq-section { padding-block: 65px; grid-template-columns: 1fr; gap: 27px; } }
 @media (max-width: 480px) { h1 { font-size: clamp(64px, 18vw, 84px); } h1 br:nth-of-type(2) { display: initial; } h1 > span::before { content: none; } .hero { padding-top: 103px; } .intro { font-size: 11px; margin-bottom: 18px; } .hero-stage { aspect-ratio: 1; } .hero-description { font-size: 14px; max-width: 330px; } .stage-topline { left: 17px; top: 16px; right: 15px; } .stage-caption { left: 18px; right: 18px; bottom: 17px; font-size: 9px; } .collection-tag { left: 18px; bottom: 51px; font-size: 9px; padding: 6px 8px; } .stage-caption > span:first-child > svg { display: none; } .stage-live { font-size: 7px; } .material-title { font-size: 9px; } .material-options { gap: 2px; } .material-swatch { width: 31px; height: 34px; } .edit-example { width: 32px; height: 34px; flex-shrink: 0; } .section-heading { display: block; } .section-heading > p { margin-top: 20px; max-width: 290px; } .example-grid { grid-template-columns: 1fr; gap: 20px; } .example-art { aspect-ratio: 1.13; } .example-material { bottom: 20px; left: 20px; font-size: 11px; } .example-open { display: grid; } .example-text { padding: 15px 0 3px; } .example-text h3 { font-size: 16px; } .example-text p { font-size: 11px; } .closing-section { grid-template-columns: 1fr; } .closing-art { height: 235px; } .closing-art img { object-position: center 45%; } .closing-copy { padding: 5px 26px 33px; } .closing-copy h2 { font-size: 36px; } .closing-actions { gap: 10px 18px; } .faq-section h2 { font-size: 34px; } }
 @media (max-width: 360px) { .hero-actions .action { padding-inline: 12px; gap: 12px; font-size: 12px; } .material-bar { padding-inline: 0; gap: 6px; } .material-swatch { width: 28px; } .stage-caption { font-size: 8px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none; animation: none; } }

@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { SegmentOption } from '~/components/studio/SegmentedControl.vue'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { DEFAULT_GLASS_PARAMS, type GlassParams, type Geometry } from '~/utils/glassScene'
+import { DEFAULT_GLASS_PARAMS, type GlassParams, type Geometry } from '~/utils/presets'
 import { DEFAULT_RELIEF_OPTIONS, type HeightSource, type ReliefOptions } from '~/utils/relief'
 import {
   DEFAULT_TRACE_OPTIONS,
