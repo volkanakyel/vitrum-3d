@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { AnimatePresence, motion } from 'motion-v'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { NumberField, NumberFieldContent, NumberFieldInput } from '@/components/ui/number-field'
@@ -17,9 +16,6 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { SegmentOption } from '~/components/studio/SegmentedControl.vue'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { DEFAULT_VIEW_OPTIONS, STUDIO_MODES, type DepthState, type StudioMode, type StudioView, type ViewAxis, type ViewOptions } from '~/composables/useStudio'
-import type { SculptApi } from '~/composables/useSculpt'
-import type { HullData } from '~/utils/hull'
 import { DEFAULT_GLASS_PARAMS, type GlassParams, type Geometry } from '~/utils/glassScene'
 import { DEFAULT_RELIEF_OPTIONS, type HeightSource, type ReliefOptions } from '~/utils/relief'
 import {
@@ -34,46 +30,14 @@ const props = defineProps<{
   traceOpts: TraceOptions
   reliefOpts: ReliefOptions
   glass: GlassParams
-  views?: Record<ViewAxis, StudioView | null>
-  viewOpts?: ViewOptions
-  /** Camera side read from the outline: −1 left, 1 right, 0 level. */
-  cameraSide?: number
-  hull?: HullData | null
-  depthState?: DepthState
-  depthProgress?: number
-  depthDevice?: string
   heightMm: number
   fileName: string
   busy: boolean
   error: string
-  mode?: StudioMode
-  /** Product mode only: the sculpt run behind the "Parts model" card. */
-  sculpt?: SculptApi
-  /** A finished parts model stands on the stage: the carve's controls do not describe it. */
-  sculpted?: boolean
 }>()
-const emit = defineEmits<{ pick: [Event]; sample: []; clear: []; 'set-height': [number]; mode: [StudioMode]; 'pick-view': [ViewAxis, Event]; 'remove-view': [ViewAxis]; 'flip-view': [ViewAxis] }>()
-const viewSlots: { axis: ViewAxis; label: string; hint: string; flipHint: string }[] = [
-  { axis: 'side', label: 'Side', hint: 'The object from its side, front facing right', flipHint: 'Mirror: the photo shows the other side' },
-  { axis: 'top', label: 'Top', hint: 'The object from above, front at the bottom', flipHint: 'Mirror: the front is at the top of the photo' },
-]
-const hasViews = computed(() => !!(props.views?.side || props.views?.top))
-const VO = DEFAULT_VIEW_OPTIONS
-const sideOptions: SegmentOption<ViewOptions['side']>[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'left', label: 'Left' },
-  { value: 'right', label: 'Right' },
-]
-const sideRead = computed(() => (props.cameraSide === -1 ? 'left' : props.cameraSide === 1 ? 'right' : 'straight on'))
-const depthHint = computed(() => {
-  const s = props.depthState
-  if (s === 'loading') return props.depthProgress ? `Downloading the depth model, ${Math.round(props.depthProgress * 100)}%` : 'Reading the photo\'s depth…'
-  if (s === 'ready') return `From the depth model (${props.depthDevice === 'webgpu' ? 'WebGPU' : 'CPU'}). Runs on your device; the photo never leaves it.`
-  if (s === 'unavailable') return 'Depth model unavailable: carved from outlines only'
-  return 'How deep the photo\'s relief cuts. Depth model, 27 MB, downloaded once, runs on your device.'
-})
-const depthOn = computed(() => props.depthState === 'ready' && (props.viewOpts?.depth ?? 0) > 0)
-const modeOptions: SegmentOption<StudioMode>[] = STUDIO_MODES.map(m => ({ value: m.id, label: m.label, icon: m.icon }))
+const emit = defineEmits<{ pick: [Event]; sample: []; clear: []; 'set-height': [number] }>()
+/** The card shows a source: the traced outline. */
+const hasSource = computed(() => !!props.trace)
 
 const D = DEFAULT_GLASS_PARAMS
 const T = DEFAULT_TRACE_OPTIONS
@@ -125,7 +89,6 @@ const modeLabel: Record<string, string> = {
   light: 'light pixels',
   alpha: 'alpha',
   color: 'colour distance',
-  object: 'whole object',
 }
 const panelTabs = [
   { value: 'shape', label: 'Shape', icon: 'shapes' },
@@ -138,7 +101,6 @@ const modes: SegmentOption<TraceOptions['mode']>[] = [
   { value: 'light', label: 'Light' },
   { value: 'alpha', label: 'Alpha' },
   { value: 'color', label: 'Color' },
-  { value: 'object', label: 'Object' },
 ]
 const resolutions: SegmentOption<number>[] = [512, 1024, 2048].map((r) => ({
   value: r,
@@ -222,25 +184,12 @@ const dimInput =
           </div>
         </div>
 
-        <!-- Mode, on small screens only: the header's switch is hidden there. -->
-        <div
-          v-if="mode"
-          class="sm:hidden"
-        >
-          <SegmentedControl
-            :model-value="mode"
-            :options="modeOptions"
-            size="md"
-            @update:model-value="(v) => emit('mode', v)"
-          />
-        </div>
-
         <!-- Source -->
         <div>
           <label
             class="group relative flex cursor-pointer items-center gap-3 rounded-[18px] p-3 transition-[background-color,box-shadow] duration-200"
             :class="
-              trace
+              hasSource
                 ? 'bg-card shadow-[var(--shadow-raise)]'
                 : 'source-well hover:bg-card hover:shadow-[var(--shadow-raise)]'
             "
@@ -251,10 +200,10 @@ const dimInput =
               hidden
               @change="emit('pick', $event)"
             />
-            <template v-if="trace">
+            <template v-if="hasSource">
               <motion.span
                 :key="fileName"
-                class="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-[linear-gradient(160deg,#ffffff,#eef2f8)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]"
+                class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[linear-gradient(160deg,#ffffff,#eef2f8)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]"
                 :initial="{ scale: 0.7, opacity: 0, rotate: -6 }"
                 :animate="{ scale: 1, opacity: 1, rotate: 0 }"
                 :transition="{ type: 'spring', stiffness: 380, damping: 24 }"
@@ -279,6 +228,7 @@ const dimInput =
                   {{ fileName }}
                 </div>
                 <div
+                  v-if="trace"
                   class="mt-0.5 truncate text-[11.5px] text-muted-foreground tabular-nums"
                   :title="`Traced from ${modeLabel[trace.resolvedMode]}`"
                 >
@@ -343,7 +293,9 @@ const dimInput =
           </AnimatePresence>
         </div>
 
-        <TabsList class="grid h-9 w-full grid-cols-3 rounded-full well p-[3px]">
+        <TabsList
+          class="grid h-9 w-full grid-cols-3 rounded-full well p-[3px]"
+        >
           <TabsTrigger
             v-for="t in panelTabs"
             :key="t.value"
@@ -383,45 +335,8 @@ const dimInput =
               value="shape"
               class="mt-0 flex flex-col divide-y divide-hairline"
             >
-              <!-- The headline action for a product photo: let Claude rebuild it out of parts.
-                   Outside the numbered sections — it is not one of the carve's controls. -->
-              <section
-                v-if="mode === 'product' && sculpt && trace"
-                class="parts-card -mx-1 mb-6 flex flex-col gap-4 rounded-[18px] px-4 pt-4 pb-4"
-              >
-                <header class="flex items-center justify-between">
-                  <span class="flex items-center gap-2 text-[12.5px] font-semibold tracking-[-0.005em] text-foreground">
-                    <Icon
-                      name="cuboid"
-                      :size="14"
-                      class="text-ice"
-                    />
-                    Parts model
-                  </span>
-                  <span class="index text-ink-3">CLAUDE</span>
-                </header>
-                <SculptPanel :sculpt="sculpt" />
-              </section>
-
-              <header
-                v-if="mode === 'product' && sculpt && trace"
-                class="flex h-6 items-center justify-between pb-4"
-              >
-                <span class="text-[12px] font-medium tracking-[-0.005em] text-foreground">Silhouette carve</span>
-                <span class="text-[11px] text-ink-3">{{ sculpted ? 'Off while a parts model stands' : 'On your device, no upload' }}</span>
-              </header>
-
-              <p
-                v-if="sculpted"
-                class="py-6 text-[11.5px] leading-relaxed text-ink-3"
-              >
-                The parts model brings its own shape: the carve's controls are off. Size and Scene
-                still apply.
-              </p>
-
               <AnimatePresence :initial="false">
               <SectionGroup
-                v-if="!sculpted"
                 key="geometry"
                 :index="0"
                 title="Geometry"
@@ -453,7 +368,7 @@ const dimInput =
               </SectionGroup>
 
               <SectionGroup
-                v-if="isStack && !sculpted"
+                v-if="isStack"
                 key="stack"
                 :index="1"
                 title="Layers"
@@ -501,7 +416,7 @@ const dimInput =
               </SectionGroup>
 
               <SectionGroup
-                v-if="isInflate && !sculpted"
+                v-if="isInflate"
                 key="inflate"
                 :index="1"
                 title="Volume"
@@ -547,148 +462,7 @@ const dimInput =
               </SectionGroup>
 
               <SectionGroup
-                v-if="isInflate && !sculpted"
-                key="views"
-                :index="2"
-                title="Views"
-                :hint="hull ? `Carved from ${1 + (viewOpts?.symmetric ? 1 : 0) + (views?.side ? 1 : 0) + (views?.top ? 1 : 0)} outlines${depthOn ? ' + depth' : ''}` : 'One photo: a pillow'"
-                resettable
-                @reset="viewOpts && Object.assign(viewOpts, VO)"
-              >
-                <p class="text-[11.5px] leading-relaxed text-ink-3">
-                  Where the photo was taken from. The outline is carved along that camera, the
-                  object's mirror image counts as a second view, and a side or top photo measures
-                  the depth instead of guessing it.
-                </p>
-                <template v-if="viewOpts">
-                  <SliderField
-                    v-model="viewOpts.yaw"
-                    label="Photo angle"
-                    hint="How far around the object the camera stood: 0 straight on, 30–45 a typical product shot"
-                    :min="0"
-                    :max="60"
-                    :step="1"
-                    :decimals="0"
-                    unit="°"
-                    :default-value="VO.yaw"
-                  />
-                  <div class="flex flex-col gap-1.5">
-                    <Label class="flex h-5 items-center justify-between text-[12.5px] font-normal text-ink-2">
-                      Camera stood
-                      <span class="text-[11px] text-ink-3">reads {{ sideRead }}</span>
-                    </Label>
-                    <SegmentedControl
-                      v-model="viewOpts.side"
-                      :options="sideOptions"
-                    />
-                  </div>
-                  <SliderField
-                    v-model="viewOpts.pitch"
-                    label="Camera height"
-                    hint="How far above the object the camera stood"
-                    :min="0"
-                    :max="35"
-                    :step="1"
-                    :decimals="0"
-                    unit="°"
-                    :default-value="VO.pitch"
-                  />
-                  <div class="flex h-6 items-center justify-between pointer-coarse:h-9">
-                    <Label
-                      for="view-symmetric"
-                      class="text-[12.5px] font-normal text-ink-2"
-                    >
-                      Symmetric object
-                    </Label>
-                    <Switch
-                      id="view-symmetric"
-                      :model-value="viewOpts.symmetric"
-                      @update:model-value="(v) => (viewOpts!.symmetric = v)"
-                    />
-                  </div>
-                  <SliderField
-                    v-model="viewOpts.depth"
-                    label="Depth"
-                    :hint="depthHint"
-                    :min="0"
-                    :max="1"
-                    :step="0.05"
-                    :decimals="2"
-                    :default-value="VO.depth"
-                  />
-                </template>
-                <div
-                  v-for="slot in viewSlots"
-                  :key="slot.axis"
-                  class="group/view flex h-12 items-center gap-3 rounded-[14px] px-2"
-                  :class="views?.[slot.axis] ? 'bg-card shadow-[var(--shadow-raise)]' : 'well'"
-                >
-                  <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
-                    <input
-                      type="file"
-                      accept="image/*,.svg"
-                      hidden
-                      @change="emit('pick-view', slot.axis, $event)"
-                    />
-                    <span
-                      class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-card text-muted-foreground shadow-[inset_0_0_0_1px_var(--hairline)]"
-                    >
-                      <img
-                        v-if="views?.[slot.axis]"
-                        :src="views[slot.axis]!.preview"
-                        class="size-full object-cover"
-                        :alt="`${slot.label} view`"
-                      />
-                      <Icon
-                        v-else
-                        name="imagePlus"
-                        :size="14"
-                      />
-                    </span>
-                    <span class="min-w-0 flex-1">
-                      <span class="block truncate text-[12.5px] font-medium">
-                        {{ views?.[slot.axis] ? views[slot.axis]!.name : `Add ${slot.label.toLowerCase()} photo` }}
-                      </span>
-                      <span class="block truncate text-[11px] text-ink-3">{{ slot.hint }}</span>
-                    </span>
-                  </label>
-                  <template v-if="views?.[slot.axis]">
-                    <Tooltip>
-                      <TooltipTrigger as-child>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          :class="views[slot.axis]!.flip ? 'bg-well-strong text-foreground' : 'text-muted-foreground'"
-                          :aria-pressed="views[slot.axis]!.flip"
-                          aria-label="Mirror view"
-                          @click="emit('flip-view', slot.axis)"
-                        >
-                          <Icon
-                            name="rotate"
-                            :size="13"
-                          />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>{{ slot.flipHint }}</TooltipContent>
-                    </Tooltip>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      class="text-muted-foreground"
-                      aria-label="Remove view"
-                      @click="emit('remove-view', slot.axis)"
-                    >
-                      <Icon
-                        name="x"
-                        :size="13"
-                      />
-                    </Button>
-                  </template>
-                </div>
-              </SectionGroup>
-
-              <SectionGroup
-                v-if="isRelief && !sculpted"
+                v-if="isRelief"
                 key="relief"
                 :index="1"
                 title="Relief"
@@ -796,7 +570,7 @@ const dimInput =
               </SectionGroup>
 
               <SectionGroup
-                v-if="!sculpted && (!isRelief || reliefOpts.cutout)"
+                v-if="!isRelief || reliefOpts.cutout"
                 key="trace"
                 :index="isInflate ? 3 : isRelief || isStack ? 2 : 1"
                 title="Outline"
@@ -866,9 +640,9 @@ const dimInput =
 
               <SectionGroup
                 key="dimensions"
-                :index="isRelief ? (reliefOpts.cutout ? 3 : 2) : isInflate ? 4 : isStack ? 3 : 2"
+                :index="isRelief ? (reliefOpts.cutout ? 3 : 2) : isInflate ? 3 : isStack ? 3 : 2"
                 title="Dimensions"
-                :hint="isRelief ? 'D = base slab, relief on top' : isInflate ? (hasViews ? 'D measured from the views' : hull ? 'D = the object\'s depth' : 'D = full thickness') : isStack ? 'D = base, layers on top' : 'H follows the outline'"
+                :hint="isRelief ? 'D = base slab, relief on top' : isInflate ? 'D = full thickness' : isStack ? 'D = base, layers on top' : 'H follows the outline'"
                 resettable
                 @reset="pick('widthMm', 'depthMm', 'bevelMm', 'bevelSegments')"
               >
@@ -907,7 +681,7 @@ const dimInput =
                     :step="0.5"
                     :format-options="{ maximumFractionDigits: 1 }"
                     class="gap-1"
-                    @update:model-value="(v) => setNumber('depthMm', v)"
+                                        @update:model-value="(v) => setNumber('depthMm', v)"
                   >
                     <NumberFieldContent>
                       <span class="dim-prefix">D</span>
@@ -952,21 +726,13 @@ const dimInput =
               value="material"
               class="mt-0 flex flex-col divide-y divide-hairline"
             >
-              <p
-                v-if="sculpted"
-                class="py-6 text-[11.5px] leading-relaxed text-ink-3"
-              >
-                Materials come with the parts model.
-              </p>
               <SectionGroup
-                v-if="!sculpted"
                 :index="0"
                 title="Finish"
               >
                 <MaterialPicker :glass="glass" />
               </SectionGroup>
               <SectionGroup
-                v-if="!sculpted"
                 :index="1"
                 :title="isGlass ? 'Optics' : 'Surface'"
                 resettable
@@ -1136,7 +902,7 @@ const dimInput =
               </SectionGroup>
               <AnimatePresence :initial="false">
               <SectionGroup
-                v-if="isGlass && !sculpted"
+                v-if="isGlass"
                 key="edges"
                 :index="2"
                 title="Edges & tint"
@@ -1199,7 +965,9 @@ const dimInput =
                 resettable
                 @reset="pick('background', 'shadow', 'vignette', 'floor')"
               >
-                <div class="flex h-6 items-center justify-between pointer-coarse:h-9">
+                <div
+                  class="flex h-6 items-center justify-between pointer-coarse:h-9"
+                >
                   <Label
                     for="stage-floor"
                     class="text-[12.5px] font-normal text-ink-2"
@@ -1334,7 +1102,7 @@ const dimInput =
           name="sparkle"
           :size="13"
         />
-        {{ mode === 'product' ? 'Sample armchair' : 'Sample mark' }}
+        Sample mark
       </Button>
       <Tooltip>
         <TooltipTrigger as-child>
@@ -1350,14 +1118,6 @@ const dimInput =
 </template>
 
 <style scoped>
-.parts-card {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(238, 242, 248, 0.9));
-  box-shadow:
-    inset 0 1px 0 #ffffff,
-    0 0 0 1px var(--hairline),
-    0 12px 28px -20px rgba(3, 7, 18, 0.35);
-}
-
 @reference "~/assets/main.css";
 
 /* Content fades under the header and footer edges; scrollbar is a hairline that only appears

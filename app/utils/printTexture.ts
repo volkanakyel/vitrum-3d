@@ -131,7 +131,7 @@ export function padSilhouette(src: HTMLCanvasElement, outline: Outline): { canva
   ctx.fillRect(0, 0, w, h)
   ctx.globalCompositeOperation = 'source-over'
   // Where the padded colour can be trusted: the outline grown by the padding's reach. A vertex
-  // that lands on the outline itself (every crease of a carved hull does) reads padded interior
+  // that lands on the outline itself reads padded interior
   // colour instead of being refused, which drew the outline's raster steps onto the surface.
   const inside = dilate(mask, w, h, Math.max(erodePx, Math.round(w * 0.03)))
   return { canvas: out, inside }

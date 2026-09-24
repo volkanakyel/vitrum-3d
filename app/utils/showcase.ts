@@ -1,9 +1,9 @@
 import * as THREE from 'three'
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { buildExtrudeGeometry } from './extrude'
 import { createStudioEnvironment } from './glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams } from './presets'
-import { buildCropTexture, buildPrintTexture } from './printTexture'
-import { buildReliefGeometry, computeRelief, DEFAULT_RELIEF_OPTIONS } from './relief'
+import { buildPrintTexture } from './printTexture'
 import { DEFAULT_TRACE_OPTIONS, traceImage, type TraceResult } from './trace'
 import { drawSample, SAMPLES, type Sample } from './samples'
 
@@ -12,13 +12,13 @@ import { drawSample, SAMPLES, type Sample } from './samples'
  * extrude / inflate pipeline as the studio; nothing is downloaded.
  *
  * Three layouts share the renderer, environment and materials:
- *   hero    — the mark alone, centred, turning slowly on its own and leaning with the pointer.
+ *   hero    — a collection of rounded glass interface icons, gently floating with pointer tilt.
  *   story   — one object (the Vitrum mark) on the right, turning as the page scrolls. The camera
  *             never moves; scroll progress drives the object's rotation, so it always reads as
  *             "the thing being talked about" beside the text on the left.
- *   gallery — a fixed camera over two rows: six icons above, two inflated products below.
+ *   gallery — a fixed camera over one row of six icons.
  */
-export type Layout = 'hero' | 'story' | 'gallery'
+export type Layout = 'hero' | 'story' | 'gallery' | 'specimen'
 
 interface Placed {
   id: string
@@ -29,10 +29,8 @@ interface Placed {
 }
 
 export const GALLERY_ICONS = ['heart', 'bolt', 'star', 'play', 'leaf', 'ring']
-export const GALLERY_PRODUCTS = ['armchair', 'mug']
 const ICON_GAP = 150
-const ROW_ICONS_Y = 70
-const ROW_PRODUCTS_Y = -200
+const ROW_ICONS_Y = 0
 
 export class Showcase {
   readonly renderer: THREE.WebGLRenderer
@@ -49,6 +47,9 @@ export class Showcase {
   private last = 0
   private disposed = false
   private visible = true
+  private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  private paused = false
+  private elapsed = 0
   private pmrem: THREE.PMREMGenerator
   private shadowTex: THREE.CanvasTexture
   private backdrop: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
@@ -61,7 +62,7 @@ export class Showcase {
   onPlaced: ((id: string) => void) | null = null
   onReady: (() => void) | null = null
 
-  constructor(private canvas: HTMLCanvasElement, private opts: { layout: Layout; narrow: boolean }) {
+  constructor(private canvas: HTMLCanvasElement, private opts: { layout: Layout; narrow: boolean; sample?: string; preset?: string }) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -69,7 +70,15 @@ export class Showcase {
     this.renderer.setClearColor(0xeceef2, 1)
     this.camera = new THREE.PerspectiveCamera(26, 1, 1, 12000)
     this.pmrem = new THREE.PMREMGenerator(this.renderer)
-    this.scene.environment = this.pmrem.fromScene(createStudioEnvironment(), 0.02).texture
+    const environment = createStudioEnvironment()
+    this.scene.environment = this.pmrem.fromScene(environment, 0.02).texture
+    environment.traverse(obj => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.dispose()
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
+        materials.forEach(material => material.dispose())
+      }
+    })
 
     // A soft backdrop pinned to the camera: the light table the objects sit on, and the thing
     // the glass has to refract. Without it transmission samples an empty buffer and reads white.
@@ -77,15 +86,20 @@ export class Showcase {
     bg.width = bg.height = 1024
     const bctx = bg.getContext('2d')!
     const grad = bctx.createRadialGradient(512, 430, 60, 512, 512, 700)
-    grad.addColorStop(0, '#ffffff')
-    grad.addColorStop(0.45, '#eff1f5')
-    grad.addColorStop(1, '#d6d9e1')
+    grad.addColorStop(0, '#fbfcff')
+    grad.addColorStop(0.45, '#eef1fb')
+    grad.addColorStop(1, '#e5e9f5')
     bctx.fillStyle = grad
     bctx.fillRect(0, 0, 1024, 1024)
     const pool = bctx.createRadialGradient(640, 380, 0, 640, 380, 420)
     pool.addColorStop(0, 'rgba(47,111,237,0.16)')
     pool.addColorStop(1, 'rgba(47,111,237,0)')
     bctx.fillStyle = pool
+    bctx.fillRect(0, 0, 1024, 1024)
+    const warm = bctx.createRadialGradient(830, 780, 10, 830, 780, 510)
+    warm.addColorStop(0, 'rgba(255,185,218,0.23)')
+    warm.addColorStop(1, 'rgba(255,185,218,0)')
+    bctx.fillStyle = warm
     bctx.fillRect(0, 0, 1024, 1024)
     const bgTex = new THREE.CanvasTexture(bg)
     bgTex.colorSpace = THREE.SRGBColorSpace
@@ -112,18 +126,19 @@ export class Showcase {
     this.shadowTex = new THREE.CanvasTexture(sc)
 
     this.placeCamera()
-    this.resize()
     this.last = performance.now()
-    this.loop(this.last)
+    this.resize()
   }
 
   /** Fixed camera per layout. A narrow viewport stacks: object above the text. */
   private placeCamera() {
     const n = this.opts.narrow
     if (this.opts.layout === 'hero') {
-      // Centred, a little above the middle so the headline has the lower third.
-      this.camera.position.set(0, 20, n ? 900 : 880)
-      this.target.set(0, n ? -95 : -78, 0)
+      this.camera.position.set(0, 0, 840)
+      this.target.set(0, 0, 0)
+    } else if (this.opts.layout === 'specimen') {
+      this.camera.position.set(0, 0, 570)
+      this.target.set(0, 0, 0)
     } else if (this.opts.layout === 'story') {
       this.camera.position.set(0, 30, n ? 960 : 520)
       // Look left of the object on desktop so it sits in the right half; below it on phones so
@@ -140,20 +155,34 @@ export class Showcase {
   /** Build the layout's objects, yielding between them so the page stays responsive. */
   async load() {
     const idle = () => new Promise<void>(r => setTimeout(r, 0))
-    if (this.opts.layout !== 'gallery') {
-      const brand = SAMPLES.find(s => s.id === 'vitrum')!
-      this.story = this.place(brand, new THREE.Vector3(0, 0, 0), this.opts.layout === 'hero' ? 130 : 120, 'story')
+    if (this.opts.layout === 'hero') {
+      this.story = this.place(SAMPLES.find(s => s.id === 'camera')!, new THREE.Vector3(-40, -28, 26), 185, 'story')
+      this.setPreset(this.opts.preset ?? 'sapphire')
+      this.place(SAMPLES.find(s => s.id === 'chat')!, new THREE.Vector3(92, 97, -5), 112)
+      await idle()
+      if (this.disposed) return
+      this.place(SAMPLES.find(s => s.id === 'heart')!, new THREE.Vector3(-113, 108, 5), 78)
+      this.place(SAMPLES.find(s => s.id === 'spark')!, new THREE.Vector3(110, -107, 20), 101)
+      this.invalidate()
       this.onReady?.()
       return
     }
-    const centre = (ICON_GAP * (GALLERY_ICONS.length - 1)) / 2
-    for (const [i, id] of GALLERY_ICONS.entries()) {
-      this.place(SAMPLES.find(x => x.id === id)!, new THREE.Vector3(i * ICON_GAP, ROW_ICONS_Y, 0), 92)
-      await idle()
+    if (this.opts.layout === 'specimen') {
+      const sample = SAMPLES.find(s => s.id === this.opts.sample) ?? SAMPLES[0]!
+      this.story = this.place(sample, new THREE.Vector3(), 145, 'story')
+      if (this.opts.preset) this.setPreset(this.opts.preset)
+      this.onReady?.()
+      return
     }
-    const productX = [centre - 150, centre + 150]
-    for (const [i, id] of GALLERY_PRODUCTS.entries()) {
-      this.placeProduct(SAMPLES.find(x => x.id === id)!, new THREE.Vector3(productX[i]!, ROW_PRODUCTS_Y, 0), 150)
+    if (this.opts.layout !== 'gallery') {
+      const brand = SAMPLES.find(s => s.id === 'vitrum')!
+      this.story = this.place(brand, new THREE.Vector3(0, 0, 0), 120, 'story')
+      this.onReady?.()
+      return
+    }
+    for (const [i, id] of GALLERY_ICONS.entries()) {
+      if (this.disposed) return
+      this.place(SAMPLES.find(x => x.id === id)!, new THREE.Vector3(i * ICON_GAP, ROW_ICONS_Y, 0), 92)
       await idle()
     }
     this.onReady?.()
@@ -173,36 +202,29 @@ export class Showcase {
     if (!trace.polygons.length) return null
     const aspect = (trace.bbox.maxY - trace.bbox.minY) / Math.max(1e-6, trace.bbox.maxX - trace.bbox.minX)
     const widthMm = aspect > 1 ? sizeMm / aspect : sizeMm
-    const depth = sizeMm * 0.12
-    const bevel = Math.min(3, Math.max(0.6, (trace.strokeWidth * widthMm) / Math.max(1, trace.bbox.maxX - trace.bbox.minX) * 0.3))
+    const roundedIcon = ['camera', 'chat', 'spark', 'heart'].includes(sample.id)
+    const depth = sizeMm * (roundedIcon ? 0.16 : 0.2)
+    // The brand's thin circular counters and the star's tips need a smaller bevel than
+    // their broad faces suggest; keep the inset from crossing those narrow features.
+    const bevelLimit = sample.id === 'vitrum' ? sizeMm * 0.004 : ['star', 'bolt'].includes(sample.id) ? sizeMm * 0.012 : sample.id === 'spark' ? sizeMm * 0.02 : sizeMm * 0.038
+    const bevel = Math.min(bevelLimit, Math.max(0.6, (trace.strokeWidth * widthMm) / Math.max(1, trace.bbox.maxX - trace.bbox.minX) * (roundedIcon ? 0.44 : 0.3)))
     const built = buildExtrudeGeometry(trace, { widthMm, depthMm: depth, bevelMm: bevel, bevelSegments: 8, layerMm: 2, stack })
     if (!built) return null
     const preset = MATERIAL_PRESETS.find(p => p.id === sample.preset)!
     const params = { ...DEFAULT_GLASS_PARAMS, ...preset.values, depthMm: depth }
     const material = this.material(params, () => buildPrintTexture(source as unknown as HTMLImageElement, trace))
-    const mesh = new THREE.Mesh(built.geometry, material)
+    let geometry = built.geometry
+    if (roundedIcon) {
+      geometry.deleteAttribute('normal')
+      const smooth = mergeVertices(geometry, 0.001)
+      smooth.computeVertexNormals()
+      geometry.dispose()
+      geometry = smooth
+    }
+    const mesh = new THREE.Mesh(geometry, material)
     this.mount(id, mesh, home, widthMm, built.frame.bh * built.frame.scale, depth)
     if (id === 'story') { this.storyDepth = depth; this.storyTrace = traced }
     return mesh
-  }
-
-  private placeProduct(sample: Sample, home: THREE.Vector3, sizeMm: number) {
-    const { trace, source } = this.trace(sample)
-    if (!trace.polygons.length) return
-    const aspect = (trace.bbox.maxY - trace.bbox.minY) / Math.max(1e-6, trace.bbox.maxX - trace.bbox.minX)
-    const widthMm = aspect > 1 ? sizeMm / aspect : sizeMm
-    const mask = { polygons: trace.polygons, width: trace.width, height: trace.height }
-    const relief = computeRelief(source as unknown as ImageBitmap, { ...DEFAULT_RELIEF_OPTIONS, inflate: true, resolution: 448, roundness: 0.6, detail: 0.35, smooth: 1.5 }, trace.crop, mask)
-    const depth = sizeMm * 0.32
-    const geo = buildReliefGeometry(relief, { widthMm, baseMm: 0, reliefMm: depth / 2 })
-    const centre = geo.boundingBox!.getCenter(new THREE.Vector3())
-    geo.translate(-centre.x, -centre.y, -centre.z)
-    geo.computeBoundingBox()
-    const size = geo.boundingBox!.getSize(new THREE.Vector3())
-    const preset = MATERIAL_PRESETS.find(p => p.id === sample.preset)!
-    const params = { ...DEFAULT_GLASS_PARAMS, ...preset.values, depthMm: depth }
-    const material = this.material(params, () => buildCropTexture(source as unknown as HTMLImageElement, relief.crop))
-    this.mount(sample.id, new THREE.Mesh(geo, material), home, size.x, size.y, size.z)
   }
 
   private mount(id: string, mesh: THREE.Mesh, home: THREE.Vector3, w: number, h: number, depth: number) {
@@ -210,7 +232,7 @@ export class Showcase {
     group.add(mesh)
     const shadow = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({ map: this.shadowTex, transparent: true, depthWrite: false, opacity: 0.5, toneMapped: false }),
+      new THREE.MeshBasicMaterial({ map: this.shadowTex, transparent: true, depthWrite: false, opacity: 0.25, toneMapped: false }),
     )
     shadow.scale.set(w * 1.5, h * 1.5, 1)
     shadow.position.set(w * 0.02, -h * 0.02, -depth * 1.4)
@@ -244,7 +266,7 @@ export class Showcase {
         iridescence: p.edgeChroma,
         iridescenceIOR: 1.3,
         iridescenceThicknessRange: [120, 480],
-        envMapIntensity: p.envIntensity,
+        envMapIntensity: p.envIntensity * 1.3,
         specularIntensity: 1,
       })
     }
@@ -283,6 +305,24 @@ export class Showcase {
     mesh.material = this.material(params, () => buildPrintTexture(source as unknown as HTMLImageElement, trace))
     old.map?.dispose()
     old.dispose()
+    this.invalidate()
+  }
+
+  private invalidate() {
+    if (!this.raf && this.visible && !this.disposed) {
+      this.last = performance.now()
+      this.loop(this.last)
+    }
+  }
+
+  setPaused(paused: boolean) { this.paused = paused; this.invalidate() }
+
+  setReducedMotion(reduced: boolean) { this.reducedMotion = reduced; this.invalidate() }
+
+  /** Render immediately before capture; no persistent drawing buffer needed. */
+  capture() {
+    this.renderer.render(this.scene, this.camera)
+    return this.canvas.toDataURL('image/webp', 0.92)
   }
 
   /** Story: 0 at the top of the pinned section, 1 per beat. Drives the object's turn. */
@@ -323,27 +363,31 @@ export class Showcase {
     this.camera.updateProjectionMatrix()
     const bh = 2 * Showcase.BACKDROP_DISTANCE * Math.tan((this.camera.fov * Math.PI) / 360) * 1.3
     this.backdrop.scale.set(bh * this.camera.aspect, bh, 1)
+    this.invalidate()
   }
 
   private loop = (now: number) => {
     if (this.disposed) return
     if (!this.visible) { this.raf = 0; return }
-    this.raf = requestAnimationFrame(this.loop)
+    this.raf = this.reducedMotion || this.paused ? 0 : requestAnimationFrame(this.loop)
     const dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
-    const t = now / 1000
+    const still = this.reducedMotion || this.paused
+    if (!still) this.elapsed += dt
+    const t = this.reducedMotion ? 2 : this.elapsed
     // Scroll eases so a fast wheel flick reads as one smooth turn.
     this.shownProgress += (this.progress - this.shownProgress) * (1 - Math.exp(-dt * 5))
     const layout = this.opts.layout
     const w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1
     // Pointer in normalised device coords; parked far away when it is off the canvas.
-    const px = this.pointerIn ? (this.pointer.x / w) * 2 - 1 : 0
-    const py = this.pointerIn ? -((this.pointer.y / h) * 2 - 1) : 0
+    const pointerIn = this.pointerIn && !still
+    const px = pointerIn ? (this.pointer.x / w) * 2 - 1 : 0
+    const py = pointerIn ? -((this.pointer.y / h) * 2 - 1) : 0
     const follow = 1 - Math.exp(-dt * 6)
 
     for (const o of this.placed) {
       const g = o.group
-      const landing = Math.min(1, (g.userData.landing as number) + dt * 1.4)
+      const landing = still ? 1 : Math.min(1, (g.userData.landing as number) + dt * 1.4)
       g.userData.landing = landing
       const e = 1 - Math.pow(1 - landing, 3)
       g.scale.setScalar(0.92 + 0.08 * e)
@@ -358,18 +402,20 @@ export class Showcase {
         reach = 1 - Math.min(1, Math.max(0, (dist - 0.18) / 0.5))
         reach *= reach
       }
-      const gain = this.pointerIn ? reach : 0
+      const gain = pointerIn ? reach : 0
       const wantY = Math.max(-0.9, Math.min(0.9, dx * (layout === 'gallery' ? 2.2 : 1.1))) * gain
       const wantX = Math.max(-0.6, Math.min(0.6, -dy * (layout === 'gallery' ? 1.6 : 0.8))) * gain
       const look = g.userData.look as THREE.Vector2 | undefined ?? (g.userData.look = new THREE.Vector2())
       look.x += (wantX - look.x) * follow
       look.y += (wantY - look.y) * follow
+      if (still) look.set(0, 0)
 
-      if (layout === 'hero') {
-        g.position.y = o.home.y - 40 * (1 - e) + Math.sin(t * 0.7 + o.phase) * 3
+      if (layout === 'hero' || layout === 'specimen') {
+        g.position.y = o.home.y - 24 * (1 - e) + Math.sin(t * 0.65 + o.phase) * 4
         // A slow sway so the object never sits still; the cursor turns it further.
-        g.rotation.y = Math.sin(t * 0.32) * 0.35 * (1 - gain * 0.6) + look.y
-        g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x
+        g.rotation.y = Math.sin(t * 0.32 + o.phase) * 0.16 * (1 - gain * 0.6) + look.y * 0.35 + (o.id === 'chat' ? 0.35 : -0.38)
+        g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x * 0.35 + 0.2
+        g.rotation.z = o.id === 'story' ? -0.17 : o.id === 'chat' ? 0.15 : Math.sin(o.phase) * 0.3
       } else if (layout === 'story') {
         g.position.y = o.home.y - 40 * (1 - e) + Math.sin(t * 0.7 + o.phase) * 3
         // A third of a turn per scrolled beat, plus a slow idle sway and the cursor's pull.
@@ -397,6 +443,7 @@ export class Showcase {
     this.shadowTex.dispose()
     this.backdrop.material.map?.dispose()
     this.pmrem.dispose()
+    this.scene.environment?.dispose()
     this.renderer.dispose()
   }
 }

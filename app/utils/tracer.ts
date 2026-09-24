@@ -1,4 +1,3 @@
-import { buildHull, type HullData, type HullOptions, type HullView } from './hull'
 import { computeRelief, type ReliefData, type ReliefMask, type ReliefOptions } from './relief'
 import { traceImage, type Crop, type TraceOptions, type TraceResult } from './trace'
 import type { TraceWorkerRequest, TraceWorkerResponse } from '~/workers/trace.worker'
@@ -20,17 +19,10 @@ export interface Relieved {
   where: 'worker' | 'main'
 }
 
-export interface Hulled {
-  result: HullData
-  ms: number
-  where: 'worker' | 'main'
-}
-
 type Settle<T> = { resolve: (v: T | null) => void; reject: (e: Error) => void }
 type Work =
   | ({ kind: 'trace'; opts: TraceOptions } & Settle<Traced>)
   | ({ kind: 'relief'; opts: ReliefOptions; crop: Crop; mask: ReliefMask | null } & Settle<Relieved>)
-  | ({ kind: 'hull'; views: HullView[]; opts: HullOptions } & Settle<Hulled>)
 type Job = Work & { id: number }
 type Kind = Work['kind']
 
@@ -53,7 +45,7 @@ export class Tracer {
   private nextId = 1
   private inflight: Job | null = null
   /** One waiting request per kind: a slider drag on the relief never cancels a pending trace. */
-  private pending: { trace: Work | null; relief: Work | null; hull: Work | null } = { trace: null, relief: null, hull: null }
+  private pending: { trace: Work | null; relief: Work | null } = { trace: null, relief: null }
 
   constructor() {
     if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return
@@ -110,11 +102,6 @@ export class Tracer {
     return new Promise((resolve, reject) => this.enqueue({ kind: 'relief', opts: { ...opts }, crop, mask, resolve, reject }))
   }
 
-  /** Visual hull from the front outline plus a side and/or top outline. Resolves `null` when superseded. */
-  hull(views: HullView[], opts: HullOptions): Promise<Hulled | null> {
-    return new Promise((resolve, reject) => this.enqueue({ kind: 'hull', views, opts: { ...opts }, resolve, reject }))
-  }
-
   private enqueue(work: Work) {
     if (this.inflight) {
       // Newest options win; the request they replace resolves empty so callers can ignore it.
@@ -136,9 +123,7 @@ export class Tracer {
       if (this.worker && this.workerHasSource) {
         const msg: TraceWorkerRequest = job.kind === 'trace'
           ? { type: 'trace', id: job.id, opts: job.opts }
-          : job.kind === 'relief'
-            ? { type: 'relief', id: job.id, opts: job.opts, crop: job.crop, mask: job.mask }
-            : { type: 'hull', id: job.id, views: job.views, opts: job.opts }
+          : { type: 'relief', id: job.id, opts: job.opts, crop: job.crop, mask: job.mask }
         try {
           this.worker.postMessage(msg)
         } catch (err) {
@@ -167,9 +152,6 @@ export class Tracer {
         if (job.kind === 'trace') {
           const result = traceImage(img, job.opts)
           this.finish(job, () => job.resolve({ result, ms: performance.now() - t0, where: 'main' }))
-        } else if (job.kind === 'hull') {
-          const result = buildHull(job.views, job.opts)
-          this.finish(job, () => job.resolve({ result, ms: performance.now() - t0, where: 'main' }))
         } else {
           const result = computeRelief(img, job.opts, job.crop, job.mask)
           this.finish(job, () => job.resolve({ result, ms: performance.now() - t0, where: 'main' }))
@@ -187,7 +169,6 @@ export class Tracer {
     if (!job || job.id !== msg.id) return
     if (msg.type === 'result' && job.kind === 'trace') this.finish(job, () => job.resolve({ result: msg.result, ms: msg.ms, where: 'worker' }))
     else if (msg.type === 'relief' && job.kind === 'relief') this.finish(job, () => job.resolve({ result: msg.result, ms: msg.ms, where: 'worker' }))
-    else if (msg.type === 'hull' && job.kind === 'hull') this.finish(job, () => job.resolve({ result: msg.result, ms: msg.ms, where: 'worker' }))
     else if (msg.type === 'error') this.finish(job, () => job.reject(new Error(msg.message)))
     else this.finish(job, () => job.reject(new Error('Worker answered the wrong request')))
   }
@@ -197,7 +178,7 @@ export class Tracer {
     settle()
     if (this.inflight) return
     // Traces first: a waiting relief usually depends on the crop the trace is about to produce.
-    const kind: Kind | null = this.pending.trace ? 'trace' : this.pending.relief ? 'relief' : this.pending.hull ? 'hull' : null
+    const kind: Kind | null = this.pending.trace ? 'trace' : this.pending.relief ? 'relief' : null
     if (!kind) return
     const next = this.pending[kind]!
     this.pending[kind] = null
@@ -213,8 +194,7 @@ export class Tracer {
   dispose() {
     this.pending.trace?.resolve(null)
     this.pending.relief?.resolve(null)
-    this.pending.hull?.resolve(null)
-    this.pending = { trace: null, relief: null, hull: null }
+    this.pending = { trace: null, relief: null }
     this.inflight?.resolve(null)
     this.inflight = null
     this.image = null

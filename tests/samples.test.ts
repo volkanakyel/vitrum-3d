@@ -8,9 +8,8 @@ describe('samples', () => {
     expect(ids.size).toBe(SAMPLES.length)
     for (const s of SAMPLES) expect(MATERIAL_PRESETS.some(p => p.id === s.preset), s.id).toBe(true)
   })
-  it('cover both studio modes', () => {
-    expect(SAMPLES.some(s => s.kind === 'icon')).toBe(true)
-    expect(SAMPLES.some(s => s.kind === 'product')).toBe(true)
-    expect(sampleById('armchair')?.kind).toBe('product')
+  it('finds a sample by id', () => {
+    expect(sampleById('vitrum')?.label).toBe('Vitrum mark')
+    expect(sampleById('nope')).toBeUndefined()
   })
 })

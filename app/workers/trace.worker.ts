@@ -1,4 +1,3 @@
-import { buildHull, type HullData, type HullOptions, type HullView } from '~/utils/hull'
 import { computeRelief, type ReliefData, type ReliefMask, type ReliefOptions } from '~/utils/relief'
 import { traceImage, type Crop, type TraceOptions, type TraceResult } from '~/utils/trace'
 
@@ -10,12 +9,10 @@ export type TraceWorkerRequest =
   | { type: 'source'; bitmap: ImageBitmap | null }
   | { type: 'trace'; id: number; opts: TraceOptions }
   | { type: 'relief'; id: number; opts: ReliefOptions; crop: Crop; mask: ReliefMask | null }
-  | { type: 'hull'; id: number; views: HullView[]; opts: HullOptions }
 
 export type TraceWorkerResponse =
   | { type: 'result'; id: number; result: TraceResult; ms: number }
   | { type: 'relief'; id: number; result: ReliefData; ms: number }
-  | { type: 'hull'; id: number; result: HullData; ms: number }
   | { type: 'error'; id: number; message: string }
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope
@@ -26,17 +23,6 @@ ctx.onmessage = (e: MessageEvent<TraceWorkerRequest>) => {
   if (msg.type === 'source') {
     source?.close()
     source = msg.bitmap
-    return
-  }
-  if (msg.type === 'hull') {
-    // Outlines only, no pixels: the hull needs no source image.
-    try {
-      const t0 = performance.now()
-      const result = buildHull(msg.views, msg.opts)
-      ctx.postMessage({ type: 'hull', id: msg.id, result, ms: performance.now() - t0 } satisfies TraceWorkerResponse, [result.positions.buffer, result.normals.buffer])
-    } catch (err) {
-      ctx.postMessage({ type: 'error', id: msg.id, message: (err as Error).message } satisfies TraceWorkerResponse)
-    }
     return
   }
   if (!source) {

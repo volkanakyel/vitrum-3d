@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import type * as THREE from 'three'
-import { GlassStudio, type GlassParams, type HullSources, type ModelDimensions } from '~/utils/glassScene'
-import type { HullData } from '~/utils/hull'
+import { GlassStudio, type GlassParams, type ModelDimensions } from '~/utils/glassScene'
 import type { ReliefData } from '~/utils/relief'
 import type { TraceResult } from '~/utils/trace'
 
-const props = defineProps<{ trace: TraceResult | null; relief: ReliefData | null; hull?: HullData | null; hullSources?: HullSources | null; params: GlassParams; source?: HTMLImageElement | null }>()
+const props = defineProps<{ trace: TraceResult | null; relief: ReliefData | null; params: GlassParams; source?: HTMLImageElement | null }>()
 const emit = defineEmits<{ dimensions: [ModelDimensions | null] }>()
 
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -28,7 +26,6 @@ onBeforeUnmount(() => {
 
 watch(() => props.trace, t => studio?.setTrace(t, props.source ?? null))
 watch(() => props.relief, r => studio?.setRelief(r))
-watch(() => [props.hull, props.hullSources] as const, ([h, s]) => studio?.setHull(h ?? null, s ?? null))
 watch(() => ({ ...props.params }), p => studio?.setParams(p))
 
 function download(blob: Blob, name: string) {
@@ -44,13 +41,11 @@ defineExpose({
   /** Set parameters without easing; `applyNow` false when a new trace is about to rebuild. */
   snap: (p: Partial<GlassParams>, applyNow = true) => studio?.snapParams(p, applyNow),
   frame: () => studio?.frame(),
-  /** Stand a model built elsewhere (the sculpt parts model) on the stage; `null` restores the carve. */
-  setExternalModel: (group: THREE.Group | null) => studio?.setExternalModel(group),
   setView: (v: 'angle' | 'front' | 'side' | 'top') => studio?.setView(v),
   exportGLB: async (name = 'vitrum') => { if (studio) download(await studio.exportGLB(), `${name}.glb`) },
   exportSTL: (name = 'vitrum') => { if (studio) download(studio.exportSTL(), `${name}.stl`) },
   screenshot: async (name = 'vitrum') => { if (studio) download(await studio.screenshot(), `${name}.png`) },
-  /** The same render as `screenshot`, handed back instead of downloaded — the eval harness saves it itself. */
+  /** The same render as `screenshot`, handed back instead of downloaded. */
   capture: async (scale = 2) => (studio ? await studio.screenshot(scale) : null),
 })
 </script>
