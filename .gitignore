@@ -30,9 +30,3 @@ playwright-report
 # Local screenshots
 .shots
 .superpowers/
-
-# Eval harness: photos and run output are the owner's, never the repo's
-eval/photos/*
-!eval/photos/.gitkeep
-eval/out/
-eval/runs/
