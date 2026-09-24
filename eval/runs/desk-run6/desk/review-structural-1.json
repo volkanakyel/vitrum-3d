@@ -1,0 +1,26 @@
+{
+  "action": "refine-code",
+  "fidelity": 0.58,
+  "layers": {
+    "silhouetteProportion": 0.8,
+    "componentStructure": 0.45,
+    "formDetail": 0.6,
+    "materialSurface": 0.65,
+    "lightingCamera": 0.75
+  },
+  "defects": [
+    {
+      "component": "bracket-lf (left-back instance)",
+      "what": "Only 3 of the 4 required L-brackets are present in the measured table; the left-panel back bracket is missing entirely, breaking the 2x2 (front/back x left/right) mirror repetition the spec calls for.",
+      "measured": "Table lists bracket-lf x -0.639..-0.628 z 0.138..0.302 (left-front), bracket-lf-mirror x 0.628..0.639 z 0.138..0.302 (right-front), bracket-lf-mirror-mirror x 0.628..0.639 z -0.302..-0.138 (right-back); no entry exists at x -0.639..-0.628 z -0.302..-0.138 (left-back).",
+      "fix": "Instantiate the missing mirror of bracket-lf across the z-axis on panel-left so a bracket sits at x -0.639..-0.628, y 0.563..0.727, z -0.302..-0.138, completing the brackets-front-back x brackets-left-right double mirror."
+    },
+    {
+      "component": "glide-lf and its 3 mirrors",
+      "what": "No glide pads appear anywhere in the measured parts table; the panels sit directly on the floor instead of standing 0.002 m clear on pads, so a required part group was never built.",
+      "measured": "panel-left y 0.000..0.725 and panel-right y 0.000..0.725 both start at y=0.000 (floor level); no glide-lf/mirror entries exist in the table at all.",
+      "fix": "Add the four glide-pad primitives (0.015 x 0.003 x 0.03 m) at each panel bottom corner per the glides-front-back / glides-left-right mirror repetition, and raise panel-left/panel-right so their bottom edge sits at y=0.002 instead of y=0.000."
+    }
+  ],
+  "summary": "Overall inverted-U silhouette, top-slab overhang (0.05 m each side/end), and the 1.270/1.300 m inner/outer panel spacing all match the spec numbers well, and the camera framing is close to the reference. However two mustMatch structural facts fail: the bracket count is 3 instead of the required 4 (left-back bracket missing from the table), and the four glide pads specified to lift the panels 0.002 m off the floor are entirely absent, leaving both panels flush with y=0. These are build omissions, not spec problems (the spec's repetition rules and glide component are well-defined), so this needs a code fix pass before moving on to form/material work.</summary>\n"
+}

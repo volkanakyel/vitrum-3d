@@ -1,0 +1,8 @@
+[
+  "Macro masses only: top-slab, panel-left, panel-right, all kit.box at the spec's exact dimensions and positions. Brackets (bracket-lf, meso) and glide pads (glide-lf, micro) and their mirror repetitions are skipped for this pass, as are all localFeatures (edge polish, tint gradient, butt line, sheen).",
+  "Materials: two flat kit.plastic materials, one per referenced spec material (glass-amber-top #A85F2A, glass-amber-panel #A0561F), each created once and shared. metal-bronze and plastic-glide are unused because their parts are not in this pass.",
+  "Inverted the spec's rests-on direction: the attachment records panel-left/panel-right as children of top-slab with contact rests-on, but applying kit.restOn(panel, topSlab) literally would lift the panels on top of the slab and make the desk ~1.47 m tall. I seat the slab onto the panel tops instead — kit.restOn(topSlab, panelLeft, 0) — which reproduces the spec's own y values (panel centre 0.3625, slab centre 0.7325, total height 0.740).",
+  "panel-right is authored explicitly rather than mirrored, because the spec gives it its own component id and the repetition list only mirrors brackets and glides.",
+  "Inferred: panel bottoms sit at y = 0 rather than the spec's 0.002 m glide lift, since the glides are micro parts not built yet; total height therefore reads 0.740 m exactly.",
+  "Improved silhouette: overall 1.40 W x 0.740 H x 0.70 D with 0.050 m overhang on all four sides of the panel footprint and 1.270 m clear between panel inner faces."
+]

@@ -1,0 +1,13 @@
+{
+  "action": "continue",
+  "fidelity": 0.76,
+  "layers": {
+    "silhouetteProportion": 0.85,
+    "componentStructure": 0.8,
+    "formDetail": 0.3,
+    "materialSurface": 0.2,
+    "lightingCamera": 0.7
+  },
+  "defects": [],
+  "summary": "The blockout nails the macro geometry: measured boxes show top-slab 1.40×0.015×0.70 at y 0.725-0.740, panels 0.015×0.725×0.600 with outer faces 1.300 m apart and a clean 0.050 m overhang on every side, matching the spec's mustMatch macro facts exactly. The inverted-U silhouette, overall height (0.74 m) and panel spacing read correctly against both the three-quarter photo and the front/side/top views, with no stretcher or apron intruding between the panels. Brackets, glide pads, edge-polish bands and tint gradients are absent, but those are meso/micro/material features scheduled for later passes and are correctly left out of this flat-colour blockout, so they are not scored as defects here. Camera framing in the render pair is close enough to the photo's three-quarter angle that no adjustment is warranted yet. This pass is solid; proceed to the structural pass to add the brackets and glide pads called out in the part table.\""
+}

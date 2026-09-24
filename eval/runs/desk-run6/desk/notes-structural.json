@@ -1,0 +1,6 @@
+[
+  "Fixed defect 1 (missing left-back bracket): the old code mirrored the original in both z and x, so two clones were both named 'bracket-lf-mirror' and one replaced the other in the part table. Rebuilt the set as a chain — lf -> mirror z (left-back) -> mirror x (right-back) -> mirror z (right-front) — so all four clones get distinct ids and all four corners are populated. No placement was re-derived by hand.",
+  "Fixed defect 2 (missing glide pads / panels on the floor): added 'glide-lf' (roundedBox 0.015 x 0.003 x 0.03, r 0.001) at x -0.6425, z 0.255 (0.03 m in from the panel front corner) with its centre at y 0.0015 so its base is the floor and it is inserted 0.001 m into the panel edge; mirrored through the same chain (z, x, z) for unique ids. Raised both panels so their bottom edge is at y = 0.002, and derived the top slab's y from the new panel top before letting restOn seat it.",
+  "Left alone: bracket outline, thickness, offsets and 0.44 m c/c spacing; panel and slab dimensions and overhangs; the panels->slab restOn direction; all materials (still flat plastics for the structural pass).",
+  "Improved; both listed defects addressed. Total desk height is now 0.742 m (0.002 glide lift + 0.725 panel + 0.015 slab) as a direct consequence of the requested lift — flag if the reviewer wants 0.740 m kept instead."
+]

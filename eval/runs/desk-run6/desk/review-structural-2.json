@@ -1,0 +1,13 @@
+{
+  "action": "continue",
+  "fidelity": 0.8,
+  "layers": {
+    "silhouetteProportion": 0.85,
+    "componentStructure": 0.9,
+    "formDetail": 0.65,
+    "materialSurface": 0.55,
+    "lightingCamera": 0.8
+  },
+  "defects": [],
+  "summary": "Structural pass checks out against the measured table: the inverted-U of top slab plus two 0.015 m panels is present with correct overhang (0.05 m in both width and depth), inner-face spacing (1.270 m) and outer-face spacing (1.300 m) match spec exactly, all four bronze L-brackets exist at the correct top corners with 0.44 m front-back spacing and touch both their panel and the top slab (no floating), and all four glide pads sit under the panel bottom edges with the correct 0.002 m floor clearance. No stretcher/apron was added, matching the spec's explicit exclusion. Camera framing in the reference view matches the photo's three-quarter angle well. Remaining gaps (bracket strap width 0.011 m vs spec's 0.006 m, and the already-applied amber tint/gradient) are form/material-pass concerns, not structural defects, so they don't block this pass. All mustMatch structural facts hold — recommend proceeding to the form pass."
+}
