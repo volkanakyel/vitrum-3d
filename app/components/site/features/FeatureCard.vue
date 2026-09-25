@@ -26,10 +26,10 @@ const WASH = {
 <template>
   <article
     ref="root"
-    class="flex min-w-0 flex-col rounded-[24px] bg-surface p-1.5 shadow-pane"
+    class="flex min-w-0 flex-col rounded-card bg-surface p-1.5 shadow-pane"
     :class="[WASH[tone], { 'col-span-2 max-fold:col-auto': wide }]"
   >
-    <div class="relative isolate grid h-[300px] place-items-center overflow-hidden rounded-[18px] bg-[radial-gradient(120%_90%_at_85%_0%,var(--wash)_0%,transparent_62%),radial-gradient(90%_80%_at_0%_100%,var(--wash-2)_0%,transparent_60%),linear-gradient(180deg,#f3f4f7,#eceef2)] shadow-[inset_0_0_0_1px_var(--hairline),inset_0_1px_0_#fff] max-lap:h-[270px] max-fold:h-[250px]">
+    <div class="relative isolate grid h-[300px] place-items-center overflow-hidden rounded-pane bg-[radial-gradient(120%_90%_at_85%_0%,var(--wash)_0%,transparent_62%),radial-gradient(90%_80%_at_0%_100%,var(--wash-2)_0%,transparent_60%),linear-gradient(180deg,#f3f4f7,#eceef2)] shadow-[inset_0_0_0_1px_var(--hairline),inset_0_1px_0_#fff] max-lap:h-[270px] max-fold:h-[250px]">
       <slot
         :running="running"
         :seen="seen || reduced"

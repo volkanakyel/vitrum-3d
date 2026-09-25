@@ -1,7 +1,7 @@
 import { MATERIAL_PRESETS, type MaterialPreset } from '~/utils/presets'
 
 /** Finishes the hero can preview. Order is the swatch order. */
-export const LANDING_LOOK_IDS = ['sapphire', 'crystal', 'emerald', 'rose', 'amber', 'chrome', 'gold', 'copper'] as const
+export const LANDING_LOOK_IDS = ['chrome', 'silver', 'titanium', 'black', 'smoke', 'obsidian', 'frosted', 'clear'] as const
 
 export interface LandingExample {
   /** Sample id in `samples.ts`; the card opens it in the studio. */

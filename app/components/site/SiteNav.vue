@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { useEventListener, useIntersectionObserver } from '@vueuse/core'
 
-const links = [{ id: 'features', label: 'Features' }, { id: 'examples', label: 'Examples' }, { id: 'questions', label: 'Questions' }]
+const links = [
+  { id: 'features', label: 'Features' },
+  { id: 'examples', label: 'Examples' },
+  { id: 'questions', label: 'Questions' },
+]
 const scrolled = ref(false)
 const menuOpen = ref(false)
 const menuToggle = ref<HTMLButtonElement | null>(null)
@@ -12,7 +16,9 @@ function onScroll() {
   scrolled.value = window.scrollY > 24
   if (window.scrollY < 200) active.value = ''
 }
-function closeMenu() { menuOpen.value = false }
+function closeMenu() {
+  menuOpen.value = false
+}
 function onEscape() {
   if (!menuOpen.value) return
   closeMenu()
@@ -20,12 +26,16 @@ function onEscape() {
 }
 
 useEventListener('scroll', onScroll, { passive: true })
-useIntersectionObserver(sections, (entries) => {
-  for (const entry of entries) if (entry.isIntersecting) active.value = entry.target.id
-}, { rootMargin: '-15% 0px -60% 0px' })
+useIntersectionObserver(
+  sections,
+  (entries) => {
+    for (const entry of entries) if (entry.isIntersecting) active.value = entry.target.id
+  },
+  { rootMargin: '-15% 0px -60% 0px' },
+)
 onMounted(() => {
   onScroll()
-  sections.value = links.map(link => document.getElementById(link.id)).filter(el => el !== null)
+  sections.value = links.map((link) => document.getElementById(link.id)).filter((el) => el !== null)
 })
 
 const focus = 'focus-ring [--ring-offset:4px]'
@@ -34,14 +44,20 @@ const focus = 'focus-ring [--ring-offset:4px]'
 <template>
   <header
     class="frame-nav fixed inset-x-0 top-[max(14px,env(safe-area-inset-top))] z-40 rounded-[22px] backdrop-blur-[20px] backdrop-saturate-140 transition-[background-color,box-shadow] duration-200 ease-[ease] motion-reduce:transition-none max-tab:top-[max(12px,env(safe-area-inset-top))] max-tab:rounded-[18px]"
-    :class="scrolled ? 'bg-white/92 shadow-float' : 'bg-white/72 shadow-[0_0_0_1px_var(--hairline),inset_0_1px_0_#fff]'"
+    :class="
+      scrolled
+        ? 'bg-white/92 shadow-float'
+        : 'bg-white/72 shadow-[0_0_0_1px_var(--hairline),inset_0_1px_0_#fff]'
+    "
     @keydown.esc="onEscape"
   >
     <a
       class="absolute -top-[90px] left-5 rounded-[8px] bg-white p-3 text-[#20242c] focus:top-2.5 focus:z-50"
       :class="focus"
       href="#main-content"
-    >Skip to content</a>
+    >
+      Skip to content
+    </a>
     <nav
       class="flex h-[60px] items-center justify-between gap-[25px] pr-2 pl-3.5 max-tab:h-[62px] max-tab:gap-2.5 max-tab:pr-[9px] max-tab:pl-[13px]"
       aria-label="Main navigation"
@@ -64,7 +80,9 @@ const focus = 'focus-ring [--ring-offset:4px]'
           class="flex min-h-[34px] items-center rounded-full px-3.5 text-[13px] transition-colors duration-150 ease-[ease] hover:bg-well hover:text-ink motion-reduce:transition-none max-desk:px-2.5 max-desk:text-[11px]"
           :class="[focus, active === link.id ? 'bg-well text-ink' : 'text-ink-2']"
           :aria-current="active === link.id ? 'location' : undefined"
-        >{{ link.label }}</a>
+        >
+          {{ link.label }}
+        </a>
       </div>
       <div class="flex items-center gap-2">
         <SiteButton
@@ -104,13 +122,14 @@ const focus = 'focus-ring [--ring-offset:4px]'
         class="flex justify-between py-[15px] text-[15px] text-ink"
         :class="focus"
         @click="closeMenu"
-      >{{ link.label }}<Icon
-        name="arrow-up-right"
-        :size="16"
-      /></a>
-      <p class="pt-2.5 text-[12px] text-ink-3">
-        Free, in your browser.
-      </p>
+      >
+        {{ link.label }}
+        <Icon
+          name="arrow-up-right"
+          :size="16"
+        />
+      </a>
+      <p class="pt-2.5 text-[12px] text-ink-3">Free, in your browser.</p>
     </div>
   </header>
 </template>

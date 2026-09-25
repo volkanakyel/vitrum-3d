@@ -100,7 +100,7 @@
 @theme {
   --breakpoint-desk: 68.8125rem; /* ≤1100px: nav tightens, bento goes to two columns */
   --breakpoint-lap: 62.5625rem; /* ≤1000px: example grid goes to two columns */
-  --breakpoint-split: 53.8125rem; /* ≤860px: the hero window drops its side panel */
+  --breakpoint-split: 53.8125rem; /* ≤860px: hero stage goes square, finishes move under it */
   --breakpoint-tab: 50.0625rem; /* ≤800px: phone layout for nav, headings, footer */
   --breakpoint-fold: 42.5625rem; /* ≤680px: bento goes to one column */
   --breakpoint-phone: 32.5625rem; /* ≤520px */
@@ -234,6 +234,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* Card family, nested concentric: window (p-2) → pane, card (p-1.5) → pane. */
+  --radius-window: 12px;
+  --radius-card: 12px;
+  --radius-pane: 6px;
+  --radius-tile: 5px;
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow);
   --shadow-raise: var(--shadow-raise);
@@ -307,7 +312,7 @@
 /* Landing type scale. Geist, tight; body features (tnum) are inherited, unlike `.font-display`. */
 @utility heading-hero {
   font-family: var(--font-display);
-  font-size: clamp(40px, 5.8vw, 84px);
+  font-size: clamp(36px, 5vw, 72px);
   font-weight: 500;
   line-height: 1;
   letter-spacing: -0.055em;

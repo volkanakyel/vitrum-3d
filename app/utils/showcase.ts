@@ -5,7 +5,7 @@ import { createStudioEnvironment } from './glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams } from './presets'
 import { buildPrintTexture } from './printTexture'
 import { DEFAULT_TRACE_OPTIONS, traceImage, type TraceResult } from './trace'
-import { drawSample, HERO_STORY, LOGO_SAMPLE_IDS, SAMPLES, type Sample } from './samples'
+import { drawSample, HERO_DECOR, HERO_FINISH, HERO_STORY, LOGO_SAMPLE_IDS, SAMPLES, type Sample } from './samples'
 
 /**
  * The landing page's showroom. Every object is built from `SAMPLES` through the same trace →
@@ -67,10 +67,10 @@ export class Showcase {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.NeutralToneMapping
-    this.renderer.setClearColor(0xeceef2, 1)
+    this.renderer.setClearColor(0xe4e4e2, 1)
     this.camera = new THREE.PerspectiveCamera(26, 1, 1, 12000)
     this.pmrem = new THREE.PMREMGenerator(this.renderer)
-    const environment = createStudioEnvironment()
+    const environment = createStudioEnvironment({ neutral: true })
     this.scene.environment = this.pmrem.fromScene(environment, 0.02).texture
     environment.traverse(obj => {
       if (obj instanceof THREE.Mesh) {
@@ -80,27 +80,38 @@ export class Showcase {
       }
     })
 
-    // A soft backdrop pinned to the camera: the light table the objects sit on, and the thing
-    // the glass has to refract. Without it transmission samples an empty buffer and reads white.
+    // A photo-studio sweep pinned to the camera: the paper the objects sit in front of, and the
+    // thing the glass has to refract. Without it transmission samples an empty buffer and reads
+    // white. Neutral greys, a key-light falloff, a vignette and film grain keep it from reading
+    // as a flat digital gradient, and give chrome and black something to mirror.
     const bg = document.createElement('canvas')
     bg.width = bg.height = 1024
     const bctx = bg.getContext('2d')!
-    const grad = bctx.createRadialGradient(512, 430, 60, 512, 512, 700)
-    grad.addColorStop(0, '#fbfcff')
-    grad.addColorStop(0.45, '#eef1fb')
-    grad.addColorStop(1, '#e5e9f5')
-    bctx.fillStyle = grad
+    const sweep = bctx.createLinearGradient(0, 0, 0, 1024)
+    sweep.addColorStop(0, '#ededeb')
+    sweep.addColorStop(0.55, '#e2e2e0')
+    sweep.addColorStop(1, '#cfcfcc')
+    bctx.fillStyle = sweep
     bctx.fillRect(0, 0, 1024, 1024)
-    const pool = bctx.createRadialGradient(640, 380, 0, 640, 380, 420)
-    pool.addColorStop(0, 'rgba(47,111,237,0.16)')
-    pool.addColorStop(1, 'rgba(47,111,237,0)')
-    bctx.fillStyle = pool
+    const key = bctx.createRadialGradient(330, 250, 0, 330, 250, 620)
+    key.addColorStop(0, 'rgba(255,255,255,0.7)')
+    key.addColorStop(1, 'rgba(255,255,255,0)')
+    bctx.fillStyle = key
     bctx.fillRect(0, 0, 1024, 1024)
-    const warm = bctx.createRadialGradient(830, 780, 10, 830, 780, 510)
-    warm.addColorStop(0, 'rgba(255,185,218,0.23)')
-    warm.addColorStop(1, 'rgba(255,185,218,0)')
-    bctx.fillStyle = warm
+    const vignette = bctx.createRadialGradient(512, 470, 300, 512, 512, 780)
+    vignette.addColorStop(0, 'rgba(24,24,26,0)')
+    vignette.addColorStop(1, 'rgba(24,24,26,0.16)')
+    bctx.fillStyle = vignette
     bctx.fillRect(0, 0, 1024, 1024)
+    const pixels = bctx.getImageData(0, 0, 1024, 1024)
+    const px = pixels.data
+    for (let i = 0; i < px.length; i += 4) {
+      const n = (Math.random() - 0.5) * 9
+      px[i] = px[i]! + n
+      px[i + 1] = px[i + 1]! + n
+      px[i + 2] = px[i + 2]! + n
+    }
+    bctx.putImageData(pixels, 0, 0)
     const bgTex = new THREE.CanvasTexture(bg)
     bgTex.colorSpace = THREE.SRGBColorSpace
     this.backdrop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: bgTex, toneMapped: false }))
@@ -108,11 +119,11 @@ export class Showcase {
     this.camera.add(this.backdrop)
     this.scene.add(this.camera)
 
-    const key = new THREE.DirectionalLight(0xffffff, 2.0)
-    key.position.set(-1, 1.2, 1.6)
-    const rim = new THREE.DirectionalLight(0xdfe9ff, 1.2)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.0)
+    keyLight.position.set(-1, 1.2, 1.6)
+    const rim = new THREE.DirectionalLight(0xf4f4f4, 1.2)
     rim.position.set(1.4, -0.4, -1)
-    this.scene.add(key, rim)
+    this.scene.add(keyLight, rim)
 
     const sc = document.createElement('canvas')
     sc.width = sc.height = 256
@@ -157,12 +168,12 @@ export class Showcase {
     const idle = () => new Promise<void>(r => setTimeout(r, 0))
     if (this.opts.layout === 'hero') {
       this.story = this.place(SAMPLES.find(s => s.id === HERO_STORY)!, new THREE.Vector3(-30, -20, 26), 176, 'story')
-      this.setPreset(this.opts.preset ?? 'sapphire')
-      this.place(SAMPLES.find(s => s.id === 'spotify')!, new THREE.Vector3(104, 100, -5), 92)
-      await idle()
-      if (this.disposed) return
-      this.place(SAMPLES.find(s => s.id === 'figma')!, new THREE.Vector3(-122, 104, 5), 84)
-      this.place(SAMPLES.find(s => s.id === 'framer')!, new THREE.Vector3(118, -104, 20), 80)
+      this.setPreset(this.opts.preset ?? HERO_FINISH)
+      for (const decor of HERO_DECOR) {
+        await idle()
+        if (this.disposed) return
+        this.place(SAMPLES.find(s => s.id === decor.id)!, new THREE.Vector3(...decor.at), decor.size, decor.id, decor.preset)
+      }
       this.invalidate()
       this.onReady?.()
       return
@@ -195,7 +206,7 @@ export class Showcase {
   }
 
   /** `sizeMm` is the longer side of the object, so a tall bolt and a wide heart read as one family. */
-  private place(sample: Sample, home: THREE.Vector3, sizeMm: number, id = sample.id): THREE.Mesh | null {
+  private place(sample: Sample, home: THREE.Vector3, sizeMm: number, id = sample.id, presetId = sample.preset): THREE.Mesh | null {
     const stack = sample.id === 'play'
     const traced = this.trace(sample, stack)
     const { trace, source } = traced
@@ -211,7 +222,7 @@ export class Showcase {
     const bevel = Math.min(bevelLimit, Math.max(0.6, (trace.strokeWidth * widthMm) / Math.max(1, trace.bbox.maxX - trace.bbox.minX) * (roundedIcon ? 0.44 : 0.3)))
     const built = buildExtrudeGeometry(trace, { widthMm, depthMm: depth, bevelMm: bevel, bevelSegments: 8, layerMm: 2, stack })
     if (!built) return null
-    const preset = MATERIAL_PRESETS.find(p => p.id === sample.preset)!
+    const preset = MATERIAL_PRESETS.find(p => p.id === presetId)!
     const params = { ...DEFAULT_GLASS_PARAMS, ...preset.values, depthMm: depth }
     const material = this.material(params, () => buildPrintTexture(source as unknown as HTMLImageElement, trace))
     let geometry = built.geometry

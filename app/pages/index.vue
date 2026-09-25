@@ -3,12 +3,13 @@ import { useEventListener } from '@vueuse/core'
 import { LANDING_EXAMPLES, LANDING_FAQS, landingLooks } from '~/data/landing'
 import { LOGOS } from '~/utils/logos'
 import { MATERIAL_PRESETS } from '~/utils/presets'
+import { HERO_FINISH } from '~/utils/samples'
 
 const route = useRoute()
 const siteUrl = useRuntimeConfig().public.siteUrl
 const socialImage = siteUrl ? new URL('/images/vitrum-social.png', siteUrl).href : '/images/vitrum-social.png'
 const looks = landingLooks()
-const preset = ref('sapphire')
+const preset = ref<string>(HERO_FINISH)
 const live = ref(false)
 const unavailable = ref(false)
 const paused = ref(false)
@@ -36,7 +37,7 @@ function selectLook(id: string) {
 }
 
 function restoreFinish(value: unknown) {
-  preset.value = typeof value === 'string' && looks.some(look => look.id === value) ? value : 'sapphire'
+  preset.value = typeof value === 'string' && looks.some(look => look.id === value) ? value : HERO_FINISH
 }
 
 // Nuxt restores a prerendered page's query after suspense resolves, later than mounted.
@@ -70,7 +71,7 @@ const action = 'max-2xs:flex-[1_1_100%]'
   -->
   <main
     id="main-content"
-    class="overflow-clip bg-shell text-ink [--gap:14px] [--section:clamp(80px,11vw,144px)] max-tab:[--gap:12px]"
+    class="overflow-clip bg-shell text-ink [--gap:14px] [--section:clamp(104px,13vw,184px)] max-tab:[--gap:12px]"
   >
     <section
       class="frame pt-[132px] text-center max-tab:pt-28"
@@ -80,7 +81,7 @@ const action = 'max-2xs:flex-[1_1_100%]'
       <div class="flex flex-col items-center">
         <h1
           id="hero-title"
-          class="heading-hero max-2xs:text-[38px]"
+          class="heading-hero max-2xs:text-[34px]"
         >
           <span class="block animate-rise motion-reduce:animate-none">Custom 3D icons</span>
           <span class="block animate-rise animation-delay-70 motion-reduce:animate-none">from any logo.</span>
@@ -269,10 +270,10 @@ const action = 'max-2xs:flex-[1_1_100%]'
           v-for="example in LANDING_EXAMPLES"
           :key="example.id"
           :to="{ path: '/studio', query: { sample: example.id, finish: example.preset } }"
-          class="group flex flex-col rounded-[24px] bg-surface p-1.5 text-ink shadow-pane focus-ring [--ring-offset:3px]"
+          class="group flex flex-col rounded-card bg-surface p-1.5 text-ink shadow-pane focus-ring [--ring-offset:3px]"
           :aria-label="`Open the ${example.name} example in ${example.finish.toLowerCase()} in the studio`"
         >
-          <span class="block aspect-square overflow-hidden rounded-[18px] bg-[#e7e9ef] inset-shadow-hairline">
+          <span class="block aspect-square overflow-hidden rounded-pane bg-[#e7e9ef] inset-shadow-hairline">
             <img
               :src="`/images/${example.image}.webp`"
               :alt="`${example.name} logo rendered in 3D, ${example.finish.toLowerCase()}`"
@@ -306,7 +307,7 @@ const action = 'max-2xs:flex-[1_1_100%]'
       class="frame pt-(--section)"
       aria-labelledby="closing-title"
     >
-      <div class="grid min-h-[400px] grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] overflow-hidden rounded-[28px] bg-surface p-2 shadow-pane max-tab:grid-cols-1">
+      <div class="grid min-h-[400px] grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] overflow-hidden rounded-window bg-surface p-2 shadow-pane max-tab:grid-cols-1">
         <div class="flex flex-col items-start justify-center p-12 max-desk:px-8 max-desk:py-10 max-tab:px-[18px] max-tab:pt-7 max-tab:pb-[22px]">
           <h2
             id="closing-title"
@@ -358,7 +359,7 @@ const action = 'max-2xs:flex-[1_1_100%]'
           ></label>
         </div>
         <div
-          class="relative min-h-[280px] overflow-hidden rounded-[20px] bg-[#e7e9ef] max-tab:-order-1 max-tab:aspect-[16/10] max-tab:min-h-0"
+          class="relative min-h-[280px] overflow-hidden rounded-pane bg-[#e7e9ef] max-tab:-order-1 max-tab:aspect-[16/10] max-tab:min-h-0"
           aria-hidden="true"
         >
           <img

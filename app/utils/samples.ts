@@ -159,6 +159,14 @@ export const SAMPLES: Sample[] = [
 
 /** The landing hero's centre object; its finish follows the page's swatches. */
 export const HERO_STORY = 'github'
+/** The hero's opening finish; the landing stays monochrome so the shapes, not the colours, lead. */
+export const HERO_FINISH = 'chrome'
+/** Marks floating around the hero story, in black and chrome to match it. */
+export const HERO_DECOR = [
+  { id: 'spotify', preset: 'black', at: [104, 100, -5], size: 92 },
+  { id: 'figma', preset: 'black', at: [-122, 104, 5], size: 84 },
+  { id: 'framer', preset: 'chrome', at: [118, -104, 20], size: 80 },
+] as const
 
 /** Brand marks. Their fine details (tails, stripes, bars) need a small bevel to survive. */
 export const LOGO_SAMPLE_IDS = new Set(LOGOS.map(l => l.id))

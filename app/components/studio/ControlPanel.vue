@@ -184,7 +184,7 @@ const tabTrigger =
         <!-- Source -->
         <div>
           <label
-            class="group relative flex cursor-pointer items-center gap-3 rounded-[18px] p-3 transition-[background-color,box-shadow] duration-200"
+            class="group relative flex cursor-pointer items-center gap-3 rounded-pane p-3 transition-[background-color,box-shadow] duration-200"
             :class="
               hasSource
                 ? 'bg-card shadow-raise'
@@ -200,7 +200,7 @@ const tabTrigger =
             <template v-if="hasSource">
               <motion.span
                 :key="fileName"
-                class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-[14px] bg-[linear-gradient(160deg,#ffffff,#eef2f8)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]"
+                class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-tile bg-[linear-gradient(160deg,#ffffff,#eef2f8)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]"
                 :initial="{ scale: 0.7, opacity: 0, rotate: -6 }"
                 :animate="{ scale: 1, opacity: 1, rotate: 0 }"
                 :transition="{ type: 'spring', stiffness: 380, damping: 24 }"
@@ -253,7 +253,7 @@ const tabTrigger =
             </template>
             <template v-else>
               <span
-                class="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-card text-muted-foreground shadow-raise transition-colors group-hover:text-foreground"
+                class="flex size-11 shrink-0 items-center justify-center rounded-tile bg-card text-muted-foreground shadow-raise transition-colors group-hover:text-foreground"
               >
                 <Icon
                   name="imagePlus"

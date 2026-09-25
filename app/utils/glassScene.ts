@@ -17,8 +17,9 @@ import type { Crop } from './trace'
 /**
  * A dark studio with a few bright softboxes. High contrast is what makes glass read as glass:
  * bevels go dark where they mirror the room and flare where they catch a strip light.
+ * `neutral` whitens the warm and cool side strips, so black and chrome stay colourless.
  */
-export function createStudioEnvironment(): THREE.Scene {
+export function createStudioEnvironment({ neutral = false } = {}): THREE.Scene {
   const scene = new THREE.Scene()
   // Gradient dome: dark floor, mid-grey horizon, softer ceiling. Metals read their shape from
   // this gradient; a flat black room leaves them looking like cut-outs.
@@ -49,8 +50,8 @@ export function createStudioEnvironment(): THREE.Scene {
     scene.add(m)
   }
   light(14, 3, 0xffffff, 6, [0, 14, 4])          // long top softbox: main horizontal highlight
-  light(2.5, 16, 0xffe2c0, 5, [-14, 2, 6])       // warm tall strip on the left
-  light(2.5, 16, 0xc4d8ff, 5, [14, 2, 6])        // cool tall strip on the right
+  light(2.5, 16, neutral ? 0xffffff : 0xffe2c0, 5, [-14, 2, 6])       // warm tall strip on the left
+  light(2.5, 16, neutral ? 0xffffff : 0xc4d8ff, 5, [14, 2, 6])        // cool tall strip on the right
   light(10, 2, 0xffffff, 2.5, [0, -12, 8])       // faint fill from below
   light(6, 6, 0xffffff, 1.2, [0, 0, -16])        // back card seen through the glass
   light(16, 10, 0xffffff, 2.6, [0, 5, 18])       // broad front softbox: sheen on the face

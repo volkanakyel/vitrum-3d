@@ -298,7 +298,7 @@ onMounted(() => {
                 class="absolute top-1/2 left-1/2 size-[260px] -translate-x-1/2 -translate-y-[112%] animate-breathe-halo rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.9),rgba(255,255,255,0)_72%)] blur-[6px] motion-reduce:animate-none"
                 aria-hidden="true"
               />
-              <div class="pointer-events-auto relative w-[440px] max-w-[calc(100vw-3rem)] rounded-[28px] bg-white/66 px-8 pt-10 pb-8 text-center shadow-[inset_1.5px_1.5px_1px_rgba(255,255,255,0.95),inset_-1px_-1px_1px_rgba(255,255,255,0.5),0_0_0_1px_var(--hairline),0_2px_24px_rgba(3,7,18,0.04),0_28px_56px_-32px_rgba(3,7,18,0.3)] backdrop-blur-[22px] backdrop-saturate-125">
+              <div class="pointer-events-auto relative w-[440px] max-w-[calc(100vw-3rem)] rounded-window bg-white/66 px-8 pt-10 pb-8 text-center shadow-[inset_1.5px_1.5px_1px_rgba(255,255,255,0.95),inset_-1px_-1px_1px_rgba(255,255,255,0.5),0_0_0_1px_var(--hairline),0_2px_24px_rgba(3,7,18,0.04),0_28px_56px_-32px_rgba(3,7,18,0.3)] backdrop-blur-[22px] backdrop-saturate-125">
                 <span class="tile relative mx-auto mb-7 flex size-[88px] items-center justify-center overflow-hidden rounded-[26px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(13,14,18,0.05),inset_0_0_0_1px_rgba(255,255,255,0.6),0_0_0_1px_var(--hairline),0_20px_36px_-22px_rgba(3,7,18,0.4)]">
                   <span
                     class="absolute inset-0 animate-sweep rounded-[inherit] bg-[linear-gradient(115deg,transparent_30%,rgba(255,255,255,0)_42%,rgba(255,255,255,0.9)_50%,rgba(255,255,255,0)_58%,transparent_70%)] [transform:translateX(-120%)] motion-reduce:animate-none"
@@ -368,7 +368,7 @@ onMounted(() => {
             <motion.div
               v-if="dragging"
               key="drop"
-              class="pointer-events-none absolute inset-3 flex items-center justify-center gap-2 rounded-[16px] border-[1.5px] border-dashed border-ice/60 bg-ice-soft/75 text-[15px] font-medium text-ice backdrop-blur-sm"
+              class="pointer-events-none absolute inset-3 flex items-center justify-center gap-2 rounded-pane border-[1.5px] border-dashed border-ice/60 bg-ice-soft/75 text-[15px] font-medium text-ice backdrop-blur-sm"
               :initial="{ opacity: 0 }"
               :animate="{ opacity: 1 }"
               :exit="{ opacity: 0 }"
