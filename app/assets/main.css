@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 
 @custom-variant dark (&:is(.dark *));
+/* Touch screens: keyboard hints mean nothing there. */
+@custom-variant hover-none (@media (hover: none));
 
 /*
   Vitrum — "Cold light" (studio glass, v2).
@@ -86,6 +88,105 @@
   --shadow: 0 6px 24px rgba(13, 14, 18, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+/*
+  Marketing breakpoints. The landing page is laid out desktop-first, so these are used as
+  `max-*` variants. Each sits 1px above its design width because `max-tab:` compiles to
+  `width < 50.0625rem`: it matches 800px and below, like the original `max-width: 800px`.
+  Tailwind's defaults (sm, md, …) stay untouched; the shadcn primitives and the studio use them.
+*/
+@theme {
+  --breakpoint-desk: 68.8125rem; /* ≤1100px: nav tightens, bento goes to two columns */
+  --breakpoint-lap: 62.5625rem; /* ≤1000px: example grid goes to two columns */
+  --breakpoint-split: 53.8125rem; /* ≤860px: the hero window drops its side panel */
+  --breakpoint-tab: 50.0625rem; /* ≤800px: phone layout for nav, headings, footer */
+  --breakpoint-fold: 42.5625rem; /* ≤680px: bento goes to one column */
+  --breakpoint-phone: 32.5625rem; /* ≤520px */
+  --breakpoint-xs: 30.0625rem; /* ≤480px */
+  --breakpoint-2xs: 26.3125rem; /* ≤420px */
+  --breakpoint-3xs: 25.0625rem; /* ≤400px */
+
+  /* Entrances. Delays are set per element with `animation-delay-*`. */
+  --animate-rise: rise 800ms var(--ease-out-expo) both;
+  --animate-lift: lift 900ms 180ms var(--ease-out-expo) both;
+  --animate-settle: settle 500ms var(--ease-out-quint) both;
+  --animate-breathe: breathe 9s ease-in-out infinite;
+  --animate-breathe-halo: breathe-halo 7s ease-in-out infinite reverse;
+  --animate-sweep: sweep 6.5s var(--ease-out-quint) infinite;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
+  }
+  @keyframes lift {
+    from { opacity: 0; transform: translateY(40px) scale(0.98); }
+  }
+  @keyframes settle {
+    from { opacity: 0; transform: translateY(6px); }
+  }
+  @keyframes breathe {
+    0%, 100% { transform: translate(-50%, -62%) scale(1); opacity: 1; }
+    50% { transform: translate(-50%, -62%) scale(1.06); opacity: 0.85; }
+  }
+  @keyframes breathe-halo {
+    0%, 100% { transform: translate(-50%, -112%) scale(1); opacity: 0.9; }
+    50% { transform: translate(-50%, -112%) scale(1.08); opacity: 0.7; }
+  }
+  @keyframes sweep {
+    0% { transform: translateX(-120%); }
+    35%, 100% { transform: translateX(120%); }
+  }
+}
+
+/*
+  Landing demo keyframes. Top-level (not inside @theme) so they are always emitted: the demos
+  reference them through arbitrary values, e.g. `animate-[draw_900ms_200ms_var(--ease-in-out-cubic)_forwards]`.
+*/
+/* Stroke reveal for paths drawn with `stroke-draw`. */
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes pop {
+  to { transform: scale(1); }
+}
+@keyframes appear {
+  to { opacity: 1; }
+}
+@keyframes fill-in {
+  to { fill-opacity: 1; }
+}
+@keyframes lock-in {
+  from { opacity: 0; transform: scale(0.8) translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes file-rise {
+  from { opacity: 0; transform: translateY(12px); }
+}
+@keyframes trace-scan {
+  0% { opacity: 0; transform: translateY(-64px); }
+  20%, 80% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(260px); }
+}
+/* Import loader: a scan line across the tile (`--tile` is set on the loader) and a ticking "...". */
+@keyframes loader-scan {
+  0% { transform: translateY(calc(var(--tile) * 0.08)); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(calc(var(--tile) * 0.92)); opacity: 0; }
+}
+@keyframes dot-1 { 0% { opacity: 0; } 25% { opacity: 1; } }
+@keyframes dot-2 { 0% { opacity: 0; } 50% { opacity: 1; } }
+@keyframes dot-3 { 0% { opacity: 0; } 75% { opacity: 1; } }
+@keyframes key-press {
+  0% { opacity: 0; transform: translateY(-10px); }
+  38% { opacity: 1; transform: translateY(0); }
+  55% {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 1px rgba(13, 14, 18, 0.07), 0 1px 0 1px rgba(13, 14, 18, 0.05), 0 2px 0 -1px #e2e5eb, 0 8px 16px -10px rgba(13, 14, 18, 0.25), inset 0 1px 0 #fff;
+    color: var(--ice);
+  }
+  100% { transform: translateY(0); }
 }
 
 @theme inline {
@@ -135,6 +236,17 @@
   --radius-xl: calc(var(--radius) + 4px);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow);
+  --shadow-raise: var(--shadow-raise);
+  --shadow-raise-dark: var(--shadow-raise-dark);
+  --shadow-float: var(--shadow-float);
+  --shadow-pane: var(--shadow-pane);
+  --shadow-hairline: 0 0 0 1px var(--hairline);
+  --inset-shadow-hairline: inset 0 0 0 1px var(--hairline);
+  --ease-out-quint: var(--ease-out-quint);
+  --ease-out-expo: var(--ease-out-expo);
+  --ease-in-out-cubic: var(--ease-in-out-cubic);
+  --color-ice-glow: var(--ice-glow);
+  --color-ink-hover: #262830;
 }
 
 /* Elevation utilities so components share one vocabulary. */
@@ -154,6 +266,59 @@
 @utility well {
   background: var(--well);
   box-shadow: inset 0 1px 1px rgba(13, 14, 18, 0.04);
+}
+/* Keyboard focus: the ice ring. Widen the gap with `[--ring-offset:4px]`. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--ice);
+    outline-offset: var(--ring-offset, 2px);
+  }
+}
+/* `animation-delay-120` → 120ms. Tailwind's `delay-*` only covers transitions. */
+@utility animation-delay-* {
+  animation-delay: calc(--value(integer) * 1ms);
+}
+/* A path with `pathLength="1"` hidden behind its own dash; `animate-[draw_…]` reveals it. */
+@utility stroke-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+/* Porcelain tile behind a mark (studio empty state, import loader). */
+@utility tile {
+  background: linear-gradient(160deg, #ffffff 0%, #eef2f8 100%);
+}
+/* Empty source slot: a recessed well with a dashed hairline drawn inside it. */
+@utility dashed-well {
+  background-color: var(--well);
+  background-image:
+    repeating-linear-gradient(90deg, var(--hairline-strong) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(90deg, var(--hairline-strong) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(180deg, var(--hairline-strong) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(180deg, var(--hairline-strong) 0 6px, transparent 6px 12px);
+  background-size: 100% 1px, 100% 1px, 1px 100%, 1px 100%;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  background-repeat: no-repeat;
+}
+/* A finish swatch: a lit sphere with a soft underside. */
+@utility sphere {
+  border-radius: 50%;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5), inset 0 -2px 3px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(13, 14, 18, 0.05);
+}
+/* Landing type scale. Geist, tight; body features (tnum) are inherited, unlike `.font-display`. */
+@utility heading-hero {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 5.8vw, 84px);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.055em;
+}
+@utility heading-section {
+  font-family: var(--font-display);
+  font-size: clamp(30px, 3.6vw, 48px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
 }
 /* Mono index used for section numbers and small labels. */
 @utility index {

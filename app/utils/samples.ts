@@ -4,6 +4,8 @@
  * through the same trace → build pipeline as an uploaded file.
  */
 
+import { LOGOS, type Logo } from './logos'
+
 export interface Sample {
   id: string
   label: string
@@ -33,6 +35,28 @@ function mark(d: string, opts: { evenodd?: boolean; ink?: string; tile?: string 
     ctx.fill(new Path2D(d), opts.evenodd ? 'evenodd' : 'nonzero')
     ctx.restore()
   }
+}
+
+/** A brand mark from `logos.ts`, fitted into the frame at its own aspect ratio, drawn flat. */
+function logo(l: Logo) {
+  return (ctx: CanvasRenderingContext2D, size: number) => {
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, size, size)
+    const [x, y, w, h] = l.viewBox
+    const k = (size * 0.72) / Math.max(w, h)
+    ctx.save()
+    ctx.translate((size - w * k) / 2 - x * k, (size - h * k) / 2 - y * k)
+    ctx.scale(k, k)
+    ctx.fillStyle = '#0d0e12'
+    for (const p of l.paths) ctx.fill(new Path2D(p.d), l.evenodd ? 'evenodd' : 'nonzero')
+    ctx.restore()
+  }
+}
+
+/** Default finish for each brand sample when it opens from the landing page. */
+const LOGO_FINISH: Record<string, string> = {
+  github: 'chrome', figma: 'rose', framer: 'gold', linear: 'obsidian',
+  discord: 'sapphire', spotify: 'emerald', apple: 'silver', stripe: 'amber',
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -130,7 +154,14 @@ export const SAMPLES: Sample[] = [
     id: 'ring', label: 'Ring', preset: 'obsidian',
     draw: mark('M50 6 A44 44 0 1 0 50 94 A44 44 0 1 0 50 6 Z M50 26 A24 24 0 1 1 50 74 A24 24 0 1 1 50 26 Z', { evenodd: true }),
   },
+  ...LOGOS.map(l => ({ id: l.id, label: l.name, preset: LOGO_FINISH[l.id] ?? 'crystal', draw: logo(l) })),
 ]
+
+/** The landing hero's centre object; its finish follows the page's swatches. */
+export const HERO_STORY = 'github'
+
+/** Brand marks. Their fine details (tails, stripes, bars) need a small bevel to survive. */
+export const LOGO_SAMPLE_IDS = new Set(LOGOS.map(l => l.id))
 
 export function sampleById(id: string): Sample | undefined {
   return SAMPLES.find(s => s.id === id)

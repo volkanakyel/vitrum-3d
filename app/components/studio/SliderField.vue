@@ -110,6 +110,15 @@ function onKey(e: KeyboardEvent) {
     set(+(props.modelValue - props.step * big).toFixed(6))
   }
 }
+
+// Hairline track, filled range, small ringed thumb that grows on hover / press and pops on a snap.
+const thumb = [
+  'size-3.5 rounded-full border-0 bg-card transition-[scale,box-shadow] duration-150 motion-reduce:transition-none pointer-coarse:size-4',
+  'shadow-[0_0_0_1px_var(--hairline-strong),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
+  'hover:scale-115 hover:ring-0 hover:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_rgba(17,18,20,.06),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
+  'focus-visible:scale-115 focus-visible:ring-0 focus-visible:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_rgba(17,18,20,.06),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
+  'active:scale-95',
+]
 </script>
 
 <template>
@@ -219,8 +228,10 @@ function onKey(e: KeyboardEvent) {
         :min="min"
         :max="max"
         :step="step"
-        class="slider h-4 pointer-coarse:h-8"
-        :class="{ snapping }"
+        class="group/track h-4 pointer-coarse:h-8"
+        track-class="h-0.5 rounded-full bg-ink/10 group-hover/track:bg-ink/15 data-[orientation=horizontal]:h-0.5"
+        range-class="bg-foreground"
+        :thumb-class="[thumb, snapping && 'scale-125! duration-90']"
       />
       <!-- snap pulse -->
       <AnimatePresence>
@@ -240,7 +251,7 @@ function onKey(e: KeyboardEvent) {
         <motion.div
           v-if="dragging"
           key="tip"
-          class="pointer-events-none absolute -top-6 -translate-x-1/2 rounded-full bg-foreground px-2 py-0.5 font-mono text-[10.5px] text-background shadow-[var(--shadow-raise-dark)]"
+          class="pointer-events-none absolute -top-6 -translate-x-1/2 rounded-full bg-foreground px-2 py-0.5 font-mono text-[10.5px] text-background shadow-raise-dark"
           :style="{ left: `${pct}%` }"
           :initial="{ opacity: 0, y: 4, scale: 0.9 }"
           :animate="{ opacity: 1, y: 0, scale: 1 }"
@@ -253,46 +264,3 @@ function onKey(e: KeyboardEvent) {
     </div>
   </div>
 </template>
-
-<style scoped>
-@reference "~/assets/main.css";
-
-/* Hairline track, filled range, small ringed thumb that grows on hover / press. */
-.slider :deep([data-slot='slider-track']) {
-  @apply h-0.5 rounded-full bg-ink/10;
-}
-.slider :deep([data-slot='slider-range']) {
-  @apply bg-foreground;
-}
-.slider :deep([data-slot='slider-thumb']) {
-  @apply size-3.5 rounded-full border-0 bg-card transition-[scale,box-shadow] duration-150 pointer-coarse:size-4;
-  box-shadow:
-    0 0 0 1px var(--hairline-strong),
-    0 1px 2px rgba(17, 18, 20, 0.16),
-    inset 0 1px 0 #fff;
-}
-.slider :deep([data-slot='slider-thumb']:hover),
-.slider :deep([data-slot='slider-thumb']:focus-visible) {
-  scale: 1.15;
-  box-shadow:
-    0 0 0 1px var(--hairline-strong),
-    0 0 0 5px rgba(17, 18, 20, 0.06),
-    0 1px 2px rgba(17, 18, 20, 0.16),
-    inset 0 1px 0 #fff;
-}
-.slider :deep([data-slot='slider-thumb']:active) {
-  scale: 0.95;
-}
-.slider.snapping :deep([data-slot='slider-thumb']) {
-  scale: 1.25;
-  transition-duration: 90ms;
-}
-@media (prefers-reduced-motion: reduce) {
-  .slider :deep([data-slot='slider-thumb']) {
-    transition: none;
-  }
-}
-.slider:hover :deep([data-slot='slider-track']) {
-  @apply bg-ink/15;
-}
-</style>

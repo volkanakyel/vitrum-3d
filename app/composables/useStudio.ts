@@ -1,8 +1,9 @@
+import { useEventListener } from '@vueuse/core'
 import type { ImportPhase } from '~/components/studio/StageLoader.vue'
 import type { ModelDimensions, ViewName } from '~/utils/glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams, type Geometry } from '~/utils/presets'
 import { DEFAULT_RELIEF_OPTIONS, reliefAspect, type ReliefData, type ReliefOptions } from '~/utils/relief'
-import { SAMPLES, sampleFile } from '~/utils/samples'
+import { LOGO_SAMPLE_IDS, SAMPLES, sampleFile } from '~/utils/samples'
 import { DEFAULT_TRACE_OPTIONS, loadImage, type TraceOptions, type TraceResult } from '~/utils/trace'
 import { Tracer } from '~/utils/tracer'
 
@@ -14,6 +15,7 @@ const OPEN_COUNTERS = new Set(['camera', 'chat', 'spark', 'heart'])
 /** Shape a landing link opens with, after the trace has chosen its own defaults. */
 function linkedSampleShape(id: string): Pick<GlassParams, 'geometry' | 'widthMm' | 'depthMm' | 'bevelMm'> {
   const geometry: Geometry = id === 'play' ? 'stack' : 'extrude'
+  if (LOGO_SAMPLE_IDS.has(id)) return { geometry, widthMm: 100, depthMm: 14, bevelMm: 1 }
   const bevelMm = id === 'vitrum' ? 0.4 : id === 'star' || id === 'bolt' ? 1.2 : id === 'spark' ? 2 : 3.8
   return { geometry, widthMm: 100, depthMm: OPEN_COUNTERS.has(id) ? 16 : 20, bevelMm }
 }
@@ -300,8 +302,7 @@ export function useStudio() {
   }
 
   function onKey(e: KeyboardEvent) {
-    const el = e.target as HTMLElement | null
-    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+    if (isEditableTarget(e.target)) return
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
       e.preventDefault()
       void doExport('glb')
@@ -316,13 +317,9 @@ export function useStudio() {
     if (e.key === 'r') glass.autoRotate = !glass.autoRotate
   }
 
-  onMounted(() => {
-    window.addEventListener('paste', onPaste)
-    window.addEventListener('keydown', onKey)
-  })
+  useEventListener('paste', onPaste)
+  useEventListener('keydown', onKey)
   onBeforeUnmount(() => {
-    window.removeEventListener('paste', onPaste)
-    window.removeEventListener('keydown', onKey)
     clearTimeout(traceTimer)
     clearTimeout(reliefTimer)
     clearTimeout(toastTimer)

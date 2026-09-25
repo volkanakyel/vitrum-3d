@@ -1,18 +1,15 @@
 import { MATERIAL_PRESETS, type MaterialPreset } from '~/utils/presets'
 
 /** Finishes the hero can preview. Order is the swatch order. */
-export const LANDING_LOOK_IDS = ['sapphire', 'crystal', 'chrome', 'gold', 'rose'] as const
+export const LANDING_LOOK_IDS = ['sapphire', 'crystal', 'emerald', 'rose', 'amber', 'chrome', 'gold', 'copper'] as const
 
 export interface LandingExample {
+  /** Sample id in `samples.ts`; the card opens it in the studio. */
   id: string
   name: string
-  type: string
-  material: string
+  finish: string
   preset: string
   image: string
-  tone: 'blue' | 'silver' | 'pink'
-  alt: string
-  label: string
 }
 
 export interface LandingFaq {
@@ -20,47 +17,22 @@ export interface LandingFaq {
   answer: string
 }
 
+/** Rendered in the studio at its default size, angle view. Images live in `public/images`. */
 export const LANDING_EXAMPLES: LandingExample[] = [
-  {
-    id: 'camera',
-    name: 'A fresh perspective.',
-    type: 'For your next big launch',
-    material: 'Sapphire glass',
-    preset: 'sapphire',
-    image: 'sapphire',
-    tone: 'blue',
-    alt: 'Sapphire glass camera rendered in 3D',
-    label: 'Open Sapphire glass camera in the studio',
-  },
-  {
-    id: 'chat',
-    name: 'Start a conversation.',
-    type: 'Give your brand a voice',
-    material: 'Polished chrome',
-    preset: 'chrome',
-    image: 'chrome',
-    tone: 'silver',
-    alt: 'Polished chrome chat rendered in 3D',
-    label: 'Open Polished chrome chat in the studio',
-  },
-  {
-    id: 'heart',
-    name: 'Make them feel it.',
-    type: 'A little love for your feed',
-    material: 'Rosé glass',
-    preset: 'rose',
-    image: 'rose',
-    tone: 'pink',
-    alt: 'Rosé glass heart rendered in 3D',
-    label: 'Open Rosé glass heart in the studio',
-  },
+  { id: 'github', name: 'GitHub', finish: 'Polished chrome', preset: 'chrome', image: 'logo-github' },
+  { id: 'figma', name: 'Figma', finish: 'Holographic glass', preset: 'holo', image: 'logo-figma' },
+  { id: 'spotify', name: 'Spotify', finish: 'Emerald glass', preset: 'emerald', image: 'logo-spotify' },
+  { id: 'discord', name: 'Discord', finish: 'Sapphire glass', preset: 'sapphire', image: 'logo-discord' },
+  { id: 'apple', name: 'Apple', finish: 'Brushed aluminium', preset: 'silver', image: 'logo-apple' },
+  { id: 'linear', name: 'Linear', finish: 'Obsidian glass', preset: 'obsidian', image: 'logo-linear' },
 ]
 
 export const LANDING_FAQS: LandingFaq[] = [
-  { question: 'Do I need to know 3D?', answer: 'No. Start with a logo or icon, choose a material, and turn it around. Vitrum builds the geometry for you. You can adjust the depth, bevel, lighting and finish whenever you want.' },
-  { question: 'What can I upload?', answer: 'PNG, JPG, WebP and SVG files. Logos and icons with a clear silhouette make a great starting point. A transparent background helps, but is not required.' },
-  { question: 'Can I use it in client work?', answer: 'You can export your designs as a PNG for presentations and social posts, a GLB for 3D and web projects, or an STL for fabrication. Use artwork you own or have permission to use.' },
-  { question: 'Do my files leave my device?', answer: 'No. Tracing, modelling and rendering happen in your browser. Your uploaded artwork stays on your device. There is no account to create and nothing to install.' },
+  { question: 'Do I need to know 3D?', answer: 'No. Drop in a logo or icon, pick a finish and turn it to the angle you want. Vitrum builds the geometry for you. Depth, bevel, lighting and material stay adjustable if you want to go further.' },
+  { question: 'What files work best?', answer: 'SVG, PNG, JPG and WebP. A mark with a clear silhouette gives the cleanest result. A transparent background helps but isn’t required: Vitrum detects the shape either way.' },
+  { question: 'Can I use the GLB in three.js or React Three Fiber?', answer: 'Yes. The GLB is a standard glTF binary with physically based materials, sized in metres, so it loads in three.js, React Three Fiber, Spline, Blender and most 3D tools.' },
+  { question: 'Can I use it for client work?', answer: 'Everything you export is yours to use. Only upload artwork you own or have permission to use, and check a brand’s guidelines before rendering its logo.' },
+  { question: 'Do my files leave my device?', answer: 'No. Tracing, modelling and rendering all run in your browser. Nothing is uploaded, and there’s no account to create.' },
 ]
 
 /** Resolves hero swatches from the shared material list so a renamed preset fails loudly. */

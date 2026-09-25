@@ -114,7 +114,7 @@ const onHue = (e: PointerEvent) => drag(e, x => { hsv.value = [x * 359.99, hsv.v
           <span class="size-7 shrink-0 rounded-lg shadow-[inset_0_0_0_1px_rgba(17,18,20,0.1)]" :style="{ background: modelValue }" />
           <input
             v-model="hexDraft"
-            class="h-7 w-full rounded-lg bg-card px-2 font-mono text-[12px] uppercase shadow-[var(--shadow-raise)] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/35"
+            class="h-7 w-full rounded-lg bg-card px-2 font-mono text-[12px] uppercase shadow-raise outline-none focus-visible:ring-[3px] focus-visible:ring-ring/35"
             spellcheck="false"
             @blur="commitHex"
             @keydown.enter="commitHex"

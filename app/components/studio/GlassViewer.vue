@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useEventListener, useResizeObserver } from '@vueuse/core'
 import { GlassStudio, type GlassParams, type ModelDimensions } from '~/utils/glassScene'
 import type { ReliefData } from '~/utils/relief'
 import type { TraceResult } from '~/utils/trace'
@@ -8,7 +9,6 @@ const emit = defineEmits<{ dimensions: [ModelDimensions | null] }>()
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 let studio: GlassStudio | null = null
-let ro: ResizeObserver | null = null
 
 function syncVisibility(): void {
   studio?.setPageVisible(document.visibilityState === 'visible')
@@ -17,16 +17,13 @@ function syncVisibility(): void {
 onMounted(() => {
   studio = new GlassStudio(canvas.value!)
   syncVisibility()
-  document.addEventListener('visibilitychange', syncVisibility)
   studio.snapParams({ ...props.params })
   // Sizes ease over several frames and rebuild as they go; the HUD reads the built mesh.
   studio.onRebuild = () => emit('dimensions', studio?.getDimensions() ?? null)
-  ro = new ResizeObserver(() => studio?.resize(true))
-  ro.observe(canvas.value!)
 })
+useEventListener(() => document, 'visibilitychange', syncVisibility)
+useResizeObserver(canvas, () => studio?.resize(true))
 onBeforeUnmount(() => {
-  document.removeEventListener('visibilitychange', syncVisibility)
-  ro?.disconnect()
   studio?.dispose()
   studio = null
 })

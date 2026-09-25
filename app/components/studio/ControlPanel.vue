@@ -2,7 +2,6 @@
 import { AnimatePresence, motion } from 'motion-v'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { NumberField, NumberFieldContent, NumberFieldInput } from '@/components/ui/number-field'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Sidebar,
@@ -141,8 +140,6 @@ const bgSwatches = [
 // Tab triggers stay flat; the shared motion pill below carries the active state.
 const tabTrigger =
   'relative gap-1.5 rounded-full border-0 text-[12px] text-muted-foreground transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none'
-const dimInput =
-  'h-8 rounded-lg border-0 bg-card pr-7 pl-6 pointer-coarse:h-10 pointer-coarse:text-[14px] text-right font-mono text-[12px] tabular-nums shadow-[var(--shadow-raise)] transition-[box-shadow] focus-visible:ring-[3px] focus-visible:ring-ring/35'
 </script>
 
 <template>
@@ -190,8 +187,8 @@ const dimInput =
             class="group relative flex cursor-pointer items-center gap-3 rounded-[18px] p-3 transition-[background-color,box-shadow] duration-200"
             :class="
               hasSource
-                ? 'bg-card shadow-[var(--shadow-raise)]'
-                : 'source-well hover:bg-card hover:shadow-[var(--shadow-raise)]'
+                ? 'bg-card shadow-raise'
+                : 'dashed-well hover:bg-none hover:shadow-raise'
             "
           >
             <input
@@ -256,7 +253,7 @@ const dimInput =
             </template>
             <template v-else>
               <span
-                class="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-card text-muted-foreground shadow-[var(--shadow-raise)] transition-colors group-hover:text-foreground"
+                class="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-card text-muted-foreground shadow-raise transition-colors group-hover:text-foreground"
               >
                 <Icon
                   name="imagePlus"
@@ -305,7 +302,7 @@ const dimInput =
             <motion.span
               v-if="tab === t.value"
               layout-id="panel-tab-pill"
-              class="absolute inset-0 -z-10 rounded-full bg-card shadow-[var(--shadow-raise)]"
+              class="absolute inset-0 -z-10 rounded-full bg-card shadow-raise"
               :transition="{ type: 'spring', stiffness: 500, damping: 40 }"
             />
             <motion.span
@@ -325,10 +322,12 @@ const dimInput =
       <SidebarSeparator class="mx-4 bg-hairline data-[orientation=horizontal]:w-auto" />
 
       <SidebarContent class="gap-0">
+        <!-- Content fades under the header and footer edges; the scrollbar is a hairline that only
+             appears while scrolling and lives in the gutter, never over the controls. -->
         <ScrollArea
           type="hover"
           :scroll-hide-delay="400"
-          class="panel-scroll min-h-0 flex-1"
+          class="min-h-0 flex-1 **:data-[slot=scroll-area-scrollbar]:w-2 **:data-[slot=scroll-area-scrollbar]:border-0 **:data-[slot=scroll-area-scrollbar]:p-0 **:data-[slot=scroll-area-scrollbar]:py-3 **:data-[slot=scroll-area-scrollbar]:pr-[3px] **:data-[slot=scroll-area-thumb]:rounded-full **:data-[slot=scroll-area-thumb]:bg-foreground/20 **:data-[slot=scroll-area-viewport]:[mask-image:linear-gradient(to_bottom,transparent,#000_14px,#000_calc(100%-14px),transparent)]"
         >
           <div class="px-4 pt-5 pb-6">
             <TabsContent
@@ -404,7 +403,7 @@ const dimInput =
                   <span
                     v-for="(l, i) in trace.layers"
                     :key="i"
-                    class="flex h-6 items-center gap-1.5 rounded-full bg-card pr-2.5 pl-1.5 text-[11px] text-ink-2 shadow-[var(--shadow-raise)] tabular-nums"
+                    class="flex h-6 items-center gap-1.5 rounded-full bg-card pr-2.5 pl-1.5 text-[11px] text-ink-2 shadow-raise tabular-nums"
                   >
                     <span
                       class="size-3 rounded-full shadow-[inset_0_0_0_1px_var(--hairline-strong)]"
@@ -647,48 +646,27 @@ const dimInput =
                 @reset="pick('widthMm', 'depthMm', 'bevelMm', 'bevelSegments')"
               >
                 <div class="grid grid-cols-3 gap-2">
-                  <NumberField
+                  <DimField
+                    axis="W"
                     :model-value="glass.widthMm"
                     :min="1"
                     :step="1"
-                    :format-options="{ maximumFractionDigits: 1 }"
-                    class="gap-1"
                     @update:model-value="(v) => setNumber('widthMm', v)"
-                  >
-                    <NumberFieldContent>
-                      <span class="dim-prefix">W</span>
-                      <NumberFieldInput :class="dimInput" />
-                      <span class="dim-suffix">mm</span>
-                    </NumberFieldContent>
-                  </NumberField>
-                  <NumberField
+                  />
+                  <DimField
+                    axis="H"
                     :model-value="+heightMm.toFixed(1)"
                     :min="1"
                     :step="1"
-                    :format-options="{ maximumFractionDigits: 1 }"
-                    class="gap-1"
                     @update:model-value="setHeight"
-                  >
-                    <NumberFieldContent>
-                      <span class="dim-prefix">H</span>
-                      <NumberFieldInput :class="dimInput" />
-                      <span class="dim-suffix">mm</span>
-                    </NumberFieldContent>
-                  </NumberField>
-                  <NumberField
+                  />
+                  <DimField
+                    axis="D"
                     :model-value="glass.depthMm"
                     :min="0.5"
                     :step="0.5"
-                    :format-options="{ maximumFractionDigits: 1 }"
-                    class="gap-1"
-                                        @update:model-value="(v) => setNumber('depthMm', v)"
-                  >
-                    <NumberFieldContent>
-                      <span class="dim-prefix">D</span>
-                      <NumberFieldInput :class="dimInput" />
-                      <span class="dim-suffix">mm</span>
-                    </NumberFieldContent>
-                  </NumberField>
+                    @update:model-value="(v) => setNumber('depthMm', v)"
+                  />
                 </div>
                 <AnimatePresence :initial="false">
                   <Reveal
@@ -1116,59 +1094,3 @@ const dimInput =
     </SidebarFooter>
   </Sidebar>
 </template>
-
-<style scoped>
-@reference "~/assets/main.css";
-
-/* Content fades under the header and footer edges; scrollbar is a hairline that only appears
-   while scrolling and lives in the gutter, never over the controls. */
-.panel-scroll :deep([data-slot='scroll-area-viewport']) {
-  mask-image: linear-gradient(
-    to bottom,
-    transparent,
-    #000 14px,
-    #000 calc(100% - 14px),
-    transparent
-  );
-}
-.panel-scroll :deep([data-slot='scroll-area-scrollbar']) {
-  @apply w-2 border-0 p-0 py-3 pr-[3px];
-}
-.panel-scroll :deep([data-slot='scroll-area-thumb']) {
-  @apply rounded-full bg-foreground/20;
-}
-
-/* Empty source slot: a recessed well with a dashed hairline drawn inside it. */
-.source-well {
-  background: var(--well);
-  background-image: repeating-linear-gradient(
-      90deg,
-      var(--hairline-strong) 0 6px,
-      transparent 6px 12px
-    ),
-    repeating-linear-gradient(90deg, var(--hairline-strong) 0 6px, transparent 6px 12px),
-    repeating-linear-gradient(180deg, var(--hairline-strong) 0 6px, transparent 6px 12px),
-    repeating-linear-gradient(180deg, var(--hairline-strong) 0 6px, transparent 6px 12px);
-  background-size:
-    100% 1px,
-    100% 1px,
-    1px 100%,
-    1px 100%;
-  background-position:
-    0 0,
-    0 100%,
-    0 0,
-    100% 0;
-  background-repeat: no-repeat;
-}
-.source-well:hover {
-  background-image: none;
-}
-
-.dim-prefix {
-  @apply pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-[10.5px] font-semibold text-muted-foreground;
-}
-.dim-suffix {
-  @apply pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[10px] text-muted-foreground;
-}
-</style>

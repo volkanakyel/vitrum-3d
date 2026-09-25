@@ -20,9 +20,15 @@ const perimeter = 4 * (SIZE - 2 * R) + 2 * Math.PI * R
 const progress = computed(() => (stepIndex.value + 1) / steps.length)
 </script>
 
+<!--
+  Frosted pane over the stage so the model builds behind a sheet of glass. Everything that moves
+  in here animates transform or opacity only, so it stays on the compositor and keeps running
+  while the main thread builds the geometry.
+-->
 <template>
   <motion.div
-    class="loader pointer-events-auto absolute inset-0 z-20 grid place-items-center"
+    class="pointer-events-auto absolute inset-0 z-20 grid place-items-center bg-white/62 backdrop-blur-[18px] backdrop-saturate-120"
+    :style="{ '--tile': `${SIZE - 10}px` }"
     :initial="{ opacity: 0 }"
     :animate="{ opacity: 1 }"
     :exit="{ opacity: 0, transition: { duration: 0.35, ease: [0.23, 1, 0.32, 1] } }"
@@ -59,7 +65,7 @@ const progress = computed(() => (stepIndex.value + 1) / steps.length)
             stroke-width="1.5"
           />
           <rect
-            class="ring"
+            class="transition-[stroke-dashoffset] duration-600 ease-out-quint"
             x="0"
             y="0"
             :width="SIZE"
@@ -73,13 +79,18 @@ const progress = computed(() => (stepIndex.value + 1) / steps.length)
             :stroke-dashoffset="perimeter * (1 - progress)"
           />
         </svg>
-        <div class="tile absolute inset-[5px] overflow-hidden rounded-[22px]">
-          <Transition name="fade">
+        <div class="tile absolute inset-[5px] overflow-hidden rounded-[22px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(13,14,18,.05),0_18px_32px_-20px_rgba(3,7,18,.4)]">
+          <Transition
+            enter-active-class="transition-opacity duration-250 ease-out-quint"
+            leave-active-class="transition-opacity duration-250 ease-out-quint"
+            enter-from-class="opacity-0"
+            leave-to-class="opacity-0"
+          >
             <img
               v-if="preview"
               :src="preview"
               alt=""
-              class="absolute inset-0 size-full object-contain p-4"
+              class="absolute inset-0 size-full object-contain p-4 opacity-90 grayscale contrast-105"
               draggable="false"
             />
             <span
@@ -93,8 +104,9 @@ const progress = computed(() => (stepIndex.value + 1) / steps.length)
               />
             </span>
           </Transition>
+          <!-- Scan line: ice, with a soft glow ahead of it, sweeping the tile top to bottom. -->
           <span
-            class="scan absolute inset-x-0 top-0 h-px"
+            class="absolute inset-x-0 top-0 h-px animate-[loader-scan_1.4s_cubic-bezier(0.45,0,0.55,1)_infinite] bg-ice shadow-[0_0_8px_1px_rgba(47,111,237,.45),0_-14px_18px_-6px_rgba(47,111,237,.25)] will-change-[transform,opacity] motion-reduce:animate-none motion-reduce:opacity-60 motion-reduce:[transform:translateY(calc(var(--tile)*0.5))]"
             aria-hidden="true"
           />
         </div>
@@ -116,10 +128,11 @@ const progress = computed(() => (stepIndex.value + 1) / steps.length)
               :transition="{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }"
             >
               {{ label }}
+              <!-- Three ticking dots, one em wide so the label never shifts. -->
               <span
-                class="dots"
+                class="inline-flex size-[1em] items-end gap-0.5 pb-[0.2em] *:block *:size-0.5 *:rounded-full *:bg-current *:opacity-0 motion-reduce:*:animate-none motion-reduce:*:opacity-100"
                 aria-hidden="true"
-              ><i /><i /><i /></span>
+              ><i class="animate-[dot-1_1.2s_steps(1,end)_infinite]" /><i class="animate-[dot-2_1.2s_steps(1,end)_infinite]" /><i class="animate-[dot-3_1.2s_steps(1,end)_infinite]" /></span>
             </motion.span>
           </AnimatePresence>
         </span>
@@ -128,90 +141,3 @@ const progress = computed(() => (stepIndex.value + 1) / steps.length)
     </motion.div>
   </motion.div>
 </template>
-
-<style scoped>
-/* Frosted pane over the stage so the model builds behind a sheet of glass.
-   Everything that moves in here animates transform or opacity only, so it stays on the
-   compositor and keeps running while the main thread builds the geometry. */
-.loader {
-  --tile: calc(v-bind(SIZE) * 1px - 10px);
-  background: rgba(255, 255, 255, 0.62);
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
-}
-.tile {
-  background: linear-gradient(160deg, #ffffff 0%, #eef2f8 100%);
-  box-shadow:
-    inset 0 1px 0 #ffffff,
-    inset 0 -1px 0 rgba(13, 14, 18, 0.05),
-    0 18px 32px -20px rgba(3, 7, 18, 0.4);
-}
-.tile img {
-  filter: grayscale(1) contrast(1.05);
-  opacity: 0.9;
-}
-.ring {
-  transition: stroke-dashoffset 0.6s var(--ease-out-quint);
-}
-/* Scan line: ice, with a soft glow ahead of it, sweeping the tile top to bottom. */
-.scan {
-  background: var(--ice);
-  box-shadow:
-    0 0 8px 1px rgba(47, 111, 237, 0.45),
-    0 -14px 18px -6px rgba(47, 111, 237, 0.25);
-  will-change: transform, opacity;
-  animation: scan 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-}
-@keyframes scan {
-  0% { transform: translateY(calc(var(--tile) * 0.08)); opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { transform: translateY(calc(var(--tile) * 0.92)); opacity: 0; }
-}
-/* Three ticking dots, one em wide so the label never shifts. */
-.dots {
-  display: inline-flex;
-  width: 1em;
-  gap: 2px;
-  align-items: flex-end;
-  height: 1em;
-  padding-bottom: 0.2em;
-}
-.dots i {
-  display: block;
-  width: 2px;
-  height: 2px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0;
-  animation: 1.2s steps(1, end) infinite;
-}
-/* Fill in one by one (· ·· ···), then clear: the classic "..." tick, on the compositor. */
-.dots i:nth-child(1) { animation-name: dot-1; }
-.dots i:nth-child(2) { animation-name: dot-2; }
-.dots i:nth-child(3) { animation-name: dot-3; }
-@keyframes dot-1 { 0% { opacity: 0; } 25% { opacity: 1; } }
-@keyframes dot-2 { 0% { opacity: 0; } 50% { opacity: 1; } }
-@keyframes dot-3 { 0% { opacity: 0; } 75% { opacity: 1; } }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.25s var(--ease-out-quint);
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .scan,
-  .dots i {
-    animation: none;
-  }
-  .scan {
-    transform: translateY(calc(var(--tile) * 0.5));
-    opacity: 0.6;
-  }
-  .dots i {
-    opacity: 1;
-  }
-}
-</style>

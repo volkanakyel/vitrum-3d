@@ -51,7 +51,7 @@ function onUpdate(v: unknown) {
         <motion.span
           v-if="String(o.value) === String(modelValue)"
           :layout-id="pillId"
-          class="absolute inset-0 -z-10 rounded-full bg-card shadow-[var(--shadow-raise)]"
+          class="absolute inset-0 -z-10 rounded-full bg-card shadow-raise"
           :transition="{ type: 'spring', stiffness: 500, damping: 40 }"
         />
         <motion.span

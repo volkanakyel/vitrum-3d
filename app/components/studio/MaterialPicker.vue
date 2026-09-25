@@ -46,7 +46,7 @@ function sphere(p: MaterialPreset) {
           :class="tab === f ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
           @click="switchTab(f)"
         >
-          <motion.span v-if="tab === f" layout-id="finish-pill" class="absolute inset-0 -z-10 rounded-full bg-card shadow-[var(--shadow-raise)]" :transition="{ type: 'spring', stiffness: 500, damping: 40 }" />
+          <motion.span v-if="tab === f" layout-id="finish-pill" class="absolute inset-0 -z-10 rounded-full bg-card shadow-raise" :transition="{ type: 'spring', stiffness: 500, damping: 40 }" />
           <Icon :name="finishIcon[f]" :size="13" />
           {{ finishLabel[f] }}
         </button>

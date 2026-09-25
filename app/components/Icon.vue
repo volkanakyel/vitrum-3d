@@ -17,8 +17,8 @@ const map = {
 } as const
 
 export type IconName = keyof typeof map
-const props = withDefaults(defineProps<{ name: IconName | string; size?: number; strokeWidth?: number }>(), { size: 16, strokeWidth: 1.75 })
-const comp = computed(() => map[props.name as IconName] ?? Circle)
+const props = withDefaults(defineProps<{ name: IconName; size?: number; strokeWidth?: number }>(), { size: 16, strokeWidth: 1.75 })
+const comp = computed(() => map[props.name] ?? Circle)
 </script>
 
 <template>

@@ -83,12 +83,12 @@ onBeforeUnmount(() => {
       src="/images/hero.webp"
       width="1000"
       height="1000"
-      alt="Sculptural glass camera, mint conversation bubble, pink heart and amber sparkle floating in soft studio light"
+      alt="GitHub, Spotify, Figma and Framer logos rendered as glass and metal 3D icons"
       fetchpriority="high"
     >
     <canvas
       ref="canvas"
-      class="absolute inset-0 block size-full object-cover opacity-0 transition-opacity duration-[450ms] ease-[cubic-bezier(0.25,_0.1,_0.25,_1)] motion-reduce:transition-none"
+      class="absolute inset-0 block size-full object-cover opacity-0 transition-opacity duration-450 ease-[ease] motion-reduce:transition-none"
       :class="{ 'opacity-100': ready }"
       aria-hidden="true"
       @pointermove="onPointer"

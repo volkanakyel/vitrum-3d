@@ -5,14 +5,14 @@ import { createStudioEnvironment } from './glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams } from './presets'
 import { buildPrintTexture } from './printTexture'
 import { DEFAULT_TRACE_OPTIONS, traceImage, type TraceResult } from './trace'
-import { drawSample, SAMPLES, type Sample } from './samples'
+import { drawSample, HERO_STORY, LOGO_SAMPLE_IDS, SAMPLES, type Sample } from './samples'
 
 /**
  * The landing page's showroom. Every object is built from `SAMPLES` through the same trace →
  * extrude / inflate pipeline as the studio; nothing is downloaded.
  *
  * Three layouts share the renderer, environment and materials:
- *   hero    — a collection of rounded glass interface icons, gently floating with pointer tilt.
+ *   hero    — a handful of glass and metal brand marks, gently floating with pointer tilt.
  *   story   — one object (the Vitrum mark) on the right, turning as the page scrolls. The camera
  *             never moves; scroll progress drives the object's rotation, so it always reads as
  *             "the thing being talked about" beside the text on the left.
@@ -156,13 +156,13 @@ export class Showcase {
   async load() {
     const idle = () => new Promise<void>(r => setTimeout(r, 0))
     if (this.opts.layout === 'hero') {
-      this.story = this.place(SAMPLES.find(s => s.id === 'camera')!, new THREE.Vector3(-40, -28, 26), 185, 'story')
+      this.story = this.place(SAMPLES.find(s => s.id === HERO_STORY)!, new THREE.Vector3(-30, -20, 26), 176, 'story')
       this.setPreset(this.opts.preset ?? 'sapphire')
-      this.place(SAMPLES.find(s => s.id === 'chat')!, new THREE.Vector3(92, 97, -5), 112)
+      this.place(SAMPLES.find(s => s.id === 'spotify')!, new THREE.Vector3(104, 100, -5), 92)
       await idle()
       if (this.disposed) return
-      this.place(SAMPLES.find(s => s.id === 'heart')!, new THREE.Vector3(-113, 108, 5), 78)
-      this.place(SAMPLES.find(s => s.id === 'spark')!, new THREE.Vector3(110, -107, 20), 101)
+      this.place(SAMPLES.find(s => s.id === 'figma')!, new THREE.Vector3(-122, 104, 5), 84)
+      this.place(SAMPLES.find(s => s.id === 'framer')!, new THREE.Vector3(118, -104, 20), 80)
       this.invalidate()
       this.onReady?.()
       return
@@ -203,10 +203,11 @@ export class Showcase {
     const aspect = (trace.bbox.maxY - trace.bbox.minY) / Math.max(1e-6, trace.bbox.maxX - trace.bbox.minX)
     const widthMm = aspect > 1 ? sizeMm / aspect : sizeMm
     const roundedIcon = ['camera', 'chat', 'spark', 'heart'].includes(sample.id)
-    const depth = sizeMm * (roundedIcon ? 0.16 : 0.2)
+    const isLogo = LOGO_SAMPLE_IDS.has(sample.id)
+    const depth = sizeMm * (roundedIcon ? 0.16 : isLogo ? 0.14 : 0.2)
     // The brand's thin circular counters and the star's tips need a smaller bevel than
     // their broad faces suggest; keep the inset from crossing those narrow features.
-    const bevelLimit = sample.id === 'vitrum' ? sizeMm * 0.004 : ['star', 'bolt'].includes(sample.id) ? sizeMm * 0.012 : sample.id === 'spark' ? sizeMm * 0.02 : sizeMm * 0.038
+    const bevelLimit = sample.id === 'vitrum' ? sizeMm * 0.004 : isLogo || ['star', 'bolt'].includes(sample.id) ? sizeMm * 0.012 : sample.id === 'spark' ? sizeMm * 0.02 : sizeMm * 0.038
     const bevel = Math.min(bevelLimit, Math.max(0.6, (trace.strokeWidth * widthMm) / Math.max(1, trace.bbox.maxX - trace.bbox.minX) * (roundedIcon ? 0.44 : 0.3)))
     const built = buildExtrudeGeometry(trace, { widthMm, depthMm: depth, bevelMm: bevel, bevelSegments: 8, layerMm: 2, stack })
     if (!built) return null
