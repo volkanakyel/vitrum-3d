@@ -57,7 +57,21 @@ const heightSources: SegmentOption<HeightSource>[] = [
   { value: 'flat', label: 'Flat' },
 ]
 const reliefResolutions: SegmentOption<number>[] = [256, 512, 1024].map((r) => ({ value: r, label: String(r) }))
-const { setOpenMobile } = useSidebar()
+const { isMobile, openMobile, setOpenMobile, toggleSidebar } = useSidebar()
+/** On the phone sheet, reaching for a tab while it rests means you want to see that tab. */
+function selectTab(value: typeof tab.value) {
+  tab.value = value
+  if (isMobile.value && !openMobile.value) setOpenMobile(true)
+}
+/**
+ * On the sheet the tabs double as a drag grip, so they pick on click, not on press: a drag that
+ * starts on a tab must not switch to it. (Touch never sends the press for a drag; a mouse does.)
+ */
+function holdTabPress(e: MouseEvent) {
+  if (!isMobile.value) return
+  e.stopPropagation()
+  e.preventDefault()
+}
 const tab = ref<'shape' | 'material' | 'scene'>('shape')
 
 const svgPath = computed(() => (props.trace ? toSvgPath(props.trace) : ''))
@@ -151,9 +165,9 @@ const tabTrigger =
       v-model="tab"
       class="flex min-h-0 flex-1 flex-col gap-0"
     >
-      <SidebarHeader class="gap-5 px-4 pt-0 pb-5">
+      <SidebarHeader class="gap-5 px-4 pt-0 pb-5 max-md:gap-3 max-md:pb-3.5">
         <!-- Brand -->
-        <div class="-mb-1 flex h-12 items-center justify-between">
+        <div class="-mb-1 flex h-12 items-center justify-between max-md:hidden">
           <NuxtLink
             to="/"
             class="flex items-center gap-2.5 rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/35"
@@ -184,7 +198,7 @@ const tabTrigger =
         <!-- Source -->
         <div>
           <label
-            class="group relative flex cursor-pointer items-center gap-3 rounded-pane p-3 transition-[background-color,box-shadow] duration-200"
+            class="group relative flex cursor-pointer items-center gap-3 rounded-[20px] p-3 max-md:hidden transition-[background-color,box-shadow,scale] duration-[200ms,200ms,320ms] ease-[ease,ease,var(--ease-spring)] active:scale-[.985] active:duration-100"
             :class="
               hasSource
                 ? 'bg-card shadow-raise'
@@ -200,7 +214,7 @@ const tabTrigger =
             <template v-if="hasSource">
               <motion.span
                 :key="fileName"
-                class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-tile bg-[linear-gradient(160deg,#ffffff,#eef2f8)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]"
+                class="lightbox flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-tile bg-[linear-gradient(160deg,#ffffff,#eef2f8)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]"
                 :initial="{ scale: 0.7, opacity: 0, rotate: -6 }"
                 :animate="{ scale: 1, opacity: 1, rotate: 0 }"
                 :transition="{ type: 'spring', stiffness: 380, damping: 24 }"
@@ -233,7 +247,7 @@ const tabTrigger =
                   {{ trace.vertexCount }} pts
                 </div>
               </div>
-              <Tooltip>
+              <Tooltip v-if="!busy">
                 <TooltipTrigger as-child>
                   <Button
                     variant="ghost"
@@ -269,7 +283,9 @@ const tabTrigger =
             </template>
             <span
               v-if="busy"
-              class="absolute top-2.5 right-2.5 size-3 animate-spin rounded-full border-2 border-muted border-t-foreground"
+              class="absolute top-1/2 right-3.5 size-3.5 -translate-y-1/2 animate-spin rounded-full border-[1.5px] border-hairline-strong border-t-foreground motion-reduce:animate-none"
+              role="status"
+              aria-label="Tracing"
             />
           </label>
           <AnimatePresence>
@@ -290,19 +306,75 @@ const tabTrigger =
           </AnimatePresence>
         </div>
 
+        <!-- Phone sheet at rest: the source on the left, every finish on the right. -->
+        <div
+          v-if="isMobile"
+          class="-mr-4 flex items-center"
+        >
+          <label
+            data-sheet-grip
+            class="relative grid size-11 shrink-0 cursor-pointer touch-none place-items-center overflow-hidden rounded-[14px] transition-[scale] duration-[380ms] ease-spring active:scale-[.92] active:duration-100 motion-reduce:transition-none"
+            :class="hasSource ? 'lightbox bg-[linear-gradient(160deg,#ffffff,#eef2f8)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]' : 'bg-card text-muted-foreground shadow-raise'"
+            :aria-label="hasSource ? `Replace ${fileName}` : 'Choose an image'"
+          >
+            <input
+              type="file"
+              accept="image/*,.svg"
+              hidden
+              @change="emit('pick', $event)"
+            />
+            <svg
+              v-if="hasSource"
+              class="size-7 text-foreground transition-opacity"
+              :class="{ 'opacity-30': busy }"
+              :viewBox="viewBox"
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <path
+                :d="svgPath"
+                fill="currentColor"
+                fill-rule="evenodd"
+              />
+            </svg>
+            <Icon
+              v-else
+              name="imagePlus"
+              :size="18"
+            />
+            <span
+              v-if="busy"
+              class="absolute size-4 animate-spin rounded-full border-[1.5px] border-hairline-strong border-t-foreground motion-reduce:animate-none"
+              role="status"
+              aria-label="Tracing"
+            />
+          </label>
+          <span
+            class="mr-1 ml-2.5 h-7 w-px shrink-0 bg-hairline-strong"
+            aria-hidden="true"
+          />
+          <QuickFinishes
+            :glass="glass"
+            class="min-w-0 flex-1"
+          />
+        </div>
+
         <TabsList
-          class="grid h-9 w-full grid-cols-3 rounded-full well p-[3px]"
+          data-sheet-grip
+          data-sheet-peek
+          class="grid h-9 w-full grid-cols-3 rounded-full well p-[3px] max-md:touch-none"
+          @mousedown.capture="holdTabPress"
         >
           <TabsTrigger
             v-for="t in panelTabs"
             :key="t.value"
             :value="t.value"
             :class="tabTrigger"
+            @click="selectTab(t.value)"
           >
             <motion.span
               v-if="tab === t.value"
               layout-id="panel-tab-pill"
-              class="absolute inset-0 -z-10 rounded-full bg-card shadow-raise"
+              class="glass absolute inset-0 -z-10 rounded-full [--glass-tint-top:#fff] [--glass-tint:#f7f8fa] [--glass-drop:0_1px_2px_rgba(13,14,18,.12),0_2px_6px_-2px_rgba(13,14,18,.12)]"
               :transition="{ type: 'spring', stiffness: 500, damping: 40 }"
             />
             <motion.span
@@ -327,7 +399,7 @@ const tabTrigger =
         <ScrollArea
           type="hover"
           :scroll-hide-delay="400"
-          class="min-h-0 flex-1 **:data-[slot=scroll-area-scrollbar]:w-2 **:data-[slot=scroll-area-scrollbar]:border-0 **:data-[slot=scroll-area-scrollbar]:p-0 **:data-[slot=scroll-area-scrollbar]:py-3 **:data-[slot=scroll-area-scrollbar]:pr-[3px] **:data-[slot=scroll-area-thumb]:rounded-full **:data-[slot=scroll-area-thumb]:bg-foreground/20 **:data-[slot=scroll-area-viewport]:[mask-image:linear-gradient(to_bottom,transparent,#000_14px,#000_calc(100%-14px),transparent)]"
+          class="min-h-0 flex-1 **:data-[slot=scroll-area-scrollbar]:w-2 **:data-[slot=scroll-area-scrollbar]:border-0 **:data-[slot=scroll-area-scrollbar]:p-0 **:data-[slot=scroll-area-scrollbar]:py-3 **:data-[slot=scroll-area-scrollbar]:pr-[3px] **:data-[slot=scroll-area-thumb]:rounded-full **:data-[slot=scroll-area-thumb]:bg-foreground/20 **:data-[slot=scroll-area-viewport]:[mask-image:linear-gradient(to_bottom,transparent,#000_24px,#000_calc(100%-24px),transparent)]"
         >
           <div class="px-4 pt-5 pb-6">
             <TabsContent
@@ -704,14 +776,16 @@ const tabTrigger =
               value="material"
               class="mt-0 flex flex-col divide-y divide-hairline"
             >
+              <!-- The phone sheet's finish row covers this. -->
               <SectionGroup
+                v-if="!isMobile"
                 :index="0"
                 title="Finish"
               >
                 <MaterialPicker :glass="glass" />
               </SectionGroup>
               <SectionGroup
-                :index="1"
+                :index="isMobile ? 0 : 1"
                 :title="isGlass ? 'Optics' : 'Surface'"
                 resettable
                 @reset="resetSurface"
@@ -882,7 +956,7 @@ const tabTrigger =
               <SectionGroup
                 v-if="isGlass"
                 key="edges"
-                :index="2"
+                :index="isMobile ? 1 : 2"
                 title="Edges & tint"
                 resettable
                 @reset="pick('tir', 'edgeChroma', 'clearcoat', 'tint', 'attenuationMm')"
@@ -1067,9 +1141,9 @@ const tabTrigger =
       </SidebarContent>
     </Tabs>
 
-    <SidebarSeparator class="mx-4 bg-hairline data-[orientation=horizontal]:w-auto" />
+    <SidebarSeparator class="mx-4 bg-hairline data-[orientation=horizontal]:w-auto max-md:hidden" />
 
-    <SidebarFooter class="flex-row items-center justify-between px-4 py-3">
+    <SidebarFooter class="flex-row items-center justify-between px-4 py-3 max-md:hidden">
       <Button
         variant="ghost"
         size="sm"
@@ -1082,15 +1156,14 @@ const tabTrigger =
         />
         Sample mark
       </Button>
-      <Tooltip>
-        <TooltipTrigger as-child>
-          <span class="flex items-center gap-1.5 text-[11px] text-ink-3 pointer-coarse:hidden">
-            Hide panel
-            <kbd class="text-[10px]">⌘B</kbd>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>Vitrum · everything is built from your image, nothing is downloaded</TooltipContent>
-      </Tooltip>
+      <button
+        type="button"
+        class="-mr-1 flex h-7 items-center gap-1.5 rounded-full pr-1 pl-2 text-[11px] text-ink-3 transition-colors duration-150 hover:bg-well hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none pointer-coarse:hidden"
+        @click="toggleSidebar"
+      >
+        Hide panel
+        <kbd class="text-[10px]">⌘B</kbd>
+      </button>
     </SidebarFooter>
   </Sidebar>
 </template>

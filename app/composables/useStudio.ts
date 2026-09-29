@@ -28,6 +28,7 @@ export interface ViewerHandle {
   screenshot: (name?: string) => Promise<void>
   capture: (scale?: number) => Promise<Blob | null>
   frame: () => void
+  setFocus: (shift: number, scale: number) => void
   setView: (v: ViewName) => void
   snap: (p: Partial<GlassParams>, applyNow?: boolean) => void
 }

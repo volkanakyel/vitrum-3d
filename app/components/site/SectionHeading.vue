@@ -4,7 +4,7 @@ defineProps<{ id: string; title: string; text: string }>()
 </script>
 
 <template>
-  <div class="mb-12 grid grid-cols-[minmax(0,1fr)_minmax(0,400px)] items-baseline-last gap-x-12 gap-y-4 max-tab:mb-8 max-tab:grid-cols-1">
+  <div class="mb-16 grid grid-cols-[minmax(0,1fr)_minmax(0,380px)] items-baseline-last gap-x-16 gap-y-4 max-tab:mb-10 max-tab:grid-cols-1">
     <h2
       :id="id"
       class="heading-section"

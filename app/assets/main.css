@@ -5,16 +5,99 @@
 @custom-variant hover-none (@media (hover: none));
 
 /*
-  Vitrum — "Cold light" (studio glass, v2).
+  Vitrum — "Light table" (v3).
 
-  The app is a light table. The shell is a cool slate (the table), the stage is a white pane with a
-  glass rim (the object under the light). Depth is 1px hairlines, inner bevels and one soft lift —
-  never borders plus heavy shadows. Actions are pills; containers are 12–24px rounded rects.
-  One accent (ice) exists only for focus, drop and "live" states. Type is Inter for UI, IBM Plex
-  Mono for numbers and indices. Display type is Geist, a Swiss grotesk, set tight.
+  The app is a cool slate table; slabs (cards, panels, the stage window) are white panes lifted off
+  it with a glass rim, and the renders sit in grey lightboxes inside them. Controls that float over
+  a stage are dark islands (`.bench`): the finish picker, the view dock, the size readout, one
+  closing panel. `.bench` re-declares the dark tokens; `.lightbox` pins the light ones for
+  anything that must stay light inside a dark island.
+
+  Actions are pills. Containers nest concentric: window 24 → pane 16 → tile 10.
+  Ice exists only for focus, drop and "live". Type is Geist, tight; IBM Plex Mono only for numbers.
+  Motion: response only. Presses squash to .96 and release on a soft overshoot; selections slide.
 */
-:root {
+.bench {
   /* shadcn tokens */
+  --background: #0e0f12;
+  --foreground: #f3f2ef;
+  /* `card` is a raised control on the bench (active pills, fields); `slab` is a panel. */
+  --card: #25262c;
+  --card-foreground: #f3f2ef;
+  --popover: #1c1d22;
+  --popover-foreground: #f3f2ef;
+  --primary: #f3f2ef;
+  --primary-foreground: #0e0f12;
+  --secondary: #222328;
+  --secondary-foreground: #f3f2ef;
+  --muted: #222328;
+  --muted-foreground: #8f8f94;
+  --accent: #222328;
+  --accent-foreground: #f3f2ef;
+  --destructive: #ff6b6b;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #7aa2ff;
+  --radius: 0.625rem;
+
+  /* brand */
+  --ink: #f3f2ef;
+  --ink-2: rgba(243, 242, 239, 0.62);
+  --ink-3: rgba(243, 242, 239, 0.4);
+  --ink-hover: #ffffff;
+  --surface: #202126;
+  --shell: #0e0f12;
+  --slab: #17181c;
+  --well: rgba(255, 255, 255, 0.045);
+  --well-strong: rgba(255, 255, 255, 0.085);
+  --ice: #7aa2ff;
+  --ice-soft: rgba(122, 162, 255, 0.14);
+  --ice-glow: rgba(122, 162, 255, 0.24);
+  --hairline: rgba(255, 255, 255, 0.07);
+  --hairline-strong: rgba(255, 255, 255, 0.12);
+
+  --sidebar: #0e0f12;
+  --sidebar-foreground: #f3f2ef;
+  --sidebar-primary: #f3f2ef;
+  --sidebar-primary-foreground: #0e0f12;
+  --sidebar-accent: #222328;
+  --sidebar-accent-foreground: #f3f2ef;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-ring: #7aa2ff;
+
+  /* elevation
+     raise  = a control sitting on a slab: hairline, top highlight, a short contact shadow
+     inverse = the primary pill (warm white on the bench)
+     float  = a layer above the page (popover, dock, toast)
+     pane   = a slab lifted off the bench */
+  --shadow-raise:
+    0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 2px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-raise-dark:
+    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 8px 20px -10px rgba(0, 0, 0, 0.7);
+  --shadow-float:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 16px 40px -12px rgba(0, 0, 0, 0.65);
+  --shadow-pane:
+    0 0 0 1px rgba(255, 255, 255, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 40px 80px -40px rgba(0, 0, 0, 0.8);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --well-inset: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+  color-scheme: dark;
+}
+
+/* The default (light) values. `.lightbox` repeats them for light content inside a dark island. */
+:root,
+.lightbox {
   --background: #eceef2;
   --foreground: #0d0e12;
   --card: #ffffff;
@@ -35,12 +118,13 @@
   --ring: #2f6fed;
   --radius: 0.625rem;
 
-  /* brand */
   --ink: #0d0e12;
   --ink-2: rgba(13, 14, 18, 0.62);
   --ink-3: rgba(13, 14, 18, 0.42);
+  --ink-hover: #262830;
   --surface: #ffffff;
   --shell: #eceef2;
+  --slab: #ffffff;
   --well: rgba(13, 14, 18, 0.045);
   --well-strong: rgba(13, 14, 18, 0.08);
   --ice: #2f6fed;
@@ -49,8 +133,8 @@
   --hairline: rgba(13, 14, 18, 0.08);
   --hairline-strong: rgba(13, 14, 18, 0.14);
 
-  /* sidebar sits directly on the shell */
-  --sidebar: transparent;
+  /* the sidebar sits directly on the shell */
+  --sidebar: #eceef2;
   --sidebar-foreground: #0d0e12;
   --sidebar-primary: #0d0e12;
   --sidebar-primary-foreground: #ffffff;
@@ -59,10 +143,6 @@
   --sidebar-border: rgba(13, 14, 18, 0.08);
   --sidebar-ring: #2f6fed;
 
-  /* elevation
-     raise  = a control sitting on a surface
-     float  = a layer above the page (popover, dock, toast)
-     pane   = the stage: a white pane with a glass rim, lifted off the slate */
   --shadow-raise:
     0 0 0 1px rgba(13, 14, 18, 0.08),
     0 1px 2px -1px rgba(13, 14, 18, 0.12),
@@ -74,7 +154,7 @@
     0 8px 16px -8px rgba(13, 14, 18, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.16);
   --shadow-float:
-    0 0 0 1px var(--hairline),
+    0 0 0 1px rgba(13, 14, 18, 0.08),
     0 1px 2px rgba(13, 14, 18, 0.05),
     0 2px 24px rgba(13, 14, 18, 0.06),
     0 16px 32px -16px rgba(13, 14, 18, 0.18);
@@ -86,9 +166,21 @@
     0 24px 48px -24px rgba(3, 7, 18, 0.18);
   --shadow-sm: 0 1px 2px rgba(13, 14, 18, 0.05);
   --shadow: 0 6px 24px rgba(13, 14, 18, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --well-inset: inset 0 1px 1px rgba(13, 14, 18, 0.04);
+  color-scheme: light;
+}
+.lightbox,
+.bench {
+  color: var(--foreground);
+}
+
+:root {
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
+  /* Release after a press: a soft overshoot back to rest. `pop` is for small things (a dot, a ring). */
+  --ease-spring: cubic-bezier(0.3, 1.12, 0.4, 1);
+  --ease-pop: cubic-bezier(0.28, 1.4, 0.36, 1);
 }
 
 /*
@@ -125,13 +217,15 @@
   @keyframes settle {
     from { opacity: 0; transform: translateY(6px); }
   }
+  /* Scale only: the element's position comes from Tailwind's `translate` utilities, which set the
+     separate `translate` property. A `transform: translate()` here would add to it, not replace it. */
   @keyframes breathe {
-    0%, 100% { transform: translate(-50%, -62%) scale(1); opacity: 1; }
-    50% { transform: translate(-50%, -62%) scale(1.06); opacity: 0.85; }
+    0%, 100% { scale: 1; opacity: 1; }
+    50% { scale: 1.06; opacity: 0.85; }
   }
   @keyframes breathe-halo {
-    0%, 100% { transform: translate(-50%, -112%) scale(1); opacity: 0.9; }
-    50% { transform: translate(-50%, -112%) scale(1.08); opacity: 0.7; }
+    0%, 100% { scale: 1; opacity: 0.9; }
+    50% { scale: 1.08; opacity: 0.7; }
   }
   @keyframes sweep {
     0% { transform: translateX(-120%); }
@@ -234,11 +328,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  /* Card family, nested concentric: window (p-2) → pane, card (p-1.5) → pane. */
-  --radius-window: 12px;
-  --radius-card: 12px;
-  --radius-pane: 6px;
-  --radius-tile: 5px;
+  /* Card family, nested concentric: window/card (p-2, 24) → pane (16) → tile (10). */
+  --radius-window: 24px;
+  --radius-card: 24px;
+  --radius-pane: 16px;
+  --radius-tile: 10px;
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow);
   --shadow-raise: var(--shadow-raise);
@@ -251,7 +345,10 @@
   --ease-out-expo: var(--ease-out-expo);
   --ease-in-out-cubic: var(--ease-in-out-cubic);
   --color-ice-glow: var(--ice-glow);
-  --color-ink-hover: #262830;
+  --color-ink-hover: var(--ink-hover);
+  --color-slab: var(--slab);
+  --ease-spring: var(--ease-spring);
+  --ease-pop: var(--ease-pop);
 }
 
 /* Elevation utilities so components share one vocabulary. */
@@ -270,7 +367,7 @@
 /* Recessed trough for segmented controls and wells. */
 @utility well {
   background: var(--well);
-  box-shadow: inset 0 1px 1px rgba(13, 14, 18, 0.04);
+  box-shadow: var(--well-inset);
 }
 /* Keyboard focus: the ice ring. Widen the gap with `[--ring-offset:4px]`. */
 @utility focus-ring {
@@ -312,14 +409,14 @@
 /* Landing type scale. Geist, tight; body features (tnum) are inherited, unlike `.font-display`. */
 @utility heading-hero {
   font-family: var(--font-display);
-  font-size: clamp(36px, 5vw, 72px);
+  font-size: clamp(34px, 4.4vw, 60px);
   font-weight: 500;
   line-height: 1;
   letter-spacing: -0.055em;
 }
 @utility heading-section {
   font-family: var(--font-display);
-  font-size: clamp(30px, 3.6vw, 48px);
+  font-size: clamp(28px, 3vw, 40px);
   font-weight: 500;
   line-height: 1.05;
   letter-spacing: -0.045em;
@@ -349,7 +446,7 @@
   .font-mono { font-feature-settings: 'zero', 'tnum'; letter-spacing: -0.01em; }
   /* Display: Swiss grotesk, tight, medium weight. */
   .font-display { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.035em; font-feature-settings: 'ss01', 'cv11'; }
-  ::selection { background: rgba(47, 111, 237, 0.18); }
+  ::selection { background: var(--ice-glow); }
   /* Key caps: white, hairline, a 1px ledge underneath. */
   kbd {
     @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] bg-card px-1 text-[10.5px] font-medium text-muted-foreground;
@@ -365,7 +462,7 @@
 /* Marketing column. One gutter scale for the landing page and footer; the nav is slightly wider
    on phones (`.frame-nav`). Nested queries keep the narrowest breakpoint winning. */
 @utility frame {
-  width: min(1320px, calc(100% - 112px));
+  width: min(1200px, calc(100% - 128px));
   margin-inline: auto;
   @media (max-width: 1100px) {
     width: calc(100% - 72px);
@@ -375,7 +472,7 @@
   }
 }
 @utility frame-nav {
-  width: min(1320px, calc(100% - 112px));
+  width: min(1200px, calc(100% - 128px));
   margin-inline: auto;
   @media (max-width: 1100px) {
     width: calc(100% - 72px);
@@ -390,4 +487,142 @@
 @utility grain {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 160px 160px;
+}
+
+/*
+  Landing → studio. The hero's stage and the studio's stage share `view-transition-name: stage`,
+  so the preview grows into the editor; everything else crossfades. Nuxt skips the transition
+  entirely under `prefers-reduced-motion`.
+*/
+::view-transition-group(*) {
+  animation-duration: 460ms;
+  animation-timing-function: var(--ease-out-quint);
+}
+::view-transition-old(root) {
+  animation: 180ms ease-out both vt-fade-out;
+}
+::view-transition-new(root) {
+  animation: 320ms 80ms ease-out both vt-fade-in;
+}
+/* Both snapshots fill the morphing box instead of letterboxing, so the stage never squashes. */
+::view-transition-old(stage),
+::view-transition-new(stage) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+@keyframes vt-fade-out {
+  to { opacity: 0; }
+}
+@keyframes vt-fade-in {
+  from { opacity: 0; }
+}
+
+/* FAQ disclosure: the answer's height eases open where the browser can animate `details`
+   content (interpolate-size); elsewhere it opens instantly, as before. */
+@supports (interpolate-size: allow-keywords) {
+  .faq {
+    interpolate-size: allow-keywords;
+  }
+  .faq::details-content {
+    height: 0;
+    overflow: clip;
+    opacity: 0;
+    transition: height 260ms var(--ease-out-quint), opacity 200ms ease-out, content-visibility 260ms allow-discrete;
+  }
+  .faq[open]::details-content {
+    height: auto;
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .faq::details-content { transition: none; }
+  }
+}
+
+/*
+  Liquid glass. The same optics the studio renders, in CSS: a frosted body, a rim that catches the
+  light (bright top-left, soft bottom-right), a faint dispersion fringe on the inner edge (cool on
+  the lit side, warm on the far side) and a specular sheen that trails the pointer (`v-glass` sets
+  --glass-x/--glass-y; they are registered so the sheen eases after the pointer instead of snapping).
+
+  Colours come from the scope: light glass on the table, smoked glass inside `.bench`.
+  Tune per element with --glass-blur and --glass-fill. Needs a positioned element (absolute,
+  fixed or `relative`); content stays above the sheen because the glass isolates itself.
+*/
+@property --glass-x {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 30%;
+}
+@property --glass-y {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: -40%;
+}
+/* Scope defaults live in a layer so a utility on the element (e.g. [--glass-tint:…]) can override them. */
+@layer base {
+  :root,
+  .lightbox {
+    --glass-tint: rgba(255, 255, 255, 0.58);
+    --glass-tint-top: rgba(255, 255, 255, 0.82);
+    --glass-rim: rgba(255, 255, 255, 0.95);
+    --glass-rim-low: rgba(255, 255, 255, 0.45);
+    --glass-edge: rgba(13, 14, 18, 0.07);
+    --glass-sheen: rgba(255, 255, 255, 0.7);
+    --glass-drop: 0 1px 2px rgba(13, 14, 18, 0.06), 0 12px 32px -14px rgba(13, 14, 18, 0.28);
+  }
+  .bench {
+    --glass-tint: rgba(20, 21, 25, 0.82);
+    --glass-tint-top: rgba(46, 47, 54, 0.8);
+    --glass-rim: rgba(255, 255, 255, 0.34);
+    --glass-rim-low: rgba(255, 255, 255, 0.08);
+    --glass-edge: rgba(0, 0, 0, 0.35);
+    --glass-sheen: rgba(255, 255, 255, 0.16);
+    --glass-drop: 0 1px 2px rgba(0, 0, 0, 0.3), 0 16px 36px -14px rgba(8, 9, 12, 0.6);
+  }
+}
+@utility glass {
+  isolation: isolate;
+  background: linear-gradient(180deg, var(--glass-tint-top), var(--glass-fill, var(--glass-tint)) 60%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 14px)) saturate(180%) brightness(1.03);
+  backdrop-filter: blur(var(--glass-blur, 14px)) saturate(180%) brightness(1.03);
+  box-shadow:
+    inset 0 0 0 1px var(--glass-edge),
+    inset 1.5px 1.5px 1px -1px rgba(128, 176, 255, 0.45),
+    inset -1.5px -1.5px 1px -1px rgba(255, 160, 196, 0.38),
+    var(--glass-drop);
+
+  /* specular sheen, trailing the pointer */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(90% 120% at var(--glass-x) var(--glass-y), var(--glass-sheen), transparent 60%);
+    transition: --glass-x 520ms var(--ease-out-quint), --glass-y 520ms var(--ease-out-quint);
+  }
+  /* the rim: a 1px gradient border that is brightest where the light hits */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    padding: 1px;
+    background: linear-gradient(140deg, var(--glass-rim), transparent 38%, transparent 64%, var(--glass-rim-low));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::before { transition: none; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    background: var(--glass-tint-top);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }

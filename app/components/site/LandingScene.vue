@@ -78,8 +78,11 @@ onBeforeUnmount(() => {
     class="absolute inset-0 overflow-hidden"
     :data-ready="ready"
   >
+    <!-- The poster is a square render from the same camera. The camera's field of view is
+         vertical, so the poster fills the stage height and sits centred, with its side edges
+         feathered into the backdrop: when the canvas fades in, nothing jumps. -->
     <img
-      class="block size-full object-cover"
+      class="absolute top-0 left-1/2 block aspect-square h-full w-auto max-w-none -translate-x-1/2 [mask-image:linear-gradient(to_right,transparent,#000_14%,#000_86%,transparent)]"
       src="/images/hero.webp"
       width="1000"
       height="1000"

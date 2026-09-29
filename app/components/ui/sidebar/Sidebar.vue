@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import type { SidebarProps } from "."
 import { cn } from "@/lib/utils"
-import { Sheet, SheetContent } from '@/components/ui/sheet'
-import SheetDescription from '@/components/ui/sheet/SheetDescription.vue'
-import SheetHeader from '@/components/ui/sheet/SheetHeader.vue'
-import SheetTitle from '@/components/ui/sheet/SheetTitle.vue'
+import SidebarSheet from './SidebarSheet.vue'
 import { useSidebar } from "./utils"
 
 defineOptions({
@@ -17,7 +14,7 @@ const props = withDefaults(defineProps<SidebarProps>(), {
   collapsible: "offcanvas",
 })
 
-const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+const { isMobile, state } = useSidebar()
 </script>
 
 <template>
@@ -30,26 +27,10 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
     <slot />
   </div>
 
-  <!-- Mobile: a bottom sheet so the model stays visible above the controls while editing. -->
-  <Sheet v-else-if="isMobile" :open="openMobile" v-bind="$attrs" @update:open="setOpenMobile">
-    <SheetContent
-      data-sidebar="sidebar"
-      data-slot="sidebar"
-      data-mobile="true"
-      side="bottom"
-      class="bg-sidebar text-sidebar-foreground h-[72svh] w-full gap-0 rounded-t-[24px] border-t-0 p-0 shadow-[0_0_0_1px_var(--hairline),0_-12px_40px_-16px_rgba(17,18,20,0.3)] duration-300 [&>button]:hidden"
-      :style="{ paddingBottom: 'env(safe-area-inset-bottom)' }"
-    >
-      <SheetHeader class="sr-only">
-        <SheetTitle>Controls</SheetTitle>
-        <SheetDescription>Shape, material and scene settings.</SheetDescription>
-      </SheetHeader>
-      <div class="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-foreground/15" aria-hidden="true" />
-      <div class="flex min-h-0 w-full flex-1 flex-col">
-        <slot />
-      </div>
-    </SheetContent>
-  </Sheet>
+  <!-- Mobile: a resting sheet the model floats above; see SidebarSheet. -->
+  <SidebarSheet v-else-if="isMobile" v-bind="$attrs">
+    <slot />
+  </SidebarSheet>
 
   <div
     v-else

@@ -21,19 +21,6 @@ function switchTab(f: Finish) {
   if (props.glass.finish !== f) apply(MATERIAL_PRESETS.find(p => p.id === first)!)
 }
 
-function sphere(p: MaterialPreset) {
-  const glassy = p.group !== 'metal'
-  return {
-    background: [
-      'radial-gradient(circle at 30% 26%, rgba(255,255,255,0.95) 0, rgba(255,255,255,0.45) 9%, rgba(255,255,255,0) 26%)',
-      glassy ? 'radial-gradient(circle at 68% 78%, rgba(255,255,255,0.55) 0, rgba(255,255,255,0) 32%)' : 'radial-gradient(circle at 70% 78%, rgba(0,0,0,0.28) 0, rgba(0,0,0,0) 46%)',
-      p.swatch,
-    ].join(','),
-    boxShadow: glassy
-      ? 'inset 0 0 0 1px rgba(0,0,0,0.08), inset -4px -6px 10px rgba(0,0,0,0.10), 0 8px 14px -8px rgba(0,0,0,0.35)'
-      : 'inset -5px -7px 12px rgba(0,0,0,0.28), inset 3px 4px 8px rgba(255,255,255,0.25), 0 8px 14px -8px rgba(0,0,0,0.45)',
-  }
-}
 </script>
 
 <template>
@@ -46,7 +33,7 @@ function sphere(p: MaterialPreset) {
           :class="tab === f ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
           @click="switchTab(f)"
         >
-          <motion.span v-if="tab === f" layout-id="finish-pill" class="absolute inset-0 -z-10 rounded-full bg-card shadow-raise" :transition="{ type: 'spring', stiffness: 500, damping: 40 }" />
+          <motion.span v-if="tab === f" layout-id="finish-pill" class="glass absolute inset-0 -z-10 rounded-full [--glass-tint-top:#fff] [--glass-tint:#f7f8fa] [--glass-drop:0_1px_2px_rgba(13,14,18,.12),0_2px_6px_-2px_rgba(13,14,18,.12)]" :transition="{ type: 'spring', stiffness: 500, damping: 40 }" />
           <Icon :name="finishIcon[f]" :size="13" />
           {{ finishLabel[f] }}
         </button>
@@ -68,7 +55,7 @@ function sphere(p: MaterialPreset) {
             @click="apply(p)"
           >
             <motion.span v-if="active === p.id" layout-id="material-ring" class="absolute inset-0 rounded-xl bg-card shadow-[0_0_0_1px_var(--hairline-strong),0_1px_2px_rgba(17,18,20,0.08),0_4px_10px_-6px_rgba(17,18,20,0.2)]" :transition="{ type: 'spring', stiffness: 520, damping: 38 }" />
-            <span class="relative size-8 rounded-full transition-transform group-hover:scale-105" :style="sphere(p)" />
+            <span class="relative size-8 rounded-full transition-transform group-hover:scale-105" :style="presetSphere(p)" />
             <span class="relative max-w-full truncate text-[11px] leading-none" :class="active === p.id ? 'text-foreground' : 'text-muted-foreground'">{{ p.label }}</span>
           </motion.button>
         </motion.div>

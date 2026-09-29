@@ -45,6 +45,8 @@ defineExpose({
   /** Set parameters without easing; `applyNow` false when a new trace is about to rebuild. */
   snap: (p: Partial<GlassParams>, applyNow = true) => studio?.snapParams(p, applyNow),
   frame: () => studio?.frame(),
+  /** Recentre and shrink the model for a sheet covering the bottom of the stage. */
+  setFocus: (shift: number, scale: number) => studio?.setFocus(shift, scale),
   setView: (v: 'angle' | 'front' | 'side' | 'top') => studio?.setView(v),
   exportGLB: async (name = 'vitrum') => { if (studio) download(await studio.exportGLB(), `${name}.glb`) },
   exportSTL: (name = 'vitrum') => { if (studio) download(studio.exportSTL(), `${name}.stl`) },

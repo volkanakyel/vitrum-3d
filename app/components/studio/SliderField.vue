@@ -113,10 +113,10 @@ function onKey(e: KeyboardEvent) {
 
 // Hairline track, filled range, small ringed thumb that grows on hover / press and pops on a snap.
 const thumb = [
-  'size-3.5 rounded-full border-0 bg-card transition-[scale,box-shadow] duration-150 motion-reduce:transition-none pointer-coarse:size-4',
+  'size-3.5 rounded-full border-0 bg-card transition-[scale,box-shadow] duration-[250ms,150ms] ease-[var(--ease-spring),ease] motion-reduce:transition-none pointer-coarse:size-4',
   'shadow-[0_0_0_1px_var(--hairline-strong),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
-  'hover:scale-115 hover:ring-0 hover:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_rgba(17,18,20,.06),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
-  'focus-visible:scale-115 focus-visible:ring-0 focus-visible:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_rgba(17,18,20,.06),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
+  'hover:scale-115 hover:ring-0 hover:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_var(--well),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
+  'focus-visible:scale-115 focus-visible:ring-0 focus-visible:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_var(--ice-glow),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
   'active:scale-95',
 ]
 </script>
@@ -229,7 +229,7 @@ const thumb = [
         :max="max"
         :step="step"
         class="group/track h-4 pointer-coarse:h-8"
-        track-class="h-0.5 rounded-full bg-ink/10 group-hover/track:bg-ink/15 data-[orientation=horizontal]:h-0.5"
+        track-class="h-[3px] rounded-full bg-well-strong group-hover/track:bg-[color-mix(in_srgb,var(--ink)_16%,transparent)] data-[orientation=horizontal]:h-[3px]"
         range-class="bg-foreground"
         :thumb-class="[thumb, snapping && 'scale-125! duration-90']"
       />

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * One feature on the landing page: a small light box with a live demo, then a title and a line
- * of copy. The card owns visibility, so every demo inside gets the same two signals:
+ * One feature on the landing page: a slab holding a lightbox with a live demo, then a title and a
+ * line of copy. The card owns visibility, so every demo inside gets the same two signals:
  * `running` (on screen, motion allowed) and `seen` (has been on screen at least once).
  */
-withDefaults(defineProps<{ title: string; text: string; hint?: string; wide?: boolean; tone?: 'ice' | 'mint' | 'rose' | 'amber' | 'slate' }>(), { tone: 'slate' })
+withDefaults(defineProps<{ title: string; text: string; tag: string; hint?: string; tone?: 'ice' | 'mint' | 'rose' | 'amber' | 'slate' }>(), { tone: 'slate' })
 
 const root = ref<HTMLElement | null>(null)
 const inView = useInView(root)
@@ -26,20 +26,23 @@ const WASH = {
 <template>
   <article
     ref="root"
-    class="flex min-w-0 flex-col rounded-card bg-surface p-1.5 shadow-pane"
-    :class="[WASH[tone], { 'col-span-2 max-fold:col-auto': wide }]"
+    class="flex h-full min-w-0 flex-col rounded-card bg-slab p-2 shadow-pane"
+    :class="WASH[tone]"
   >
-    <div class="relative isolate grid h-[300px] place-items-center overflow-hidden rounded-pane bg-[radial-gradient(120%_90%_at_85%_0%,var(--wash)_0%,transparent_62%),radial-gradient(90%_80%_at_0%_100%,var(--wash-2)_0%,transparent_60%),linear-gradient(180deg,#f3f4f7,#eceef2)] shadow-[inset_0_0_0_1px_var(--hairline),inset_0_1px_0_#fff] max-lap:h-[270px] max-fold:h-[250px]">
+    <div class="lightbox relative isolate grid h-[272px] place-items-center overflow-hidden rounded-pane bg-[radial-gradient(120%_90%_at_85%_0%,var(--wash)_0%,transparent_62%),radial-gradient(90%_80%_at_0%_100%,var(--wash-2)_0%,transparent_60%),linear-gradient(180deg,#f3f4f7,#eceef2)] shadow-[inset_0_0_0_1px_rgba(13,14,18,.05),inset_0_1px_0_#fff] max-lap:h-[256px] max-fold:h-[240px]">
+      <span class="glass absolute top-3 left-3 z-10 rounded-full px-2.5 py-1 text-[11px] leading-none font-medium text-ink-2 [--glass-blur:8px]">
+        {{ tag }}
+      </span>
       <slot
         :running="running"
         :seen="seen || reduced"
       />
     </div>
-    <div class="px-3 pt-4 pb-3">
-      <h3 class="font-(family-name:--font-display) text-[17px] font-medium tracking-[-0.03em] text-ink">
+    <div class="px-4 pt-5 pb-4 max-tab:px-3 max-tab:pt-4 max-tab:pb-3">
+      <h3 class="font-(family-name:--font-display) text-[16px] font-medium tracking-[-0.025em] text-ink">
         {{ title }}
       </h3>
-      <p class="mt-1.5 max-w-[52ch] text-[13.5px] leading-[1.55] text-pretty text-ink-2">
+      <p class="mt-2 max-w-[52ch] text-[13px] leading-[1.6] text-pretty text-ink-2">
         {{ text }}<span
           v-if="hint"
           class="hover-none:hidden"

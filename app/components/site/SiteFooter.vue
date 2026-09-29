@@ -52,10 +52,11 @@ const link = 'inline-flex items-center gap-[7px] transition-colors duration-150 
         </div>
       </div>
       <div class="mt-8 mb-[23px] flex items-center justify-between gap-5 max-tab:mt-7 max-tab:mb-[18px]">
-        <span class="font-(family-name:--font-display) text-[clamp(100px,20.5vw,290px)] leading-[.9] font-medium tracking-[-.075em] text-ink max-tab:text-[22vw]">vitrum</span>
+        <span class="font-(family-name:--font-display) text-[clamp(100px,20.5vw,290px)] leading-[.9] font-medium tracking-[-.075em] max-tab:text-[22vw]"><span class="bg-[linear-gradient(180deg,var(--ink)_10%,color-mix(in_srgb,var(--ink)_8%,transparent)_92%)] bg-clip-text pb-[0.06em] text-transparent">vitrum</span></span>
         <a
           href="#main-content"
-          class="mt-[60px] grid size-14 place-items-center rounded-full bg-surface text-ink shadow-raise transition-transform duration-180 ease-out-quint focus-ring [--ring-offset:5px] hover:-translate-y-[3px] motion-reduce:transition-none max-tab:mt-[25px] max-tab:size-11 max-tab:shrink-0"
+          v-glass
+          class="glass relative mt-[60px] grid size-14 place-items-center rounded-full text-ink transition-[translate,scale] duration-[380ms] ease-spring focus-ring [--ring-offset:5px] active:scale-[.92] active:duration-100 motion-reduce:transition-none pointer-fine:hover:-translate-y-1 max-tab:mt-[25px] max-tab:size-11 max-tab:shrink-0"
           aria-label="Back to top"
         ><Icon
           name="arrow-up"

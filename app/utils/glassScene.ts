@@ -310,6 +310,30 @@ export class GlassStudio {
     if (import.meta.dev) (window as unknown as { __studio: GlassStudio }).__studio = this
   }
 
+  /** See `setFocus`. */
+  private focus = { shift: 0, scale: 1 }
+
+  /**
+   * Frame the model for a canvas partly covered from below (the phone controls sheet): the image
+   * moves up by `shift` css px and is drawn at `scale`, through the projection alone, so the
+   * canvas keeps its size and nothing reallocates mid-drag. Exports ignore it.
+   */
+  setFocus(shift: number, scale: number) {
+    if (shift === this.focus.shift && scale === this.focus.scale) return
+    this.focus = { shift, scale }
+    this.applyFocus()
+  }
+
+  private applyFocus() {
+    const { shift, scale } = this.focus
+    const w = this.canvas.clientWidth || 1
+    const h = this.canvas.clientHeight || 1
+    this.camera.zoom = scale
+    if (shift) this.camera.setViewOffset(w, h, 0, shift, w, h)
+    else this.camera.clearViewOffset()
+    this.camera.updateProjectionMatrix()
+  }
+
   /**
    * @param paint Repaint right away. Resizing the canvas clears it, so a layout-driven resize
    *   (sidebar collapsing) would otherwise show a blank frame until the next tick of the loop.
@@ -319,7 +343,7 @@ export class GlassStudio {
     const h = this.canvas.clientHeight || 1
     this.renderer.setSize(w, h, false)
     this.camera.aspect = w / h
-    this.camera.updateProjectionMatrix()
+    this.applyFocus()
     this.sizeBuffers()
     this.placeBackdrop()
     if (paint && !this.disposed) this.renderPasses()
@@ -1178,6 +1202,8 @@ export class GlassStudio {
 
   async screenshot(scale = 2): Promise<Blob> {
     const prevRatio = this.renderer.getPixelRatio()
+    const prevFocus = this.focus
+    this.focus = { shift: 0, scale: 1 }
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio * scale, 4))
     this.resize()
     this.renderPasses()
@@ -1185,6 +1211,7 @@ export class GlassStudio {
       this.canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'),
     )
     this.renderer.setPixelRatio(prevRatio)
+    this.focus = prevFocus
     this.resize()
     return blob
   }

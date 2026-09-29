@@ -24,6 +24,9 @@ export default defineNuxtConfig({
   components: [{ path: '~/components', pathPrefix: false }],
   css: ['~/assets/main.css'],
   experimental: {
+    // The hero's stage morphs into the studio's stage (both carry `view-transition-name: stage`).
+    // `true` skips it for visitors who prefer reduced motion.
+    viewTransition: true,
     defaults: {
       // The studio bundle includes Three.js. Prefetch it on hover or focus, not merely because
       // a landing link is in view, so the prerendered page can paint before that download starts.
