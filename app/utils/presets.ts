@@ -168,5 +168,15 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
   { id: 'ceramic', label: 'Ceramic', group: 'metal', swatch: 'linear-gradient(135deg,#ffffff,#eceff3)', values: metal({ tint: '#f4f4f2', metalness: 0, roughness: 0.28, clearcoat: 1 }) },
 ]
 
+/** The preset these parameters currently match exactly, or null once any of its values is tuned. */
+export function activePresetId(g: GlassParams): string | null {
+  return MATERIAL_PRESETS.find(p => Object.entries(p.values).every(([k, v]) => g[k as keyof GlassParams] === v))?.id ?? null
+}
+
+/** Apply a preset in place: it sets every material key, so the result is the same from any start. */
+export function applyPreset(g: GlassParams, p: MaterialPreset): void {
+  Object.assign(g, p.values)
+}
+
 /** @deprecated kept for older imports; use MATERIAL_PRESETS. */
 export const GLASS_PRESETS = MATERIAL_PRESETS.filter(p => p.group === 'glass').map(p => ({ id: p.id, label: p.label, values: p.values }))

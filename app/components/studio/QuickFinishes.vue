@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { usePreferredReducedMotion } from '@vueuse/core'
 import { motion } from 'motion-v'
 import { MATERIAL_PRESETS, type GlassParams, type MaterialPreset } from '~/utils/presets'
 
@@ -10,21 +9,16 @@ import { MATERIAL_PRESETS, type GlassParams, type MaterialPreset } from '~/utils
  */
 const props = defineProps<{ glass: GlassParams }>()
 const strip = ref<HTMLElement | null>(null)
-const reduced = usePreferredReducedMotion()
+const reduced = useReducedMotion()
 
-const active = computed(() => {
-  const g = props.glass
-  return MATERIAL_PRESETS.find(pr => Object.entries(pr.values).every(([k, v]) => g[k as keyof GlassParams] === v))?.id ?? null
-})
-function apply(p: MaterialPreset) {
-  Object.assign(props.glass, p.values)
-}
+const active = computed(() => activePresetId(props.glass))
+const apply = (p: MaterialPreset) => applyPreset(props.glass, p)
 
 function centre(id: string | null, smooth: boolean) {
   const el = id ? strip.value?.querySelector<HTMLElement>(`[data-id="${id}"]`) : null
   const row = strip.value
   if (!el || !row) return
-  row.scrollTo({ left: el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2, behavior: smooth && reduced.value !== 'reduce' ? 'smooth' : 'auto' })
+  row.scrollTo({ left: el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2, behavior: smooth && !reduced.value ? 'smooth' : 'auto' })
 }
 watch(active, id => nextTick(() => centre(id, true)))
 onMounted(() => centre(active.value, false))

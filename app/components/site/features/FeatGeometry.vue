@@ -167,33 +167,28 @@ const mode = computed(() => MODES[index.value]!)
 const fills = computed(() => FILLS[mode.value.value])
 const art = computed(() => ART[mode.value.value])
 const current = shallowRef(PACKED.extrude)
+/** The morph, the pill and the surface fade share this duration and `--ease-in-out-cubic`. */
 const DURATION = 640
-let raf = 0
+let cancel = () => {}
 
 watch(() => mode.value.value, (next) => {
-  cancelAnimationFrame(raf)
+  cancel()
   const from = current.value
   const to = PACKED[next]
   if (!active.value) {
     current.value = to
     return
   }
-  const start = performance.now()
-  const step = (now: number) => {
-    const t = Math.min(1, (now - start) / DURATION)
-    // easeInOutCubic: the pill's curve too, cubic-bezier(.65, 0, .35, 1).
-    const e = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2
+  cancel = tween(DURATION, (e) => {
     current.value = from.map((v, i) => v + (to[i]! - v) * e)
-    if (t < 1) raf = requestAnimationFrame(step)
-  }
-  raf = requestAnimationFrame(step)
+  })
 })
 watch(active, (value) => {
   if (value) return
-  cancelAnimationFrame(raf)
+  cancel()
   current.value = PACKED[mode.value.value]
 })
-onBeforeUnmount(() => cancelAnimationFrame(raf))
+onBeforeUnmount(() => cancel())
 
 function f(n: number) {
   return n.toFixed(2)
@@ -208,12 +203,11 @@ const pieces = computed(() => {
   const v = current.value
   let at = 0
   const take = (n: number) => v.slice(at, (at += n))
-  const pieces = PIECES.map((p) => {
+  return PIECES.map((p) => {
     const top = take(N)
     const bottom = take(N)
     return { id: p.id, ...outline(U.map(u => p.x0 + u * (p.x1 - p.x0)), top, bottom) }
   })
-  return pieces
 })
 
 function choose(i: number) {
@@ -226,6 +220,11 @@ function choose(i: number) {
  * and the geometry follows from it. A fade as long as the morph would pass through mud.
  */
 const EASE = 'transition-[fill] duration-[220ms] ease-out motion-reduce:transition-none'
+/**
+ * A/B marks. Both drawings scale with their box and shrink ~2× on the phone card, so the letters
+ * are set larger there (in user units) to stay a readable ~7 px.
+ */
+const LETTER = 'font-mono text-[8px] leading-none font-medium fill-ink-3'
 </script>
 
 <template>
@@ -242,7 +241,7 @@ const EASE = 'transition-[fill] duration-[220ms] ease-out motion-reduce:transiti
       aria-label="Geometry mode"
     >
       <span
-        class="geometry-selector pointer-events-none absolute inset-y-[3px] left-[3px] w-[calc((100%-6px)/4)] rounded-full bg-white shadow-raise"
+        class="pointer-events-none transition-transform duration-[640ms] ease-in-out-cubic motion-reduce:transition-none absolute inset-y-[3px] left-[3px] w-[calc((100%-6px)/4)] rounded-full bg-white shadow-raise"
         :style="{ transform: `translateX(${index * 100}%)` }"
       />
       <button
@@ -306,13 +305,15 @@ const EASE = 'transition-[fill] duration-[220ms] ease-out motion-reduce:transiti
         <text
           x="-7"
           y="53.5"
-          class="geometry-letter"
+          :class="LETTER"
+          class="max-fold:text-[10px]"
           text-anchor="middle"
         >A</text>
         <text
           x="107"
           y="53.5"
-          class="geometry-letter"
+          :class="LETTER"
+          class="max-fold:text-[10px]"
           text-anchor="middle"
         >B</text>
       </svg>
@@ -334,8 +335,9 @@ const EASE = 'transition-[fill] duration-[220ms] ease-out motion-reduce:transiti
           stroke-dasharray="2 4"
           vector-effect="non-scaling-stroke"
         />
+        <!-- Fades in over the whole morph, on its curve; out fast, so the pieces are seen leaving. -->
         <g
-          class="geometry-surface"
+          class="opacity-0 transition-opacity duration-200 ease-out data-on:opacity-100 data-on:duration-[640ms] data-on:ease-in-out-cubic motion-reduce:transition-none"
           :data-on="mode.value === 'relief' || undefined"
         >
           <path
@@ -372,13 +374,15 @@ const EASE = 'transition-[fill] duration-[220ms] ease-out motion-reduce:transiti
         <text
           :x="X(4)"
           y="108"
-          class="geometry-letter geometry-letter-profile"
+          :class="LETTER"
+          class="max-fold:text-[15px]"
           text-anchor="middle"
         >A</text>
         <text
           :x="X(96)"
           y="108"
-          class="geometry-letter geometry-letter-profile"
+          :class="LETTER"
+          class="max-fold:text-[15px]"
           text-anchor="middle"
         >B</text>
       </svg>
@@ -397,32 +401,3 @@ const EASE = 'transition-[fill] duration-[220ms] ease-out motion-reduce:transiti
     </p>
   </div>
 </template>
-
-<style scoped>
-.geometry-selector {
-  transition: transform 620ms cubic-bezier(0.65, 0, 0.35, 1);
-}
-/* In over the whole morph, on its curve; out fast, so the pieces are seen leaving the surface. */
-.geometry-surface {
-  opacity: 0;
-  transition: opacity 200ms ease-out;
-}
-.geometry-surface[data-on] {
-  opacity: 1;
-  transition: opacity 640ms cubic-bezier(0.65, 0, 0.35, 1);
-}
-.geometry-letter {
-  font: 500 8px/1 var(--font-mono);
-  fill: var(--ink-3);
-}
-/* Both drawings scale with their box; on the phone card they shrink ~2×, so the letters grow back
-   to a readable 7 px. */
-@media (width < 681px) {
-  .geometry-letter { font-size: 10px; }
-  .geometry-letter-profile { font-size: 15px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .geometry-selector, .geometry-surface { transition: none; }
-}
-</style>

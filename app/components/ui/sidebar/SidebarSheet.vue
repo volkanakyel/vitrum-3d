@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useEventListener, usePreferredReducedMotion, useResizeObserver, useWindowSize } from '@vueuse/core'
+import { useEventListener, useResizeObserver, useWindowSize } from '@vueuse/core'
 import { animate } from 'motion-v'
 import type { SheetSnap } from '~/composables/useStudioSheet'
 import { useSidebar } from './utils'
@@ -19,7 +19,7 @@ defineOptions({ inheritAttrs: false })
 
 const { openMobile, setOpenMobile } = useSidebar()
 const { height, peek, half, full, inset, snap } = useStudioSheet()
-const reduced = usePreferredReducedMotion()
+const reduced = useReducedMotion()
 const { height: vh } = useWindowSize()
 
 const root = ref<HTMLElement | null>(null)
@@ -34,7 +34,7 @@ function go(s: SheetSnap, velocity = 0, delay = 0) {
   snap.value = s
   anim?.stop()
   const to = target(s)
-  if (reduced.value === 'reduce') {
+  if (reduced.value) {
     height.set(to)
     return
   }

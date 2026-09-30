@@ -7,9 +7,6 @@
  * leak into a production build.
  */
 
-const GOOGLE_FONTS_CSS = 'https://fonts.googleapis.com'
-const GOOGLE_FONTS_FILES = 'https://fonts.gstatic.com'
-
 /**
  * The studio's policy. Each source is here for a reason:
  *
@@ -22,8 +19,9 @@ const GOOGLE_FONTS_FILES = 'https://fonts.gstatic.com'
  *   own payloads. Dev adds `ws:`/`wss:` for HMR.
  * - `img-src data: blob:` — every texture, screenshot and imported photo is a
  *   canvas blob or a data URL.
- * - `style-src 'unsafe-inline'` + the Google Fonts stylesheet host — Tailwind's
- *   runtime-set custom properties and three's injected styles are inline.
+ * - `style-src 'unsafe-inline'` — Tailwind's runtime-set custom properties and
+ *   three's injected styles are inline. Fonts are self-hosted by `@nuxt/fonts`,
+ *   so no font origin is allowed.
  * - `object-src`/`base-uri`/`form-action` `'none'` — nothing in the studio
  *   needs a plugin, a `<base>` or a form post.
  */
@@ -36,8 +34,8 @@ export function studioCsp(isDev: boolean): string {
   return [
     'default-src \'self\'',
     `script-src ${script.join(' ')}`,
-    `style-src 'self' 'unsafe-inline' ${GOOGLE_FONTS_CSS}`,
-    `font-src 'self' data: ${GOOGLE_FONTS_FILES}`,
+    'style-src \'self\' \'unsafe-inline\'',
+    'font-src \'self\' data:',
     'img-src \'self\' data: blob:',
     `connect-src ${connect.join(' ')}`,
     'worker-src \'self\' blob:',

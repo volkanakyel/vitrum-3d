@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useEventListener } from '@vueuse/core'
 import { AnimatePresence, LayoutGroup, motion } from 'motion-v'
-import { FeatExport, FeatGeometry, FeatMaterials, FeatPrivate, FeatShortcuts, FeatSize, FeatTrace } from '#components'
 import { LANDING_EXAMPLES, LANDING_FAQS, landingLooks } from '~/data/landing'
 import { LOGOS } from '~/utils/logos'
 import { MATERIAL_PRESETS } from '~/utils/presets'
@@ -59,6 +58,21 @@ function shareLook() {
   with a layout spring. Order is the reading order with every filter.
 */
 type Topic = 'Shape' | 'Finish' | 'Workflow'
+// Each demo is its own chunk and hydrates as it nears the viewport: the prerendered HTML already
+// shows its first frame, so nothing has to run until someone scrolls to it.
+const FeatTrace = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatTrace.vue'))
+const FeatGeometry = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatGeometry.vue'))
+const FeatShortcuts = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatShortcuts.vue'))
+const FeatMaterials = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatMaterials.vue'))
+const FeatSize = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatSize.vue'))
+const FeatExport = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatExport.vue'))
+const FeatPrivate = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatPrivate.vue'))
+/**
+ * Hydrate a little before the card's own in-view signal (-12% bottom margin) turns the demo on.
+ * One shared object: an inline literal is a new prop on every page render, and Vue abandons lazy
+ * hydration for a component whose props change before it hydrates.
+ */
+const HYDRATE_NEAR = { rootMargin: '240px' }
 const FEATURES = [
   { id: 'trace', topic: 'Shape', demo: FeatTrace, tone: 'ice', title: 'Reads any SVG or PNG', text: 'Logos, icons, wordmarks. Every shape is found, holes kept and stray pixels ignored, so you never redraw a path.' },
   { id: 'geometry', topic: 'Shape', demo: FeatGeometry, tone: 'slate', wide: true, title: 'Four ways to add depth', text: 'Extrude a crisp slab, stack brand colours in layers, inflate a soft volume, or turn artwork into relief. Pick a mode to see its cross-section.' },
@@ -253,6 +267,7 @@ const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duratio
                   :is="f.demo"
                   :running="running"
                   :seen="seen"
+                  :hydrate-on-visible="HYDRATE_NEAR"
                 />
               </FeatureCard>
             </motion.div>

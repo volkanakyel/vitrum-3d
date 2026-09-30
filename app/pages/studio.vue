@@ -220,7 +220,7 @@ onMounted(() => {
                   <motion.span
                     v-if="view === v"
                     layout-id="view-pill"
-                    class="lightbox glass absolute inset-0 -z-10 rounded-full [--glass-tint-top:#fff] [--glass-tint:#eef0f4] [--glass-drop:0_1px_2px_rgba(0,0,0,.35)]"
+                    class="lightbox glass-pill [--glass-tint:#eef0f4] [--glass-drop:0_1px_2px_rgba(0,0,0,.35)]"
                     :transition="{ type: 'spring', stiffness: 500, damping: 40 }"
                   />
                   <span class="relative">{{ v }}</span>

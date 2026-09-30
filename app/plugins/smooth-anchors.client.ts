@@ -14,17 +14,14 @@
  */
 export default defineNuxtPlugin(() => {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
-  let frame = 0
-  let release: (() => void) | null = null
+  const INTERRUPTS = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+  let cancel: (() => void) | null = null
 
   function stop() {
-    cancelAnimationFrame(frame)
-    frame = 0
-    release?.()
-    release = null
+    cancel?.()
+    cancel = null
+    for (const e of INTERRUPTS) window.removeEventListener(e, stop)
   }
-
-  const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 
   function glide(to: number, done: () => void) {
     stop()
@@ -35,22 +32,12 @@ export default defineNuxtPlugin(() => {
       done()
       return
     }
-    const duration = Math.min(980, 360 + Math.sqrt(Math.abs(distance)) * 8)
-    const start = performance.now()
-    const interrupt = () => stop()
-    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
-    for (const e of events) window.addEventListener(e, interrupt, { passive: true })
-    release = () => { for (const e of events) window.removeEventListener(e, interrupt) }
-    const step = (now: number) => {
-      const t = Math.min(1, (now - start) / duration)
-      window.scrollTo(0, from + distance * ease(t))
-      if (t < 1) frame = requestAnimationFrame(step)
-      else {
-        stop()
-        done()
-      }
-    }
-    frame = requestAnimationFrame(step)
+    for (const e of INTERRUPTS) window.addEventListener(e, stop, { passive: true })
+    cancel = tween(
+      Math.min(980, 360 + Math.sqrt(Math.abs(distance)) * 8),
+      e => window.scrollTo(0, from + distance * e),
+      { done: () => { stop(); done() } },
+    )
   }
 
   function destination(target: HTMLElement) {

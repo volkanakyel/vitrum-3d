@@ -374,7 +374,7 @@ const tabTrigger =
             <motion.span
               v-if="tab === t.value"
               layout-id="panel-tab-pill"
-              class="glass absolute inset-0 -z-10 rounded-full [--glass-tint-top:#fff] [--glass-tint:#f7f8fa] [--glass-drop:0_1px_2px_rgba(13,14,18,.12),0_2px_6px_-2px_rgba(13,14,18,.12)]"
+              class="glass-pill"
               :transition="{ type: 'spring', stiffness: 500, damping: 40 }"
             />
             <motion.span

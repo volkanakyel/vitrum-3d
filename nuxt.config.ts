@@ -18,7 +18,16 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
   runtimeConfig: { public: { siteUrl: '' } },
-  modules: ['shadcn-nuxt', 'motion-v/nuxt'],
+  modules: ['shadcn-nuxt', 'motion-v/nuxt', '@nuxt/fonts'],
+  // Self-hosted at build time: no render-blocking third-party stylesheet, no extra origins in the
+  // CSP, and metric-matched fallbacks so the swap from system font to Geist does not shift layout.
+  fonts: {
+    defaults: { subsets: ['latin'], styles: ['normal'] },
+    families: [
+      { name: 'Geist', provider: 'google', weights: ['300 700'], preload: true },
+      { name: 'IBM Plex Mono', provider: 'google', weights: [400, 500] },
+    ],
+  },
   shadcn: { prefix: '', componentDir: './app/components/ui' },
   // Folder names organise the source; they are not part of the component name.
   components: [{ path: '~/components', pathPrefix: false }],
@@ -56,9 +65,6 @@ export default defineNuxtConfig({
       link: [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
         { rel: 'icon', type: 'image/png', sizes: '64x64', href: '/favicon.png' },
-        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
-        { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Inter:opsz,wght@14..32,400..600&family=IBM+Plex+Mono:wght@400;500&display=swap' },
       ],
     },
   },

@@ -11,11 +11,13 @@
     "preview": "nuxt preview",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
-    "postinstall": "nuxt prepare",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check": "nuxt typecheck && vitest run",
+    "postinstall": "nuxt prepare"
   },
   "dependencies": {
     "@lucide/vue": "^1.41.0",
+    "@nuxt/fonts": "^0.14.0",
     "@pmndrs/vanilla": "^1.25.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vueuse/core": "^14.4.0",

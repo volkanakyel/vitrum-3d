@@ -10,11 +10,8 @@ const finishIcon: Record<Finish, 'gem' | 'cuboid' | 'image'> = { glass: 'gem', m
 watch(() => props.glass.finish, f => (tab.value = f))
 
 const presets = computed(() => MATERIAL_PRESETS.filter(p => p.group === tab.value))
-const active = computed(() => {
-  const g = props.glass
-  return MATERIAL_PRESETS.find(pr => Object.entries(pr.values).every(([k, v]) => g[k as keyof GlassParams] === v))?.id ?? null
-})
-function apply(p: MaterialPreset) { Object.assign(props.glass, p.values) }
+const active = computed(() => activePresetId(props.glass))
+const apply = (p: MaterialPreset) => applyPreset(props.glass, p)
 function switchTab(f: Finish) {
   tab.value = f
   const first = { glass: 'clear', metal: 'gold', print: 'natural' }[f]
@@ -33,7 +30,7 @@ function switchTab(f: Finish) {
           :class="tab === f ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
           @click="switchTab(f)"
         >
-          <motion.span v-if="tab === f" layout-id="finish-pill" class="glass absolute inset-0 -z-10 rounded-full [--glass-tint-top:#fff] [--glass-tint:#f7f8fa] [--glass-drop:0_1px_2px_rgba(13,14,18,.12),0_2px_6px_-2px_rgba(13,14,18,.12)]" :transition="{ type: 'spring', stiffness: 500, damping: 40 }" />
+          <motion.span v-if="tab === f" layout-id="finish-pill" class="glass-pill" :transition="{ type: 'spring', stiffness: 500, damping: 40 }" />
           <Icon :name="finishIcon[f]" :size="13" />
           {{ finishLabel[f] }}
         </button>
