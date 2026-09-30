@@ -16,10 +16,11 @@ const stageVisible = useElementVisibility(stage)
 
 <template>
   <div class="relative mx-auto max-w-[1040px] animate-lift motion-reduce:animate-none">
-    <!-- Feathered on every side: the render's backdrop fades out before it can read as a box. -->
+    <!-- Feathered on every side: the ellipse reaches transparent exactly at the box edge (radii
+         50%), on a smoothstep curve, so the backdrop's vignette dissolves with no visible rim. -->
     <div
       ref="stage"
-      class="relative h-[clamp(360px,36vw,520px)] [mask-image:radial-gradient(ellipse_54%_56%_at_50%_52%,#000_60%,transparent_100%)] max-split:aspect-square max-split:h-auto"
+      class="relative h-[clamp(360px,36vw,520px)] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_50%,#000_58%,rgba(0,0,0,.93)_65%,rgba(0,0,0,.74)_72%,rgba(0,0,0,.5)_79%,rgba(0,0,0,.26)_86%,rgba(0,0,0,.07)_93%,transparent_100%)] max-split:aspect-square max-split:h-auto"
       :class="{ '[view-transition-name:stage]': stageVisible }"
     >
       <LandingScene

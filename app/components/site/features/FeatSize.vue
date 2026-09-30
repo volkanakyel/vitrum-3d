@@ -17,18 +17,32 @@ const { index } = useCycle(HEIGHTS.length, 2400, toRef(props, 'running'))
 const h = computed(() => (props.seen ? HEIGHTS[index.value]! : 0))
 const hText = useSpringText(h, v => v.toFixed(1), { stiffness: 120, damping: 22 })
 const wText = useSpringText(() => h.value * ASPECT, v => v.toFixed(1), { stiffness: 120, damping: 22 })
-const dim = 'fill-none stroke-ink-3 stroke-1 stroke-draw [vector-effect:non-scaling-stroke] motion-reduce:[stroke-dashoffset:0]'
 const scale = computed(() => 0.64 + (0.36 * (HEIGHTS[index.value]! - 60)) / 90)
+/**
+ * Hairline in user units, divided by the group's scale so it stays one device-independent pixel
+ * as the mark grows and shrinks. (`vector-effect: non-scaling-stroke` would do this, but it makes
+ * Chrome dash in screen space and breaks the `pathLength` draw-in.) It eases with the scale.
+ */
+const hairline = computed(() => 0.55 / scale.value)
+/** Each stroke its own path, so every one draws from its own start: line first, then its ends. */
+const DIMS = [
+  { d: `M${X} ${Y + H + 8} H${X + W}`, delay: 200 },
+  { d: `M${X} ${Y + H + 5} V${Y + H + 11}`, delay: 200 },
+  { d: `M${X + W} ${Y + H + 5} V${Y + H + 11}`, delay: 820 },
+  { d: `M${X + W + 8} ${Y + H} V${Y}`, delay: 420 },
+  { d: `M${X + W + 5} ${Y + H} H${X + W + 11}`, delay: 420 },
+  { d: `M${X + W + 5} ${Y} H${X + W + 11}`, delay: 1040 },
+]
 </script>
 
 <template>
-  <div class="absolute inset-0 flex flex-col items-center justify-center gap-3.5 px-4 pt-6 pb-4">
+  <div class="absolute inset-0 flex flex-col items-center gap-3 px-6 pt-9 pb-4">
     <div
-      class="group w-3/5 max-w-[190px]"
+      class="group relative min-h-0 w-full flex-1"
       :data-play="seen || undefined"
     >
       <svg
-        class="block w-full overflow-visible"
+        class="absolute inset-0 size-full overflow-visible"
         viewBox="0 0 100 104"
         aria-hidden="true"
       >
@@ -51,23 +65,19 @@ const scale = computed(() => 0.64 + (0.36 * (HEIGHTS[index.value]! - 60)) / 90)
             />
           </svg>
           <path
-            :class="dim"
-            class="motion-safe:group-data-play:animate-[draw_900ms_200ms_var(--ease-in-out-cubic)_forwards]"
-            :d="`M${X} ${Y + H + 8} H${X + W} M${X} ${Y + H + 5} V${Y + H + 11} M${X + W} ${Y + H + 5} V${Y + H + 11}`"
+            v-for="(l, i) in DIMS"
+            :key="i"
+            class="fill-none stroke-ink-3 stroke-draw [stroke-linecap:round] transition-[stroke-width] duration-700 ease-in-out-cubic motion-safe:group-data-play:animate-[draw_var(--len)_var(--delay)_var(--ease-in-out-cubic)_forwards] motion-reduce:transition-none motion-reduce:[stroke-dashoffset:0]"
+            :d="l.d"
             pathLength="1"
-          />
-          <path
-            :class="dim"
-            class="motion-safe:group-data-play:animate-[draw_900ms_450ms_var(--ease-in-out-cubic)_forwards]"
-            :d="`M${X + W + 8} ${Y} V${Y + H} M${X + W + 5} ${Y} H${X + W + 11} M${X + W + 5} ${Y + H} H${X + W + 11}`"
-            pathLength="1"
+            :style="{ strokeWidth: hairline, '--delay': `${l.delay}ms`, '--len': i === 0 || i === 3 ? '640ms' : '220ms' }"
           />
         </g>
       </svg>
     </div>
     <DimReadout
       :values="[['W', wText], ['H', hText], ['D', '14.0']]"
-      class="bg-white whitespace-nowrap"
+      class="shrink-0 bg-white whitespace-nowrap"
     />
   </div>
 </template>

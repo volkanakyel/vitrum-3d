@@ -60,10 +60,10 @@ function shareLook() {
 */
 type Topic = 'Shape' | 'Finish' | 'Workflow'
 const FEATURES = [
-  { id: 'trace', topic: 'Shape', demo: FeatTrace, tone: 'ice', title: 'Reads any SVG or PNG', text: 'Logos, icons, wordmarks. Vitrum finds every shape, keeps the holes and ignores stray pixels, so you never redraw a path.' },
+  { id: 'trace', topic: 'Shape', demo: FeatTrace, tone: 'ice', title: 'Reads any SVG or PNG', text: 'Logos, icons, wordmarks. Every shape is found, holes kept and stray pixels ignored, so you never redraw a path.' },
   { id: 'geometry', topic: 'Shape', demo: FeatGeometry, tone: 'slate', wide: true, title: 'Four ways to add depth', text: 'Extrude a crisp slab, stack brand colours in layers, inflate a soft volume, or turn artwork into relief. Pick a mode to see its cross-section.' },
   { id: 'shortcuts', topic: 'Workflow', demo: FeatShortcuts, tone: 'mint', wide: true, title: 'Keyboard-first, like your editor', text: 'Frame, switch views, spin and export without reaching for the mouse.', hint: 'Try F, 1 to 4 or R on this page.' },
-  { id: 'materials', topic: 'Finish', demo: FeatMaterials, tone: 'rose', title: `${MATERIAL_PRESETS.length} finishes, fully tunable`, text: 'Glass that refracts, metal that reflects, matte prints in full colour. Start from a preset, then dial in IOR, roughness and tint.' },
+  { id: 'materials', topic: 'Finish', demo: FeatMaterials, tone: 'rose', title: `${MATERIAL_PRESETS.length} finishes, fully tunable`, text: 'Glass that refracts, metal that reflects, matte colour prints. Start from a preset, then tune IOR, roughness and tint.' },
   { id: 'size', topic: 'Shape', demo: FeatSize, tone: 'ice', title: 'Sized in real millimetres', text: 'Set the height and the width follows the mark. The STL prints at exactly the size you set.' },
   { id: 'export', topic: 'Workflow', demo: FeatExport, tone: 'amber', title: 'Ready for your stack', text: 'A 2× PNG for Figma and slides, a GLB for three.js and React Three Fiber, an STL for the printer.' },
   { id: 'private', topic: 'Workflow', demo: FeatPrivate, tone: 'mint', title: 'Client logos stay private', text: 'Tracing, modelling and rendering run on your machine. Nothing is uploaded, and there’s no account to create.' },
@@ -193,7 +193,7 @@ const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duratio
       />
 
       <div
-        class="mb-7 flex flex-wrap gap-1.5"
+        class="mb-6 flex flex-wrap gap-1.5"
         role="group"
         aria-label="Filter features"
       >
@@ -222,7 +222,7 @@ const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duratio
       </div>
 
       <LayoutGroup>
-        <div class="grid grid-flow-dense grid-cols-3 gap-(--gap) max-desk:grid-cols-2 max-fold:grid-cols-1">
+        <div class="grid grid-flow-dense grid-cols-3 gap-4 max-desk:grid-cols-2 max-fold:grid-cols-1 max-fold:gap-3">
           <AnimatePresence
             mode="popLayout"
             :initial="false"

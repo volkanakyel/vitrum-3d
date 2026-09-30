@@ -87,22 +87,42 @@ export class Showcase {
     const bg = document.createElement('canvas')
     bg.width = bg.height = 1024
     const bctx = bg.getContext('2d')!
-    const sweep = bctx.createLinearGradient(0, 0, 0, 1024)
-    sweep.addColorStop(0, '#ededeb')
-    sweep.addColorStop(0.55, '#e2e2e0')
-    sweep.addColorStop(1, '#cfcfcc')
-    bctx.fillStyle = sweep
-    bctx.fillRect(0, 0, 1024, 1024)
-    const key = bctx.createRadialGradient(330, 250, 0, 330, 250, 620)
-    key.addColorStop(0, 'rgba(255,255,255,0.7)')
-    key.addColorStop(1, 'rgba(255,255,255,0)')
-    bctx.fillStyle = key
-    bctx.fillRect(0, 0, 1024, 1024)
-    const vignette = bctx.createRadialGradient(512, 470, 300, 512, 512, 780)
-    vignette.addColorStop(0, 'rgba(24,24,26,0)')
-    vignette.addColorStop(1, 'rgba(24,24,26,0.16)')
-    bctx.fillStyle = vignette
-    bctx.fillRect(0, 0, 1024, 1024)
+    if (opts.layout === 'hero') {
+      // The hero has no frame: its edges must already be the page (--shell), so the stage mask
+      // only has to dissolve grain. Depth comes from a wide, soft pool of shade under the
+      // objects that thins out to nothing, instead of a darkening sweep and vignette that the
+      // mask would cut into a grey rim.
+      bctx.fillStyle = '#eceef2'
+      bctx.fillRect(0, 0, 1024, 1024)
+      const pool = bctx.createRadialGradient(512, 600, 0, 512, 600, 470)
+      for (const [t, a] of [[0, 0.11], [0.3, 0.085], [0.55, 0.045], [0.78, 0.015], [1, 0]] as const) {
+        pool.addColorStop(t, `rgba(38,40,48,${a})`)
+      }
+      bctx.fillStyle = pool
+      bctx.fillRect(0, 0, 1024, 1024)
+      const key = bctx.createRadialGradient(360, 300, 0, 360, 300, 520)
+      key.addColorStop(0, 'rgba(255,255,255,0.6)')
+      key.addColorStop(1, 'rgba(255,255,255,0)')
+      bctx.fillStyle = key
+      bctx.fillRect(0, 0, 1024, 1024)
+    } else {
+      const sweep = bctx.createLinearGradient(0, 0, 0, 1024)
+      sweep.addColorStop(0, '#ededeb')
+      sweep.addColorStop(0.55, '#e2e2e0')
+      sweep.addColorStop(1, '#cfcfcc')
+      bctx.fillStyle = sweep
+      bctx.fillRect(0, 0, 1024, 1024)
+      const key = bctx.createRadialGradient(330, 250, 0, 330, 250, 620)
+      key.addColorStop(0, 'rgba(255,255,255,0.7)')
+      key.addColorStop(1, 'rgba(255,255,255,0)')
+      bctx.fillStyle = key
+      bctx.fillRect(0, 0, 1024, 1024)
+      const vignette = bctx.createRadialGradient(512, 470, 300, 512, 512, 780)
+      vignette.addColorStop(0, 'rgba(24,24,26,0)')
+      vignette.addColorStop(1, 'rgba(24,24,26,0.16)')
+      bctx.fillStyle = vignette
+      bctx.fillRect(0, 0, 1024, 1024)
+    }
     const pixels = bctx.getImageData(0, 0, 1024, 1024)
     const px = pixels.data
     for (let i = 0; i < px.length; i += 4) {

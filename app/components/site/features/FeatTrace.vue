@@ -108,13 +108,13 @@ onMounted(() => {
 
 <template>
   <div
-    class="trace-demo absolute inset-0 grid place-items-center px-7 pt-7 pb-14"
+    class="trace-demo absolute inset-0 flex items-center justify-center px-7 pt-8 pb-[52px]"
     :data-running="active"
   >
     <Transition name="trace-artwork" mode="out-in">
       <svg
         :key="logo.id"
-        class="trace-artwork max-h-full w-full max-w-[168px] overflow-visible"
+        class="trace-artwork size-full max-w-[156px] overflow-visible"
         :data-play="seen && trace ? '' : undefined"
         :viewBox="box"
         aria-hidden="true"
@@ -154,7 +154,7 @@ onMounted(() => {
         />
       </svg>
     </Transition>
-    <div class="absolute bottom-4 left-4 flex h-[30px] items-center gap-2 rounded-full bg-white/85 pr-3 pl-2.5 text-[12px] text-ink shadow-raise">
+    <div class="absolute bottom-3 left-3 flex h-7 items-center gap-2 rounded-full bg-white/85 pr-3 pl-2.5 text-[12px] text-ink shadow-raise">
       <LiveDot :on="seen" />
       <span class="grid min-w-[120px]">
         <Transition name="trace-label">

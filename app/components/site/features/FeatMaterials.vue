@@ -27,43 +27,56 @@ const selector = computed(() => ({ transform: `translate(calc(${selected.value %
 </script>
 
 <template>
-  <div class="absolute inset-0 flex items-center justify-center gap-[26px] p-5 [--cell:30px] max-2xs:gap-4 max-2xs:p-3.5 max-2xs:[--cell:27px]">
-    <div class="relative flex w-[104px] shrink-0 flex-col items-center max-2xs:w-20">
-      <Transition
-        enter-active-class="transition-opacity duration-320 ease-[ease-out] motion-reduce:transition-none"
-        leave-active-class="transition-opacity duration-320 ease-[ease-out] motion-reduce:transition-none"
-        enter-from-class="opacity-0"
-        leave-to-class="opacity-0"
-      >
-        <span
-          :key="current.id"
-          class="absolute top-0 left-0 size-[104px] rounded-full shadow-[inset_0_-10px_18px_rgba(13,14,18,.18),0_14px_26px_-12px_rgba(13,14,18,.35)] max-2xs:size-20"
-          :style="{ background: current.swatch }"
-        />
-      </Transition>
-      <span class="pointer-events-none absolute top-0 left-0 size-[104px] rounded-full bg-[radial-gradient(40%_28%_at_34%_24%,rgba(255,255,255,.95),transparent_70%),radial-gradient(70%_50%_at_50%_110%,rgba(255,255,255,.45),transparent_70%)] max-2xs:size-20" />
-      <p class="mt-[118px] flex flex-col items-center gap-0.5 max-2xs:mt-[92px]">
-        <span class="index text-ink-3">{{ GROUP_LABEL[current.group] }}</span>
-        <strong
-          class="text-[13px] font-medium text-ink"
-          aria-live="polite"
-        >{{ current.label }}</strong>
+  <!-- Sized to the card: a 208 px grid (8 × 26) beside an 88 px sphere, 22 px apart, so the pair
+       is 318 px wide and keeps at least 24 px of stage either side down to the phone card. -->
+  <div class="absolute inset-0 flex items-center justify-center gap-[22px] px-6 pt-7 pb-5 [--cell:26px] max-2xs:gap-4 max-2xs:px-4 max-2xs:[--cell:24px]">
+    <div class="flex w-[88px] shrink-0 flex-col items-center gap-3 max-2xs:w-[72px]">
+      <!-- New finish fades in over the old one, which holds until it is covered: the sphere never
+           dips through the stage mid-swap. -->
+      <div class="relative size-[88px] max-2xs:size-[72px]">
+        <Transition
+          enter-active-class="z-10 transition-opacity duration-260 ease-out motion-reduce:transition-none"
+          leave-active-class="transition-opacity duration-0 delay-260 motion-reduce:delay-0"
+          enter-from-class="opacity-0"
+          leave-to-class="opacity-0"
+        >
+          <span
+            :key="current.id"
+            class="absolute inset-0 rounded-full shadow-[inset_0_-10px_18px_rgba(13,14,18,.18),0_14px_24px_-12px_rgba(13,14,18,.38)]"
+            :style="{ background: current.swatch }"
+          />
+        </Transition>
+        <span class="pointer-events-none absolute inset-0 z-20 rounded-full bg-[radial-gradient(40%_28%_at_34%_24%,rgba(255,255,255,.95),transparent_70%),radial-gradient(70%_50%_at_50%_110%,rgba(255,255,255,.45),transparent_70%)] shadow-[inset_0_0_0_1px_rgba(13,14,18,.06)]" />
+      </div>
+      <p class="grid h-[34px] place-items-center text-center">
+        <SwapTransition lift>
+          <span
+            :key="current.id"
+            class="flex flex-col items-center gap-0.5"
+          >
+            <span class="index text-ink-3">{{ GROUP_LABEL[current.group] }}</span>
+            <strong
+              class="text-[12.5px] leading-none font-medium whitespace-nowrap text-ink"
+              aria-live="polite"
+            >{{ current.label }}</strong>
+          </span>
+        </SwapTransition>
       </p>
     </div>
     <div
-      class="relative grid auto-rows-(--cell) grid-cols-[repeat(8,var(--cell))]"
+      class="relative grid shrink-0 auto-rows-(--cell) grid-cols-[repeat(8,var(--cell))]"
       role="group"
       :aria-label="`${swatches.length} finishes`"
     >
       <span
-        class="pointer-events-none absolute top-0 left-0 size-(--cell) rounded-full shadow-[0_0_0_1.5px_var(--ink)] transition-transform duration-380 ease-in-out-cubic motion-reduce:transition-none"
+        class="pointer-events-none absolute top-0 left-0 size-(--cell) rounded-full shadow-[0_0_0_1.5px_var(--ink)] transition-transform duration-[420ms] ease-[cubic-bezier(.65,0,.35,1)] motion-reduce:transition-none"
         :style="selector"
       />
       <button
         v-for="(s, i) in swatches"
         :key="s.id"
         type="button"
-        class="sphere m-1 size-[22px] p-0 transition-transform duration-150 ease-[ease] focus-ring motion-reduce:transition-none pointer-fine:hover:scale-[1.12] max-2xs:size-[19px]"
+        class="sphere m-[3px] size-[20px] p-0 transition-transform duration-150 ease-[ease] focus-ring motion-reduce:transition-none pointer-fine:hover:scale-[1.12] max-2xs:size-[18px]"
         :style="{ background: s.swatch }"
         :aria-label="s.label"
         :aria-pressed="selected === i"
