@@ -116,7 +116,7 @@ const thumb = [
   'size-3.5 rounded-full border-0 bg-card transition-[scale,box-shadow] duration-[250ms,150ms] ease-[var(--ease-spring),ease] motion-reduce:transition-none pointer-coarse:size-4',
   'shadow-[0_0_0_1px_var(--hairline-strong),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
   'hover:scale-115 hover:ring-0 hover:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_var(--well),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
-  'focus-visible:scale-115 focus-visible:ring-0 focus-visible:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_var(--ice-glow),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
+  'focus-visible:scale-115 focus-visible:ring-0 focus-visible:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_var(--lamp-glow),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
   'active:scale-95',
 ]
 </script>

@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { useEventListener } from '@vueuse/core'
-import { AnimatePresence, LayoutGroup, motion } from 'motion-v'
 import { LANDING_EXAMPLES, LANDING_FAQS, landingLooks } from '~/data/landing'
 import { LOGOS } from '~/utils/logos'
-import { MATERIAL_PRESETS } from '~/utils/presets'
 import { HERO_FINISH } from '~/utils/samples'
 
 const route = useRoute()
@@ -53,53 +51,16 @@ function shareLook() {
   void share({ title: 'Vitrum', text: 'Custom 3D icons from any logo, made in the browser.', url: url.href })
 }
 
-/*
-  Features are blocks on the bench. The chips filter them by what they are about; the grid reflows
-  with a layout spring. Order is the reading order with every filter.
-*/
-type Topic = 'Shape' | 'Finish' | 'Workflow'
-// Each demo is its own chunk and hydrates as it nears the viewport: the prerendered HTML already
-// shows its first frame, so nothing has to run until someone scrolls to it.
-const FeatTrace = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatTrace.vue'))
-const FeatGeometry = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatGeometry.vue'))
-const FeatShortcuts = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatShortcuts.vue'))
-const FeatMaterials = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatMaterials.vue'))
-const FeatSize = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatSize.vue'))
-const FeatExport = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatExport.vue'))
-const FeatPrivate = defineLazyHydrationComponent('visible', () => import('~/components/site/features/FeatPrivate.vue'))
-/**
- * Hydrate a little before the card's own in-view signal (-12% bottom margin) turns the demo on.
- * One shared object: an inline literal is a new prop on every page render, and Vue abandons lazy
- * hydration for a component whose props change before it hydrates.
- */
-const HYDRATE_NEAR = { rootMargin: '240px' }
-const FEATURES = [
-  { id: 'trace', topic: 'Shape', demo: FeatTrace, tone: 'ice', title: 'Reads any SVG or PNG', text: 'Logos, icons, wordmarks. Every shape is found, holes kept and stray pixels ignored, so you never redraw a path.' },
-  { id: 'geometry', topic: 'Shape', demo: FeatGeometry, tone: 'slate', wide: true, title: 'Four ways to add depth', text: 'Extrude a crisp slab, stack brand colours in layers, inflate a soft volume, or turn artwork into relief. Pick a mode to see its cross-section.' },
-  { id: 'shortcuts', topic: 'Workflow', demo: FeatShortcuts, tone: 'mint', wide: true, title: 'Keyboard-first, like your editor', text: 'Frame, switch views, spin and export without reaching for the mouse.', hint: 'Try F, 1 to 4 or R on this page.' },
-  { id: 'materials', topic: 'Finish', demo: FeatMaterials, tone: 'rose', title: `${MATERIAL_PRESETS.length} finishes, fully tunable`, text: 'Glass that refracts, metal that reflects, matte colour prints. Start from a preset, then tune IOR, roughness and tint.' },
-  { id: 'size', topic: 'Shape', demo: FeatSize, tone: 'ice', title: 'Sized in real millimetres', text: 'Set the height and the width follows the mark. The STL prints at exactly the size you set.' },
-  { id: 'export', topic: 'Workflow', demo: FeatExport, tone: 'amber', title: 'Ready for your stack', text: 'A 2× PNG for Figma and slides, a GLB for three.js and React Three Fiber, an STL for the printer.' },
-  { id: 'private', topic: 'Workflow', demo: FeatPrivate, tone: 'mint', title: 'Client logos stay private', text: 'Tracing, modelling and rendering run on your machine. Nothing is uploaded, and there’s no account to create.' },
-] as const satisfies readonly { id: string; topic: Topic; demo: unknown; tone: string; wide?: boolean; title: string; text: string; hint?: string }[]
-
-const TOPICS = ['All', 'Shape', 'Finish', 'Workflow'] as const
-const topic = ref<(typeof TOPICS)[number]>('All')
-const shown = computed(() => FEATURES.filter(f => topic.value === 'All' || f.topic === topic.value))
-const count = (t: (typeof TOPICS)[number]) => t === 'All' ? FEATURES.length : FEATURES.filter(f => f.topic === t).length
-
 /* Classes shared by the hero and closing call-to-action rows. */
 const actions = 'flex flex-wrap items-center gap-2.5 max-2xs:w-full'
 const action = 'max-2xs:flex-[1_1_100%]'
-// Position and scale ride a spring; opacity and blur are a short tween so a card never lingers half-faded.
-const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duration: 0.22, ease: 'easeOut' }, filter: { duration: 0.22, ease: 'easeOut' } } as const
 </script>
 
 <template>
   <!--
     Spacing: one section rhythm (--section), one card inset (8px, so inner radii are the outer
     radius minus 8), one grid gap (--gap). Each section has its own form so the page doesn't repeat
-    itself: a window, a grid of blocks, a gallery, one dark panel, a plain list.
+    itself: a window, one drawing, a gallery, one dark panel, a plain list.
   -->
   <main
     id="main-content"
@@ -119,7 +80,7 @@ const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duratio
       <div class="flex flex-col items-center">
         <p
           v-glass
-          class="bench glass relative mb-8 inline-flex h-8 animate-rise items-center gap-2.5 rounded-full pr-3.5 pl-3 text-[12px] text-ink-2 [--glass-tint-top:#2a2b31] [--glass-tint:#16171b] motion-reduce:animate-none max-tab:mb-6"
+          class="bench glass relative mb-8 inline-flex h-8 animate-rise items-center gap-2.5 rounded-full pr-3.5 pl-3 text-[12px] text-ink-2 [--glass-tint-top:#33353c] [--glass-tint:#25272d] motion-reduce:animate-none max-tab:mb-6"
         >
           <LiveDot on />
           Free, and nothing leaves your browser
@@ -206,74 +167,7 @@ const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duratio
         text="Everything you need to ship custom 3D icons for a site, an app or a deck, without opening a 3D tool."
       />
 
-      <div
-        class="mb-6 flex flex-wrap gap-1.5"
-        role="group"
-        aria-label="Filter features"
-      >
-        <button
-          v-for="t in TOPICS"
-          :key="t"
-          type="button"
-          class="glass relative flex h-9 items-center gap-2 rounded-full px-4 text-[13px] max-phone:gap-1.5 max-phone:px-3 max-phone:text-[12.5px] transition-[color,scale] duration-[150ms,320ms] ease-[ease,var(--ease-spring)] focus-ring [--ring-offset:3px] active:scale-[.95] active:duration-100 motion-reduce:transition-none"
-          :class="topic === t ? 'text-shell' : 'text-ink-2 hover:text-ink'"
-          :aria-pressed="topic === t"
-          @click="topic = t"
-        >
-          <motion.span
-            v-if="topic === t"
-            layout-id="topic-pill"
-            class="absolute inset-0 rounded-full bg-ink shadow-raise-dark"
-            :transition="{ type: 'spring', stiffness: 520, damping: 40 }"
-            aria-hidden="true"
-          />
-          <span class="relative">{{ t }}</span>
-          <span
-            class="relative font-mono text-[11px] tabular-nums"
-            :class="topic === t ? 'text-shell/55' : 'text-ink-3'"
-          >{{ count(t) }}</span>
-        </button>
-      </div>
-
-      <LayoutGroup>
-        <div class="grid grid-flow-dense grid-cols-3 gap-4 max-desk:grid-cols-2 max-fold:grid-cols-1 max-fold:gap-3">
-          <AnimatePresence
-            mode="popLayout"
-            :initial="false"
-          >
-            <motion.div
-              v-for="f in shown"
-              :key="f.id"
-              layout="position"
-              class="min-w-0"
-              :class="[
-                'wide' in f && f.wide && 'col-span-2 max-fold:col-auto',
-                f.id === 'private' && topic === 'All' && 'max-desk:col-span-2 max-fold:col-auto',
-              ]"
-              :initial="{ opacity: 0, scale: 0.96, filter: 'blur(6px)' }"
-              :animate="{ opacity: 1, scale: 1, filter: 'blur(0px)' }"
-              :exit="{ opacity: 0, scale: 0.96, filter: 'blur(6px)', transition: { duration: 0.16, ease: 'easeOut' } }"
-              :transition="spring"
-            >
-              <FeatureCard
-                v-slot="{ running, seen }"
-                :title="f.title"
-                :text="f.text"
-                :hint="'hint' in f ? f.hint : undefined"
-                :tag="f.topic"
-                :tone="f.tone"
-              >
-                <component
-                  :is="f.demo"
-                  :running="running"
-                  :seen="seen"
-                  :hydrate-on-visible="HYDRATE_NEAR"
-                />
-              </FeatureCard>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </LayoutGroup>
+      <IsoPipeline />
     </section>
 
     <section
@@ -296,7 +190,7 @@ const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duratio
           class="group flex flex-col gap-2.5 rounded-[18px] transition-[scale] duration-[420ms] ease-spring focus-ring [--ring-offset:4px] active:scale-[.97] active:duration-100 motion-reduce:transition-none"
           :aria-label="`Open the ${example.name} example in ${example.finish.toLowerCase()} in the studio`"
         >
-          <span class="relative block aspect-square overflow-hidden rounded-[18px] bg-[#e7e9ef] shadow-[0_0_0_1px_var(--hairline),0_20px_40px_-28px_rgba(13,14,18,.4)]">
+          <span class="relative block aspect-square overflow-hidden rounded-[18px] bg-[#e7e9ef] shadow-[0_0_0_1px_var(--hairline),0_20px_40px_-28px_rgba(38,40,46,.4)]">
             <img
               :src="`/images/${example.image}.webp`"
               :alt="`${example.name} logo rendered in 3D, ${example.finish.toLowerCase()}`"
@@ -396,7 +290,7 @@ const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duratio
           aria-hidden="true"
         >
           <img
-            src="/images/logo-framer.webp"
+            src="/images/logo-framer-champagne.webp"
             width="720"
             height="720"
             alt=""
@@ -408,7 +302,7 @@ const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duratio
       </div>
     </section>
 
-    <!-- Dark raised rows, the depth of the dark bench: the one dark block on the page. -->
+    <!-- Frosted rows on the table; the open one brightens. -->
     <section
       id="questions"
       class="frame grid scroll-mt-24 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-16 pt-(--section) pb-(--section) max-tab:grid-cols-1 max-tab:gap-8"
@@ -430,7 +324,7 @@ const spring = { type: 'spring', stiffness: 380, damping: 36, opacity: { duratio
           v-for="faq in LANDING_FAQS"
           :key="faq.question"
           v-glass
-          class="faq bench glass group relative rounded-[20px] [--glass-tint-top:#1f2025] [--glass-tint:#16171b] open:[--glass-tint-top:#2b2c32] open:[--glass-tint:#1d1e23]"
+          class="faq glass group relative rounded-[20px] open:[--glass-tint-top:#fff] open:[--glass-tint:rgba(255,255,255,.86)]"
         >
           <summary class="flex min-h-16 cursor-pointer list-none items-center justify-between gap-5 rounded-[20px] py-4 pr-4 pl-5 text-[14.5px] font-medium tracking-[-0.015em] focus-ring [--ring-offset:3px] [&::-webkit-details-marker]:hidden">
             {{ faq.question }}

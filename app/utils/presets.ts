@@ -145,6 +145,7 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
   { id: 'rosegold', label: 'Rose gold', group: 'metal', swatch: 'linear-gradient(135deg,#ffe0d0,#d9946f 55%,#8e5a45)', values: metal({ tint: '#d9a08a', roughness: 0.22 }) },
   { id: 'chrome', label: 'Chrome', group: 'metal', swatch: 'linear-gradient(135deg,#ffffff,#b8bcc4 50%,#5d6169)', values: metal({ tint: '#f2f3f5', roughness: 0.06 }) },
   { id: 'silver', label: 'Brushed', group: 'metal', swatch: 'linear-gradient(135deg,#e6e7ea,#a9acb3 55%,#7d8188)', values: metal({ tint: '#d8d9dc', roughness: 0.42 }) },
+  { id: 'champagne', label: 'Champagne', group: 'metal', swatch: 'linear-gradient(135deg,#f4ede3,#c9b394 55%,#8c7558)', values: metal({ tint: '#d9c6a8', roughness: 0.38 }) },
   { id: 'copper', label: 'Copper', group: 'metal', swatch: 'linear-gradient(135deg,#ffc9a8,#c06a3a 55%,#6e3517)', values: metal({ tint: '#c8734a', roughness: 0.26 }) },
   { id: 'titanium', label: 'Titanium', group: 'metal', swatch: 'linear-gradient(135deg,#8f939b,#4f535a 55%,#2a2d32)', values: metal({ tint: '#5f636b', roughness: 0.34 }) },
   { id: 'black', label: 'Black', group: 'metal', swatch: 'linear-gradient(135deg,#3a3b40,#111114)', values: metal({ tint: '#15161a', metalness: 0.35, roughness: 0.32, clearcoat: 0.9 }) },

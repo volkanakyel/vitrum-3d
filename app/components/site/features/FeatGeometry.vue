@@ -236,7 +236,7 @@ const LETTER = 'font-mono text-[8px] leading-none font-medium fill-ink-3'
     @focusout="focused = false"
   >
     <div
-      class="relative grid shrink-0 grid-cols-4 rounded-full bg-ink/5 p-[3px] shadow-[inset_0_1px_1px_rgba(13,14,18,.04)]"
+      class="relative grid shrink-0 grid-cols-4 rounded-full bg-ink/5 p-[3px] shadow-[inset_0_1px_1px_rgba(38,40,46,.04)]"
       role="group"
       aria-label="Geometry mode"
     >
@@ -270,7 +270,7 @@ const LETTER = 'font-mono text-[8px] leading-none font-medium fill-ink-3'
           height="100"
           rx="18"
           class="fill-white"
-          filter="drop-shadow(0 1px 1.5px rgba(13,14,18,.08))"
+          filter="drop-shadow(0 1px 1.5px rgba(38,40,46,.08))"
         />
         <rect
           x="0.5"
@@ -298,7 +298,7 @@ const LETTER = 'font-mono text-[8px] leading-none font-medium fill-ink-3'
           y1="50"
           x2="102"
           y2="50"
-          class="stroke-ice"
+          class="stroke-lamp"
           stroke-width="1.2"
           stroke-dasharray="3 2.5"
         />

@@ -42,7 +42,7 @@ const spotify = logoById('spotify')
         />
       </svg>
 
-      <span class="relative grid size-16 place-items-center rounded-[19px] bg-[linear-gradient(180deg,#ffffff,#f2f3f6)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_rgba(13,14,18,.07),0_1px_2px_rgba(13,14,18,.06),0_14px_24px_-14px_rgba(13,14,18,.32)] motion-safe:translate-y-2 motion-safe:scale-96 motion-safe:opacity-0 motion-safe:group-data-play:animate-[to-rest_420ms_var(--ease-out-quint)_forwards]">
+      <span class="relative grid size-16 place-items-center rounded-[19px] bg-[linear-gradient(180deg,#ffffff,#f2f3f6)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_rgba(38,40,46,.07),0_1px_2px_rgba(38,40,46,.06),0_14px_24px_-14px_rgba(38,40,46,.32)] motion-safe:translate-y-2 motion-safe:scale-96 motion-safe:opacity-0 motion-safe:group-data-play:animate-[to-rest_420ms_var(--ease-out-quint)_forwards]">
         <svg
           class="size-8"
           viewBox="0 0 24 24"
@@ -54,7 +54,7 @@ const spotify = logoById('spotify')
           />
         </svg>
         <!-- Padlock badge, ringed in the stage colour so it reads as cut into the tile's corner. -->
-        <span class="absolute -right-[9px] -bottom-[9px] grid size-[26px] place-items-center rounded-full bg-ink shadow-[0_0_0_3px_#eff1f4,0_6px_12px_-6px_rgba(13,14,18,.5)] motion-safe:scale-60 motion-safe:opacity-0 motion-safe:group-data-play:animate-[to-rest_360ms_900ms_var(--ease-pop)_forwards]">
+        <span class="absolute -right-[9px] -bottom-[9px] grid size-[26px] place-items-center rounded-full bg-ink shadow-[0_0_0_3px_#eff1f4,0_6px_12px_-6px_rgba(38,40,46,.5)] motion-safe:scale-60 motion-safe:opacity-0 motion-safe:group-data-play:animate-[to-rest_360ms_900ms_var(--ease-pop)_forwards]">
           <svg
             class="size-[14px] overflow-visible"
             viewBox="0 0 14 14"

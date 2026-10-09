@@ -29,11 +29,11 @@ const selector = computed(() => ({ transform: `translate(calc(${selected.value %
 <template>
   <!-- Sized to the card: a 208 px grid (8 × 26) beside an 88 px sphere, 22 px apart, so the pair
        is 318 px wide and keeps at least 24 px of stage either side down to the phone card. -->
-  <div class="absolute inset-0 flex items-center justify-center gap-[22px] px-6 pt-7 pb-5 [--cell:26px] max-2xs:gap-4 max-2xs:px-4 max-2xs:[--cell:24px]">
-    <div class="flex w-[88px] shrink-0 flex-col items-center gap-3 max-2xs:w-[72px]">
+  <div class="absolute inset-0 flex items-center justify-center gap-[22px] px-6 py-5 [--cell:26px] @max-[360px]:gap-4 @max-[360px]:px-4 @max-[360px]:[--cell:24px]">
+    <div class="flex w-[88px] shrink-0 flex-col items-center gap-3 @max-[360px]:w-[72px]">
       <!-- New finish fades in over the old one, which holds until it is covered: the sphere never
            dips through the stage mid-swap. -->
-      <div class="relative size-[88px] max-2xs:size-[72px]">
+      <div class="relative size-[88px] @max-[360px]:size-[72px]">
         <Transition
           enter-active-class="z-10 transition-opacity duration-260 ease-out motion-reduce:transition-none"
           leave-active-class="transition-opacity duration-0 delay-260 motion-reduce:delay-0"
@@ -42,11 +42,11 @@ const selector = computed(() => ({ transform: `translate(calc(${selected.value %
         >
           <span
             :key="current.id"
-            class="absolute inset-0 rounded-full shadow-[inset_0_-10px_18px_rgba(13,14,18,.18),0_14px_24px_-12px_rgba(13,14,18,.38)]"
+            class="absolute inset-0 rounded-full shadow-[inset_0_-10px_18px_rgba(38,40,46,.18),0_14px_24px_-12px_rgba(38,40,46,.38)]"
             :style="{ background: current.swatch }"
           />
         </Transition>
-        <span class="pointer-events-none absolute inset-0 z-20 rounded-full bg-[radial-gradient(40%_28%_at_34%_24%,rgba(255,255,255,.95),transparent_70%),radial-gradient(70%_50%_at_50%_110%,rgba(255,255,255,.45),transparent_70%)] shadow-[inset_0_0_0_1px_rgba(13,14,18,.06)]" />
+        <span class="pointer-events-none absolute inset-0 z-20 rounded-full bg-[radial-gradient(40%_28%_at_34%_24%,rgba(255,255,255,.95),transparent_70%),radial-gradient(70%_50%_at_50%_110%,rgba(255,255,255,.45),transparent_70%)] shadow-[inset_0_0_0_1px_rgba(38,40,46,.06)]" />
       </div>
       <p class="grid h-[34px] place-items-center text-center">
         <SwapTransition lift>
@@ -76,7 +76,7 @@ const selector = computed(() => ({ transform: `translate(calc(${selected.value %
         v-for="(s, i) in swatches"
         :key="s.id"
         type="button"
-        class="sphere m-[3px] size-[20px] p-0 transition-transform duration-150 ease-[ease] focus-ring motion-reduce:transition-none pointer-fine:hover:scale-[1.12] max-2xs:size-[18px]"
+        class="sphere m-[3px] size-[20px] p-0 transition-transform duration-150 ease-[ease] focus-ring motion-reduce:transition-none pointer-fine:hover:scale-[1.12] @max-[360px]:size-[18px]"
         :style="{ background: s.swatch }"
         :aria-label="s.label"
         :aria-pressed="selected === i"

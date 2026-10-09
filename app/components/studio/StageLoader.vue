@@ -72,14 +72,14 @@ const progress = computed(() => (stepIndex.value + 1) / steps.length)
             :height="SIZE"
             :rx="R"
             fill="none"
-            stroke="var(--ice)"
+            stroke="var(--lamp)"
             stroke-width="1.5"
             stroke-linecap="round"
             :stroke-dasharray="perimeter"
             :stroke-dashoffset="perimeter * (1 - progress)"
           />
         </svg>
-        <div class="tile absolute inset-[5px] overflow-hidden rounded-[22px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(13,14,18,.05),0_18px_32px_-20px_rgba(3,7,18,.4)]">
+        <div class="tile absolute inset-[5px] overflow-hidden rounded-[22px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(38,40,46,.05),0_18px_32px_-20px_rgba(3,7,18,.4)]">
           <Transition
             enter-active-class="transition-opacity duration-250 ease-out-quint"
             leave-active-class="transition-opacity duration-250 ease-out-quint"
@@ -104,9 +104,9 @@ const progress = computed(() => (stepIndex.value + 1) / steps.length)
               />
             </span>
           </Transition>
-          <!-- Scan line: ice, with a soft glow ahead of it, sweeping the tile top to bottom. -->
+          <!-- Scan line: bronze, with a soft glow ahead of it, sweeping the tile top to bottom. -->
           <span
-            class="absolute inset-x-0 top-0 h-px animate-[loader-scan_1.4s_cubic-bezier(0.45,0,0.55,1)_infinite] bg-ice shadow-[0_0_8px_1px_rgba(47,111,237,.45),0_-14px_18px_-6px_rgba(47,111,237,.25)] will-change-[transform,opacity] motion-reduce:animate-none motion-reduce:opacity-60 motion-reduce:[transform:translateY(calc(var(--tile)*0.5))]"
+            class="absolute inset-x-0 top-0 h-px animate-[loader-scan_1.4s_cubic-bezier(0.45,0,0.55,1)_infinite] bg-lamp shadow-[0_0_8px_1px_rgba(176,138,92,.45),0_-14px_18px_-6px_rgba(176,138,92,.25)] will-change-[transform,opacity] motion-reduce:animate-none motion-reduce:opacity-60 motion-reduce:[transform:translateY(calc(var(--tile)*0.5))]"
             aria-hidden="true"
           />
         </div>

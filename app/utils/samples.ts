@@ -53,10 +53,11 @@ function logo(l: Logo) {
   }
 }
 
-/** Default finish for each brand sample when it opens from the landing page. */
+/** Default finish for each brand sample when it opens from the landing page. Neutral finishes only,
+    so the studio opens in the same graphite, silver and glass as the site. */
 const LOGO_FINISH: Record<string, string> = {
-  github: 'chrome', figma: 'rose', framer: 'gold', linear: 'obsidian',
-  discord: 'sapphire', spotify: 'emerald', apple: 'silver', stripe: 'amber',
+  github: 'chrome', figma: 'ceramic', framer: 'champagne', linear: 'obsidian',
+  discord: 'milk', spotify: 'titanium', apple: 'silver', stripe: 'frosted',
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -129,32 +130,32 @@ function brand(ctx: CanvasRenderingContext2D, size: number) {
 }
 
 export const SAMPLES: Sample[] = [
-  { id: 'vitrum', label: 'Vitrum mark', preset: 'crystal', draw: brand },
-  { id: 'camera', label: 'Camera', preset: 'sapphire', draw: interfaceIcon('camera') },
-  { id: 'chat', label: 'Conversation', preset: 'emerald', draw: interfaceIcon('chat') },
-  { id: 'spark', label: 'Sparkle', preset: 'amber', draw: mark('M47 10 Q50 0 53 10 C58 32 68 42 90 47 Q100 50 90 53 C68 58 58 68 53 90 Q50 100 47 90 C42 68 32 58 10 53 Q0 50 10 47 C32 42 42 32 47 10 Z') },
+  { id: 'vitrum', label: 'Vitrum mark', preset: 'clear', draw: brand },
+  { id: 'camera', label: 'Camera', preset: 'frosted', draw: interfaceIcon('camera') },
+  { id: 'chat', label: 'Conversation', preset: 'milk', draw: interfaceIcon('chat') },
+  { id: 'spark', label: 'Sparkle', preset: 'silver', draw: mark('M47 10 Q50 0 53 10 C58 32 68 42 90 47 Q100 50 90 53 C68 58 58 68 53 90 Q50 100 47 90 C42 68 32 58 10 53 Q0 50 10 47 C32 42 42 32 47 10 Z') },
   {
-    id: 'heart', label: 'Heart', preset: 'rose',
+    id: 'heart', label: 'Heart', preset: 'ceramic',
     draw: mark('M50 88 L18 58 C6 46 8 26 24 18 C34 13 45 17 50 26 C55 17 66 13 76 18 C92 26 94 46 82 58 Z'),
   },
   {
-    id: 'bolt', label: 'Bolt', preset: 'gold',
+    id: 'bolt', label: 'Bolt', preset: 'titanium',
     draw: mark('M58 4 L20 56 L46 56 L40 96 L80 40 L54 40 Z'),
   },
   { id: 'star', label: 'Star', preset: 'chrome', draw: mark(starPath()) },
   {
     id: 'play', label: 'Play tile', preset: 'satin',
-    draw: mark('M40 30 L72 50 L40 70 Z', { ink: '#ffffff', tile: '#2f6fed' }),
+    draw: mark('M40 30 L72 50 L40 70 Z', { ink: '#ffffff', tile: '#26282e' }),
   },
   {
-    id: 'leaf', label: 'Leaf', preset: 'emerald',
+    id: 'leaf', label: 'Leaf', preset: 'smoke',
     draw: mark('M18 84 C16 44 42 16 88 14 C90 58 62 86 18 84 Z M18 84 C34 62 52 46 74 30 C52 48 36 66 24 84 Z', { evenodd: true }),
   },
   {
     id: 'ring', label: 'Ring', preset: 'obsidian',
     draw: mark('M50 6 A44 44 0 1 0 50 94 A44 44 0 1 0 50 6 Z M50 26 A24 24 0 1 1 50 74 A24 24 0 1 1 50 26 Z', { evenodd: true }),
   },
-  ...LOGOS.map(l => ({ id: l.id, label: l.name, preset: LOGO_FINISH[l.id] ?? 'crystal', draw: logo(l) })),
+  ...LOGOS.map(l => ({ id: l.id, label: l.name, preset: LOGO_FINISH[l.id] ?? 'clear', draw: logo(l) })),
 ]
 
 /** The landing hero's centre object; its finish follows the page's swatches. */

@@ -171,7 +171,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
     :data-snap="snap"
     role="region"
     aria-label="Controls"
-    class="glass fixed inset-x-1.5 bottom-[max(6px,env(safe-area-inset-bottom))] z-30 flex flex-col overflow-hidden rounded-[26px] text-sidebar-foreground [--glass-blur:28px] [--glass-drop:0_1px_2px_rgba(13,14,18,.06),0_-10px_40px_-14px_rgba(13,14,18,.28)] [--glass-tint-top:rgba(248,249,251,.94)] [--glass-tint:rgba(236,238,242,.96)]"
+    class="glass fixed inset-x-1.5 bottom-[max(6px,env(safe-area-inset-bottom))] z-30 flex flex-col overflow-hidden rounded-[26px] text-sidebar-foreground [--glass-blur:28px] [--glass-drop:0_1px_2px_rgba(38,40,46,.06),0_-10px_40px_-14px_rgba(38,40,46,.28)] [--glass-tint-top:rgba(248,249,251,.94)] [--glass-tint:rgba(236,238,242,.96)]"
     :style="{ height: `${height.get()}px` }"
     v-bind="$attrs"
     @pointerdown="onDown"
@@ -188,7 +188,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
       :aria-expanded="snap !== 'peek'"
       @click="toggle"
     >
-      <span class="h-[5px] w-9 rounded-full bg-foreground/15 transition-[width,background-color] duration-200 ease-out group-active/grip:w-11 group-active/grip:bg-foreground/30 group-focus-visible/grip:bg-ice motion-reduce:transition-none" />
+      <span class="h-[5px] w-9 rounded-full bg-foreground/15 transition-[width,background-color] duration-200 ease-out group-active/grip:w-11 group-active/grip:bg-foreground/30 group-focus-visible/grip:bg-lamp motion-reduce:transition-none" />
     </button>
     <div class="flex min-h-0 w-full flex-1 flex-col">
       <slot />

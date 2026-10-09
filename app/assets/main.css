@@ -19,25 +19,25 @@
 */
 .bench {
   /* shadcn tokens */
-  --background: #0e0f12;
+  --background: #1d1f24;
   --foreground: #f3f2ef;
   /* `card` is a raised control on the bench (active pills, fields); `slab` is a panel. */
-  --card: #25262c;
+  --card: #33353c;
   --card-foreground: #f3f2ef;
-  --popover: #1c1d22;
+  --popover: #2a2c32;
   --popover-foreground: #f3f2ef;
   --primary: #f3f2ef;
-  --primary-foreground: #0e0f12;
-  --secondary: #222328;
+  --primary-foreground: #1d1f24;
+  --secondary: #2c2e34;
   --secondary-foreground: #f3f2ef;
-  --muted: #222328;
-  --muted-foreground: #8f8f94;
-  --accent: #222328;
+  --muted: #2c2e34;
+  --muted-foreground: #9a9ba0;
+  --accent: #2c2e34;
   --accent-foreground: #f3f2ef;
   --destructive: #ff6b6b;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.12);
-  --ring: #7aa2ff;
+  --ring: #c9a676;
   --radius: 0.625rem;
 
   /* brand */
@@ -45,25 +45,25 @@
   --ink-2: rgba(243, 242, 239, 0.62);
   --ink-3: rgba(243, 242, 239, 0.4);
   --ink-hover: #ffffff;
-  --surface: #202126;
-  --shell: #0e0f12;
-  --slab: #17181c;
+  --surface: #2c2e34;
+  --shell: #1d1f24;
+  --slab: #25272d;
   --well: rgba(255, 255, 255, 0.045);
   --well-strong: rgba(255, 255, 255, 0.085);
-  --ice: #7aa2ff;
-  --ice-soft: rgba(122, 162, 255, 0.14);
-  --ice-glow: rgba(122, 162, 255, 0.24);
+  --lamp: #c9a676;
+  --lamp-soft: rgba(201, 166, 118, 0.14);
+  --lamp-glow: rgba(201, 166, 118, 0.22);
   --hairline: rgba(255, 255, 255, 0.07);
   --hairline-strong: rgba(255, 255, 255, 0.12);
 
-  --sidebar: #0e0f12;
+  --sidebar: #1d1f24;
   --sidebar-foreground: #f3f2ef;
   --sidebar-primary: #f3f2ef;
-  --sidebar-primary-foreground: #0e0f12;
-  --sidebar-accent: #222328;
+  --sidebar-primary-foreground: #1d1f24;
+  --sidebar-accent: #2c2e34;
   --sidebar-accent-foreground: #f3f2ef;
   --sidebar-border: rgba(255, 255, 255, 0.07);
-  --sidebar-ring: #7aa2ff;
+  --sidebar-ring: #c9a676;
 
   /* elevation
      raise  = a control sitting on a slab: hairline, top highlight, a short contact shadow
@@ -88,7 +88,7 @@
   --shadow-pane:
     0 0 0 1px rgba(255, 255, 255, 0.055),
     inset 0 1px 0 rgba(255, 255, 255, 0.045),
-    0 40px 80px -40px rgba(0, 0, 0, 0.8);
+    0 40px 80px -40px rgba(0, 0, 0, 0.55);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 6px 24px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --well-inset: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
@@ -99,74 +99,74 @@
 :root,
 .lightbox {
   --background: #eceef2;
-  --foreground: #0d0e12;
+  --foreground: #26282e;
   --card: #ffffff;
-  --card-foreground: #0d0e12;
+  --card-foreground: #26282e;
   --popover: #ffffff;
-  --popover-foreground: #0d0e12;
-  --primary: #0d0e12;
+  --popover-foreground: #26282e;
+  --primary: #26282e;
   --primary-foreground: #ffffff;
   --secondary: #e3e6eb;
-  --secondary-foreground: #0d0e12;
+  --secondary-foreground: #26282e;
   --muted: #e3e6eb;
   --muted-foreground: #64676f;
   --accent: #e3e6eb;
-  --accent-foreground: #0d0e12;
+  --accent-foreground: #26282e;
   --destructive: #d24444;
   --border: #dfe2e7;
   --input: #d5d8de;
-  --ring: #2f6fed;
+  --ring: #a67c48;
   --radius: 0.625rem;
 
-  --ink: #0d0e12;
-  --ink-2: rgba(13, 14, 18, 0.62);
-  --ink-3: rgba(13, 14, 18, 0.42);
-  --ink-hover: #262830;
+  --ink: #26282e;
+  --ink-2: rgba(38, 40, 46, 0.62);
+  --ink-3: rgba(38, 40, 46, 0.42);
+  --ink-hover: #3a3c43;
   --surface: #ffffff;
   --shell: #eceef2;
   --slab: #ffffff;
-  --well: rgba(13, 14, 18, 0.045);
-  --well-strong: rgba(13, 14, 18, 0.08);
-  --ice: #2f6fed;
-  --ice-soft: #e7eefc;
-  --ice-glow: rgba(47, 111, 237, 0.16);
-  --hairline: rgba(13, 14, 18, 0.08);
-  --hairline-strong: rgba(13, 14, 18, 0.14);
+  --well: rgba(38, 40, 46, 0.045);
+  --well-strong: rgba(38, 40, 46, 0.08);
+  --lamp: #a67c48;
+  --lamp-soft: #f2ede6;
+  --lamp-glow: rgba(166, 124, 72, 0.16);
+  --hairline: rgba(38, 40, 46, 0.08);
+  --hairline-strong: rgba(38, 40, 46, 0.14);
 
   /* the sidebar sits directly on the shell */
   --sidebar: #eceef2;
-  --sidebar-foreground: #0d0e12;
-  --sidebar-primary: #0d0e12;
+  --sidebar-foreground: #26282e;
+  --sidebar-primary: #26282e;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e3e6eb;
-  --sidebar-accent-foreground: #0d0e12;
-  --sidebar-border: rgba(13, 14, 18, 0.08);
-  --sidebar-ring: #2f6fed;
+  --sidebar-accent-foreground: #26282e;
+  --sidebar-border: rgba(38, 40, 46, 0.08);
+  --sidebar-ring: #a67c48;
 
   --shadow-raise:
-    0 0 0 1px rgba(13, 14, 18, 0.08),
-    0 1px 2px -1px rgba(13, 14, 18, 0.12),
-    0 2px 4px rgba(13, 14, 18, 0.04),
+    0 0 0 1px rgba(38, 40, 46, 0.08),
+    0 1px 2px -1px rgba(38, 40, 46, 0.12),
+    0 2px 4px rgba(38, 40, 46, 0.04),
     inset 0 0.5px 0 rgba(255, 255, 255, 0.8);
   --shadow-raise-dark:
-    0 0 0 1px rgba(13, 14, 18, 0.9),
-    0 1px 2px rgba(13, 14, 18, 0.24),
-    0 8px 16px -8px rgba(13, 14, 18, 0.5),
+    0 0 0 1px rgba(38, 40, 46, 0.9),
+    0 1px 2px rgba(38, 40, 46, 0.24),
+    0 8px 16px -8px rgba(38, 40, 46, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.16);
   --shadow-float:
-    0 0 0 1px rgba(13, 14, 18, 0.08),
-    0 1px 2px rgba(13, 14, 18, 0.05),
-    0 2px 24px rgba(13, 14, 18, 0.06),
-    0 16px 32px -16px rgba(13, 14, 18, 0.18);
+    0 0 0 1px rgba(38, 40, 46, 0.08),
+    0 1px 2px rgba(38, 40, 46, 0.05),
+    0 2px 24px rgba(38, 40, 46, 0.06),
+    0 16px 32px -16px rgba(38, 40, 46, 0.18);
   --shadow-pane:
     inset 1.5px 1.5px 1px rgba(255, 255, 255, 0.9),
     inset -1px -1px 1px rgba(255, 255, 255, 0.5),
     0 0 0 0.5px rgba(3, 7, 18, 0.1),
     0 2px 24px rgba(3, 7, 18, 0.05),
     0 24px 48px -24px rgba(3, 7, 18, 0.18);
-  --shadow-sm: 0 1px 2px rgba(13, 14, 18, 0.05);
-  --shadow: 0 6px 24px rgba(13, 14, 18, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --well-inset: inset 0 1px 1px rgba(13, 14, 18, 0.04);
+  --shadow-sm: 0 1px 2px rgba(38, 40, 46, 0.05);
+  --shadow: 0 6px 24px rgba(38, 40, 46, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --well-inset: inset 0 1px 1px rgba(38, 40, 46, 0.04);
   color-scheme: light;
 }
 .lightbox,
@@ -249,6 +249,11 @@
 @keyframes to-rest {
   to { opacity: 1; translate: none; scale: none; }
 }
+/* A step's countdown on the landing pipeline: an arc closing around the step number. */
+@keyframes iso-ring {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
 @keyframes file-rise {
   from { opacity: 0; transform: translateY(12px); }
 }
@@ -267,8 +272,8 @@
   38% { opacity: 1; transform: translateY(0); }
   55% {
     transform: translateY(4px);
-    box-shadow: 0 0 0 1px rgba(13, 14, 18, 0.07), 0 1px 0 1px rgba(13, 14, 18, 0.05), 0 2px 0 -1px #e2e5eb, 0 8px 16px -10px rgba(13, 14, 18, 0.25), inset 0 1px 0 #fff;
-    color: var(--ice);
+    box-shadow: 0 0 0 1px rgba(38, 40, 46, 0.07), 0 1px 0 1px rgba(38, 40, 46, 0.05), 0 2px 0 -1px #e2e5eb, 0 8px 16px -10px rgba(38, 40, 46, 0.25), inset 0 1px 0 #fff;
+    color: var(--lamp);
   }
   100% { transform: translateY(0); }
 }
@@ -302,8 +307,8 @@
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
-  --color-ice: var(--ice);
-  --color-ice-soft: var(--ice-soft);
+  --color-lamp: var(--lamp);
+  --color-lamp-soft: var(--lamp-soft);
   --color-hairline: var(--hairline);
   --color-hairline-strong: var(--hairline-strong);
   --color-sidebar: var(--sidebar);
@@ -334,7 +339,7 @@
   --ease-out-quint: var(--ease-out-quint);
   --ease-out-expo: var(--ease-out-expo);
   --ease-in-out-cubic: var(--ease-in-out-cubic);
-  --color-ice-glow: var(--ice-glow);
+  --color-lamp-glow: var(--lamp-glow);
   --color-ink-hover: var(--ink-hover);
   --color-slab: var(--slab);
   --ease-spring: var(--ease-spring);
@@ -359,10 +364,10 @@
   background: var(--well);
   box-shadow: var(--well-inset);
 }
-/* Keyboard focus: the ice ring. Widen the gap with `[--ring-offset:4px]`. */
+/* Keyboard focus: a graphite ring (the bronze accent is too quiet to mark focus). Widen the gap with `[--ring-offset:4px]`. */
 @utility focus-ring {
   &:focus-visible {
-    outline: 2px solid var(--ice);
+    outline: 2px solid color-mix(in srgb, var(--ink) 80%, transparent);
     outline-offset: var(--ring-offset, 2px);
   }
 }
@@ -394,7 +399,7 @@
 /* A finish swatch: a lit sphere with a soft underside. */
 @utility sphere {
   border-radius: 50%;
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5), inset 0 -2px 3px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(13, 14, 18, 0.05);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5), inset 0 -2px 3px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(38, 40, 46, 0.05);
 }
 /* Landing type scale. Geist, tight; body features (tnum) are inherited, unlike `.font-display`. */
 @utility heading-hero {
@@ -436,11 +441,11 @@
   .font-mono { font-feature-settings: 'zero', 'tnum'; letter-spacing: -0.01em; }
   /* Display: Swiss grotesk, tight, medium weight. */
   .font-display { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.035em; font-feature-settings: 'ss01', 'cv11'; }
-  ::selection { background: var(--ice-glow); }
+  ::selection { background: var(--lamp-glow); }
   /* Key caps: white, hairline, a 1px ledge underneath. */
   kbd {
     @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] bg-card px-1 text-[10.5px] font-medium text-muted-foreground;
-    box-shadow: 0 0 0 1px var(--hairline), 0 1px 0 rgba(13, 14, 18, 0.1);
+    box-shadow: 0 0 0 1px var(--hairline), 0 1px 0 rgba(38, 40, 46, 0.1);
     font-family: inherit;
     letter-spacing: 0;
   }
@@ -531,8 +536,8 @@
 
 /*
   Liquid glass. The same optics the studio renders, in CSS: a frosted body, a rim that catches the
-  light (bright top-left, soft bottom-right), a faint dispersion fringe on the inner edge (cool on
-  the lit side, warm on the far side) and a specular sheen that trails the pointer (`v-glass` sets
+  light (bright top-left, soft bottom-right), a faint fringe on the inner edge (white on the lit
+  side, a trace of the bronze accent on the far side) and a specular sheen that trails the pointer (`v-glass` sets
   --glass-x/--glass-y; they are registered so the sheen eases after the pointer instead of snapping).
 
   Colours come from the scope: light glass on the table, smoked glass inside `.bench`.
@@ -557,13 +562,13 @@
     --glass-tint-top: rgba(255, 255, 255, 0.82);
     --glass-rim: rgba(255, 255, 255, 0.95);
     --glass-rim-low: rgba(255, 255, 255, 0.45);
-    --glass-edge: rgba(13, 14, 18, 0.07);
+    --glass-edge: rgba(38, 40, 46, 0.07);
     --glass-sheen: rgba(255, 255, 255, 0.7);
-    --glass-drop: 0 1px 2px rgba(13, 14, 18, 0.06), 0 12px 32px -14px rgba(13, 14, 18, 0.28);
+    --glass-drop: 0 1px 2px rgba(38, 40, 46, 0.06), 0 12px 32px -14px rgba(38, 40, 46, 0.28);
   }
   .bench {
-    --glass-tint: rgba(20, 21, 25, 0.82);
-    --glass-tint-top: rgba(46, 47, 54, 0.8);
+    --glass-tint: rgba(37, 39, 45, 0.84);
+    --glass-tint-top: rgba(60, 62, 70, 0.82);
     --glass-rim: rgba(255, 255, 255, 0.34);
     --glass-rim-low: rgba(255, 255, 255, 0.08);
     --glass-edge: rgba(0, 0, 0, 0.35);
@@ -578,8 +583,8 @@
   backdrop-filter: blur(var(--glass-blur, 14px)) saturate(180%) brightness(1.03);
   box-shadow:
     inset 0 0 0 1px var(--glass-edge),
-    inset 1.5px 1.5px 1px -1px rgba(128, 176, 255, 0.45),
-    inset -1.5px -1.5px 1px -1px rgba(255, 160, 196, 0.38),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.55),
+    inset -1.5px -1.5px 1px -1px rgba(166, 124, 72, 0.2),
     var(--glass-drop);
 
   /* specular sheen, trailing the pointer */
@@ -623,5 +628,5 @@
   @apply glass absolute inset-0 -z-10 rounded-full;
   --glass-tint-top: #fff;
   --glass-tint: #f7f8fa;
-  --glass-drop: 0 1px 2px rgba(13, 14, 18, 0.12), 0 2px 6px -2px rgba(13, 14, 18, 0.12);
+  --glass-drop: 0 1px 2px rgba(38, 40, 46, 0.12), 0 2px 6px -2px rgba(38, 40, 46, 0.12);
 }

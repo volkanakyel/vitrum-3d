@@ -108,7 +108,7 @@ onMounted(() => {
 
 <template>
   <div
-    class="trace-demo absolute inset-0 flex items-center justify-center px-7 pt-8 pb-[52px]"
+    class="trace-demo absolute inset-0 flex items-center justify-center px-7 pt-6 pb-[52px]"
     :data-running="active"
   >
     <Transition name="trace-artwork" mode="out-in">
@@ -125,7 +125,7 @@ onMounted(() => {
             :fill-rule="logo.evenodd ? 'evenodd' : undefined"
           />
         </g>
-        <g class="fill-none stroke-ice" :stroke-width="0.8 * scale" stroke-linejoin="round" stroke-linecap="round">
+        <g class="fill-none stroke-lamp" :stroke-width="0.8 * scale" stroke-linejoin="round" stroke-linecap="round">
           <path
             v-for="(p, i) in trace?.strokes ?? []"
             :key="i"
@@ -138,12 +138,12 @@ onMounted(() => {
         <circle
           v-for="(point, i) in trace?.anchors ?? []"
           :key="i"
-          class="trace-node fill-white stroke-ice"
+          class="trace-node fill-white stroke-lamp"
           :cx="point.x" :cy="point.y" :r="1.18 * scale" :stroke-width="0.65 * scale"
           :style="{ '--node-delay': `${point.delay}ms` }"
         />
         <line
-          class="trace-scan stroke-ice"
+          class="trace-scan stroke-lamp"
           :x1="logo.viewBox[0] - extent * 0.08"
           :x2="logo.viewBox[0] + logo.viewBox[2] + extent * 0.08"
           :y1="logo.viewBox[1] - extent * 0.08"

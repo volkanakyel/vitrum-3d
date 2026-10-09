@@ -24,7 +24,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
     data-slot="switch"
     v-bind="forwarded"
     :class="cn(
-      'peer data-[state=checked]:bg-ice data-[state=unchecked]:bg-[var(--well-strong)] data-[state=unchecked]:shadow-[var(--well-inset)] data-[state=checked]:shadow-[inset_0_1px_1px_rgba(0,0,0,0.15)] focus-visible:ring-ring/35 inline-flex h-[18px] w-[30px] shrink-0 items-center rounded-full border border-transparent transition-all outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50',
+      'peer data-[state=checked]:bg-lamp data-[state=unchecked]:bg-[var(--well-strong)] data-[state=unchecked]:shadow-[var(--well-inset)] data-[state=checked]:shadow-[inset_0_1px_1px_rgba(0,0,0,0.15)] focus-visible:ring-ring/35 inline-flex h-[18px] w-[30px] shrink-0 items-center rounded-full border border-transparent transition-all outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50',
       props.class,
     )"
   >

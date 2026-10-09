@@ -20,9 +20,9 @@ export interface LandingFaq {
 /** Rendered in the studio at its default size, angle view. Images live in `public/images`. */
 export const LANDING_EXAMPLES: LandingExample[] = [
   { id: 'github', name: 'GitHub', finish: 'Polished chrome', preset: 'chrome', image: 'logo-github' },
-  { id: 'figma', name: 'Figma', finish: 'Holographic glass', preset: 'holo', image: 'logo-figma' },
-  { id: 'spotify', name: 'Spotify', finish: 'Emerald glass', preset: 'emerald', image: 'logo-spotify' },
-  { id: 'discord', name: 'Discord', finish: 'Sapphire glass', preset: 'sapphire', image: 'logo-discord' },
+  { id: 'figma', name: 'Figma', finish: 'Ceramic', preset: 'ceramic', image: 'logo-figma-ceramic' },
+  { id: 'spotify', name: 'Spotify', finish: 'Titanium', preset: 'titanium', image: 'logo-spotify-titanium' },
+  { id: 'discord', name: 'Discord', finish: 'Milk glass', preset: 'milk', image: 'logo-discord-milk' },
   { id: 'apple', name: 'Apple', finish: 'Brushed aluminium', preset: 'silver', image: 'logo-apple' },
   { id: 'linear', name: 'Linear', finish: 'Obsidian glass', preset: 'obsidian', image: 'logo-linear' },
 ]

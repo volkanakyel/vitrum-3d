@@ -36,7 +36,7 @@ const DIMS = [
 </script>
 
 <template>
-  <div class="absolute inset-0 flex flex-col items-center gap-3 px-6 pt-9 pb-4">
+  <div class="absolute inset-0 flex flex-col items-center gap-3 px-6 pt-6 pb-4">
     <div
       class="group relative min-h-0 w-full flex-1"
       :data-play="seen || undefined"

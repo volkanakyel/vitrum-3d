@@ -14,17 +14,17 @@ const { index: round } = useCycle(1_000_000, 4800, toRef(props, 'running'))
   <div class="absolute inset-0 grid place-items-center p-4">
     <div
       :key="round"
-      class="group flex gap-3.5"
+      class="group flex gap-3"
       :data-play="seen || undefined"
     >
       <div
         v-for="(f, i) in FILES"
         :key="f.ext"
-        class="flex w-[84px] flex-col items-center gap-0.5 motion-safe:group-data-play:animate-[file-rise_520ms_var(--delay)_var(--ease-out-quint)_both]"
+        class="flex w-[76px] flex-col items-center gap-0.5 motion-safe:group-data-play:animate-[file-rise_520ms_var(--delay)_var(--ease-out-quint)_both]"
         :style="{ '--delay': `${i * 420}ms` }"
       >
         <svg
-          class="mb-2 w-16 overflow-visible drop-shadow-[0_10px_14px_rgba(13,14,18,.08)]"
+          class="mb-2 w-16 overflow-visible drop-shadow-[0_10px_14px_rgba(38,40,46,.08)]"
           viewBox="0 0 64 80"
           aria-hidden="true"
         >
@@ -46,7 +46,7 @@ const { index: round } = useCycle(1_000_000, 4800, toRef(props, 'running'))
             pathLength="1"
           />
           <path
-            class="fill-none stroke-ice stroke-3 stroke-draw [stroke-linecap:round] [stroke-linejoin:round] motion-safe:group-data-play:animate-[draw_320ms_calc(var(--delay)_+_980ms)_var(--ease-out-quint)_forwards] motion-reduce:[stroke-dashoffset:0]"
+            class="fill-none stroke-lamp stroke-3 stroke-draw [stroke-linecap:round] [stroke-linejoin:round] motion-safe:group-data-play:animate-[draw_320ms_calc(var(--delay)_+_980ms)_var(--ease-out-quint)_forwards] motion-reduce:[stroke-dashoffset:0]"
             d="M25 44 L30 49 L40 38"
             pathLength="1"
           />

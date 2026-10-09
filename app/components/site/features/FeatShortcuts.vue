@@ -43,8 +43,9 @@ useEventListener('keydown', (e: KeyboardEvent) => {
 </script>
 
 <template>
-  <!-- 5 rows × 30 px + gaps + padding = 170 px list, centred in the 232 px stage beside the caps. -->
-  <div class="absolute inset-0 grid grid-cols-[1.1fr_1fr] items-center gap-5 px-6 pt-8 pb-5 max-fold:grid-cols-1 max-fold:p-5 max-fold:pt-9">
+  <!-- 5 rows × 30 px + gaps + padding = 170 px list, centred in the 232 px stage beside the caps.
+       In a narrow card the list goes and the caps take the stage. -->
+  <div class="absolute inset-0 grid grid-cols-[1.1fr_1fr] items-center gap-5 p-5 @max-[460px]:grid-cols-1">
     <div class="flex flex-col items-center gap-4">
       <div
         :key="presses"
@@ -55,7 +56,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         <span
           v-for="(k, i) in current.keys"
           :key="k"
-          class="grid size-[76px] place-items-center rounded-[14px] bg-[linear-gradient(180deg,#ffffff,#f4f5f8)] font-(family-name:--font-display) font-medium tracking-[-0.03em] text-[#8b95a8] shadow-[0_0_0_1px_rgba(13,14,18,.07),0_1px_0_1px_rgba(13,14,18,.05),0_6px_0_-1px_#e2e5eb,0_18px_30px_-14px_rgba(13,14,18,.28),inset_0_1px_0_#fff] motion-safe:group-data-play:animate-[key-press_620ms_var(--ease-out-quint)_both]"
+          class="grid size-[76px] place-items-center rounded-[14px] bg-[linear-gradient(180deg,#ffffff,#f4f5f8)] font-(family-name:--font-display) font-medium tracking-[-0.03em] text-[#8b95a8] shadow-[0_0_0_1px_rgba(38,40,46,.07),0_1px_0_1px_rgba(38,40,46,.05),0_6px_0_-1px_#e2e5eb,0_18px_30px_-14px_rgba(38,40,46,.28),inset_0_1px_0_#fff] motion-safe:group-data-play:animate-[key-press_620ms_var(--ease-out-quint)_both]"
           :class="k === '⌘' ? 'text-[30px]' : 'text-[34px]'"
           :style="{ animationDelay: `${i * 70}ms` }"
         >{{ k }}</span>
@@ -67,12 +68,12 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         {{ current.label }}
       </p>
     </div>
-    <ul class="flex flex-col gap-0.5 rounded-[14px] bg-white/70 p-1.5 shadow-raise max-fold:hidden">
+    <ul class="flex flex-col gap-0.5 rounded-[14px] bg-white/70 p-1.5 shadow-raise @max-[460px]:hidden">
       <li
         v-for="(r, i) in ROWS"
         :key="r.label"
         class="flex h-[30px] items-center gap-3 rounded-[9px] px-2 text-[12px] transition-colors duration-200 ease-[ease] motion-reduce:transition-none"
-        :class="current.row === i ? 'bg-ink/5 text-ink [&_kbd]:text-ice [&_kbd]:shadow-[0_0_0_1px_var(--ice),0_1px_0_rgba(47,111,237,.4)]' : 'text-ink-2'"
+        :class="current.row === i ? 'bg-ink/5 text-ink [&_kbd]:text-lamp [&_kbd]:shadow-[0_0_0_1px_var(--lamp),0_1px_0_rgba(176,138,92,.4)]' : 'text-ink-2'"
       >
         <span class="flex min-w-[54px] items-center gap-[3px]"><template
           v-for="k in r.keys"

@@ -169,7 +169,7 @@ onMounted(() => {
 
         <main
           ref="stageEl"
-          class="lightbox relative mx-2 mb-2 min-h-0 min-w-0 flex-1 overflow-hidden rounded-pane bg-background shadow-[inset_0_0_0_1px_rgba(13,14,18,.06)] max-md:mx-1.5 max-md:mb-1.5 max-md:rounded-[14px]">
+          class="lightbox relative mx-2 mb-2 min-h-0 min-w-0 flex-1 overflow-hidden rounded-pane bg-background shadow-[inset_0_0_0_1px_rgba(38,40,46,.06)] max-md:mx-1.5 max-md:mb-1.5 max-md:rounded-[14px]">
           <GlassViewer
             ref="viewer"
             :trace="trace"
@@ -179,7 +179,7 @@ onMounted(() => {
             @dimensions="dims = $event"
           />
           <motion.div
-            class="pointer-events-none absolute inset-0 bg-[#0d0e12] md:hidden"
+            class="pointer-events-none absolute inset-0 bg-[#26282e] md:hidden"
             :style="{ opacity: stageDim }"
             aria-hidden="true"
           />
@@ -312,11 +312,11 @@ onMounted(() => {
               :transition="{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }"
             >
               <span
-                class="absolute inset-0 bg-[radial-gradient(rgba(13,14,18,0.13)_0.9px,transparent_1px)] bg-size-[22px_22px] bg-center [mask-image:radial-gradient(ellipse_58%_54%_at_50%_46%,#000_0%,rgba(0,0,0,0.35)_45%,transparent_80%)]"
+                class="absolute inset-0 bg-[radial-gradient(rgba(38,40,46,0.13)_0.9px,transparent_1px)] bg-size-[22px_22px] bg-center [mask-image:radial-gradient(ellipse_58%_54%_at_50%_46%,#000_0%,rgba(0,0,0,0.35)_45%,transparent_80%)]"
                 aria-hidden="true"
               />
               <span
-                class="absolute top-1/2 left-1/2 size-[640px] -translate-x-1/2 -translate-y-[62%] animate-breathe rounded-full bg-[radial-gradient(closest-side,rgba(47,111,237,0.2),rgba(47,111,237,0.06)_55%,rgba(47,111,237,0)_75%)] motion-reduce:animate-none"
+                class="absolute top-1/2 left-1/2 size-[640px] -translate-x-1/2 -translate-y-[62%] animate-breathe rounded-full bg-[radial-gradient(closest-side,rgba(176,138,92,0.2),rgba(176,138,92,0.06)_55%,rgba(176,138,92,0)_75%)] motion-reduce:animate-none"
                 aria-hidden="true"
               />
               <span
@@ -327,14 +327,14 @@ onMounted(() => {
                 v-glass
                 class="glass pointer-events-auto relative w-[440px] max-w-[calc(100vw-3rem)] rounded-window px-8 pt-10 pb-8 text-center [--glass-blur:22px] [--glass-drop:0_2px_24px_rgba(3,7,18,.04),0_28px_56px_-32px_rgba(3,7,18,.3)] [--glass-tint:rgba(255,255,255,.52)]"
               >
-                <span class="tile relative mx-auto mb-7 flex size-[88px] items-center justify-center overflow-hidden rounded-[26px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(13,14,18,0.05),inset_0_0_0_1px_rgba(255,255,255,0.6),0_0_0_1px_var(--hairline),0_20px_36px_-22px_rgba(3,7,18,0.4)]">
+                <span class="tile relative mx-auto mb-7 flex size-[88px] items-center justify-center overflow-hidden rounded-[26px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(38,40,46,0.05),inset_0_0_0_1px_rgba(255,255,255,0.6),0_0_0_1px_var(--hairline),0_20px_36px_-22px_rgba(3,7,18,0.4)]">
                   <span
                     class="absolute inset-0 animate-sweep rounded-[inherit] bg-[linear-gradient(115deg,transparent_30%,rgba(255,255,255,0)_42%,rgba(255,255,255,0.9)_50%,rgba(255,255,255,0)_58%,transparent_70%)] [transform:translateX(-120%)] motion-reduce:animate-none"
                     aria-hidden="true"
                   />
                   <BrandMark
                     :size="44"
-                    class="relative text-ink opacity-90 [filter:drop-shadow(0_1px_0_rgba(255,255,255,0.95))_drop-shadow(0_-0.5px_0_rgba(13,14,18,0.14))]"
+                    class="relative text-ink opacity-90 [filter:drop-shadow(0_1px_0_rgba(255,255,255,0.95))_drop-shadow(0_-0.5px_0_rgba(38,40,46,0.14))]"
                   />
                 </span>
                 <h1 class="font-display mb-2.5 text-[26px] leading-[1.08] text-foreground">
@@ -389,7 +389,7 @@ onMounted(() => {
             <motion.div
               v-if="dragging"
               key="drop"
-              class="pointer-events-none absolute inset-3 flex items-center justify-center gap-2 rounded-pane border-[1.5px] border-dashed border-ice/60 bg-ice-soft/75 text-[15px] font-medium text-ice backdrop-blur-sm"
+              class="pointer-events-none absolute inset-3 flex items-center justify-center gap-2 rounded-pane border-[1.5px] border-dashed border-lamp/60 bg-lamp-soft/75 text-[15px] font-medium text-ink backdrop-blur-sm"
               :initial="{ opacity: 0 }"
               :animate="{ opacity: 1 }"
               :exit="{ opacity: 0 }"
