@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { makeCanvas, rasterize, type Crop, type Ring, type TraceSource } from './trace'
+import { distanceToEdge, gaussianBlur, rasterizeOutline, srgbToLinear, type Outline } from './raster'
+import { rasterize, type Crop, type PixelBox, type TraceSource } from './trace'
 
 /**
  * Relief: a per-pixel height field read straight from the picture, so any image (a photo, a
@@ -56,7 +57,7 @@ export interface ReliefData {
   /** 1 where the point is part of the model. `null` = everything. */
   mask: Uint8Array | null
   /** Grid-point bounds of the model (the mask's box, or the whole grid). */
-  bbox: { minX: number; minY: number; maxX: number; maxY: number }
+  bbox: PixelBox
   /** Source region the grid covers (fractions of the source). */
   crop: Crop
   /** Back face mirrors the front (inflated volume) instead of being flat. */
@@ -64,11 +65,7 @@ export interface ReliefData {
 }
 
 /** The silhouette, in the trace raster's pixel space, used to cut the relief. */
-export interface ReliefMask {
-  polygons: { exterior: Ring; holes: Ring[] }[]
-  width: number
-  height: number
-}
+export type ReliefMask = Outline
 
 export function computeRelief(
   img: TraceSource,
@@ -77,21 +74,11 @@ export function computeRelief(
   mask: ReliefMask | null,
 ): ReliefData {
   const data = rasterize(img, opts.resolution, crop)
-  const { width: w, height: h } = data
-  const px = data.data
-  const heights = new Float32Array(w * h)
   if (opts.inflate && mask && mask.polygons.length) return inflate(data, opts, crop, mask)
+  const { width: w, height: h } = data
+  const heights = new Float32Array(w * h)
   if (opts.source !== 'flat') {
-    for (let i = 0, p = 0; i < heights.length; i++, p += 4) {
-      const a = px[p + 3]! / 255
-      // Transparent pixels composite over white, the most common page.
-      const r = px[p]! * a + 255 * (1 - a)
-      const g = px[p + 1]! * a + 255 * (1 - a)
-      const b = px[p + 2]! * a + 255 * (1 - a)
-      // Linear-light luminance: gradients and shading then map to height evenly.
-      const lum = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
-      heights[i] = opts.invert ? 1 - lum : lum
-    }
+    linearLuminance(data.data, heights, opts.invert)
     if (opts.smooth > 0) gaussianBlur(heights, w, h, opts.smooth)
     stretch(heights)
     const gamma = opts.contrast
@@ -104,7 +91,7 @@ export function computeRelief(
 
   let maskGrid: Uint8Array | null = null
   if (opts.cutout && mask && mask.polygons.length) {
-    maskGrid = rasterizeMask(mask, w, h)
+    maskGrid = rasterizeOutline(mask, w, h)
     for (let i = 0; i < heights.length; i++) if (!maskGrid[i]) heights[i] = 0
   }
   return { width: w, height: h, heights, mask: maskGrid, bbox: maskBounds(maskGrid, w, h), crop, mirror: false }
@@ -118,7 +105,7 @@ export function computeRelief(
  */
 function inflate(data: ImageData, opts: ReliefOptions, crop: Crop, mask: ReliefMask): ReliefData {
   const { width: w, height: h } = data
-  const maskGrid = rasterizeMask(mask, w, h)
+  const maskGrid = rasterizeOutline(mask, w, h)
   const dist = distanceToEdge(maskGrid, w, h)
   const bbox = maskBounds(maskGrid, w, h)
   // Rounding radius: a share of the object's half-width, so a thin handle and a fat body on the
@@ -134,13 +121,7 @@ function inflate(data: ImageData, opts: ReliefOptions, crop: Crop, mask: ReliefM
   }
   if (opts.detail > 0) {
     // Shading as dents: dark pixels sink by up to `detail` × 30% of the local height.
-    const px = data.data
-    const lum = new Float32Array(w * h)
-    for (let i = 0, p = 0; i < lum.length; i++, p += 4) {
-      const a = px[p + 3]! / 255
-      const r = px[p]! * a + 255 * (1 - a), g = px[p + 1]! * a + 255 * (1 - a), b = px[p + 2]! * a + 255 * (1 - a)
-      lum[i] = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
-    }
+    const lum = linearLuminance(data.data, new Float32Array(w * h))
     if (opts.smooth > 0) gaussianBlur(lum, w, h, opts.smooth)
     stretch(lum)
     const k = 0.3 * opts.detail
@@ -149,7 +130,7 @@ function inflate(data: ImageData, opts: ReliefOptions, crop: Crop, mask: ReliefM
   return { width: w, height: h, heights, mask: maskGrid, bbox, crop, mirror: true }
 }
 
-function maskBounds(mask: Uint8Array | null, w: number, h: number) {
+function maskBounds(mask: Uint8Array | null, w: number, h: number): PixelBox {
   if (!mask) return { minX: 0, minY: 0, maxX: w - 1, maxY: h - 1 }
   let minX = w, minY = h, maxX = -1, maxY = -1
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -164,43 +145,20 @@ function maskBounds(mask: Uint8Array | null, w: number, h: number) {
 }
 
 /**
- * Exact Euclidean distance from every inside point to the nearest outside point (Felzenszwalb &
- * Huttenlocher's separable parabola transform). Outside points and the grid border count as
- * distance 0 so a silhouette touching the edge still rounds off there.
+ * Linear-light luminance per pixel into `out` (optionally inverted), transparent pixels
+ * composited over white, the most common page. Linear light maps gradients and shading to
+ * height evenly.
  */
-export function distanceToEdge(mask: Uint8Array, w: number, h: number): Float32Array {
-  const INF = 1e12
-  const f = new Float32Array(w * h)
-  for (let i = 0; i < f.length; i++) f[i] = mask[i] ? INF : 0
-  const n = Math.max(w, h)
-  const d = new Float32Array(n), v = new Int32Array(n), z = new Float32Array(n + 1), g = new Float32Array(n)
-  const edt1d = (len: number, stride: number, offset: number) => {
-    for (let q = 0; q < len; q++) g[q] = f[offset + q * stride]!
-    // Border pixel sees the outside right next to it.
-    g[0] = Math.min(g[0]!, 1); g[len - 1] = Math.min(g[len - 1]!, 1)
-    let k = 0
-    v[0] = 0; z[0] = -INF; z[1] = INF
-    for (let q = 1; q < len; q++) {
-      let s = ((g[q]! + q * q) - (g[v[k]!]! + v[k]! * v[k]!)) / (2 * q - 2 * v[k]!)
-      while (s <= z[k]!) { k--; s = ((g[q]! + q * q) - (g[v[k]!]! + v[k]! * v[k]!)) / (2 * q - 2 * v[k]!) }
-      k++; v[k] = q; z[k] = s; z[k + 1] = INF
-    }
-    k = 0
-    for (let q = 0; q < len; q++) {
-      while (z[k + 1]! < q) k++
-      d[q] = (q - v[k]!) * (q - v[k]!) + g[v[k]!]!
-    }
-    for (let q = 0; q < len; q++) f[offset + q * stride] = d[q]!
+function linearLuminance(px: Uint8ClampedArray, out: Float32Array, invert = false): Float32Array {
+  for (let i = 0, p = 0; i < out.length; i++, p += 4) {
+    const a = px[p + 3]! / 255
+    const r = px[p]! * a + 255 * (1 - a)
+    const g = px[p + 1]! * a + 255 * (1 - a)
+    const b = px[p + 2]! * a + 255 * (1 - a)
+    const lum = 0.2126 * srgbToLinear(r / 255) + 0.7152 * srgbToLinear(g / 255) + 0.0722 * srgbToLinear(b / 255)
+    out[i] = invert ? 1 - lum : lum
   }
-  for (let y = 0; y < h; y++) edt1d(w, 1, y * w)
-  for (let x = 0; x < w; x++) edt1d(h, w, x)
-  for (let i = 0; i < f.length; i++) f[i] = Math.sqrt(f[i]!)
-  return f
-}
-
-const toLinear = (c: number) => {
-  const v = c / 255
-  return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  return out
 }
 
 /** Stretch to [0,1] between the 0.5th and 99.5th percentile so one hot pixel cannot flatten the rest. */
@@ -220,51 +178,6 @@ function stretch(f: Float32Array) {
   if (b - a < 0.02) return
   const k = 1 / (b - a)
   for (let i = 0; i < f.length; i++) f[i] = Math.min(1, Math.max(0, (f[i]! - a) * k))
-}
-
-/** Three box passes ≈ Gaussian, separable, in place. Shared with `surface.ts`. */
-export function gaussianBlur(f: Float32Array, w: number, h: number, sigma: number) {
-  const r = Math.max(1, Math.round(sigma * 0.9))
-  const tmp = new Float32Array(f.length)
-  for (let pass = 0; pass < 3; pass++) {
-    for (let y = 0; y < h; y++) {
-      const row = y * w
-      let acc = 0
-      for (let x = -r; x <= r; x++) acc += f[row + Math.min(w - 1, Math.max(0, x))]!
-      for (let x = 0; x < w; x++) {
-        tmp[row + x] = acc / (2 * r + 1)
-        acc += f[row + Math.min(w - 1, x + r + 1)]! - f[row + Math.max(0, x - r)]!
-      }
-    }
-    for (let x = 0; x < w; x++) {
-      let acc = 0
-      for (let y = -r; y <= r; y++) acc += tmp[Math.min(h - 1, Math.max(0, y)) * w + x]!
-      for (let y = 0; y < h; y++) {
-        f[y * w + x] = acc / (2 * r + 1)
-        acc += tmp[Math.min(h - 1, y + r + 1) * w + x]! - tmp[Math.max(0, y - r) * w + x]!
-      }
-    }
-  }
-}
-
-/** Fill the traced polygons (even-odd) into a w×h grid, scaled from the trace raster. */
-export function rasterizeMask(mask: ReliefMask, w: number, h: number): Uint8Array {
-  const canvas = makeCanvas(w, h)
-  const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
-  const kx = w / mask.width, ky = h / mask.height
-  ctx.beginPath()
-  for (const poly of mask.polygons) {
-    for (const ring of [poly.exterior, ...poly.holes]) {
-      ring.forEach(([x, y], i) => (i ? ctx.lineTo(x * kx, y * ky) : ctx.moveTo(x * kx, y * ky)))
-      ctx.closePath()
-    }
-  }
-  ctx.fillStyle = '#000'
-  ctx.fill('evenodd')
-  const a = ctx.getImageData(0, 0, w, h).data
-  const out = new Uint8Array(w * h)
-  for (let i = 0, p = 3; i < out.length; i++, p += 4) out[i] = a[p]! > 127 ? 1 : 0
-  return out
 }
 
 export interface ReliefBuild {

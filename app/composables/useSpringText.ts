@@ -5,11 +5,11 @@ import type { Ref } from 'vue'
  * string ref. Self-contained so it works anywhere in a template, unlike a raw MotionValue.
  */
 export function useSpringText(
-  source: Ref<number> | (() => number),
+  source: MaybeRefOrGetter<number>,
   format: (v: number) => string,
   opts: { stiffness?: number; damping?: number } = {},
-) {
-  const read = typeof source === 'function' ? source : () => source.value
+): Readonly<Ref<string>> {
+  const read = () => toValue(source)
   const stiffness = opts.stiffness ?? 380
   const damping = opts.damping ?? 36
   let current = read()
@@ -41,6 +41,6 @@ export function useSpringText(
     target = v
     if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick) }
   })
-  onBeforeUnmount(() => cancelAnimationFrame(raf))
+  onScopeDispose(() => cancelAnimationFrame(raf))
   return text
 }

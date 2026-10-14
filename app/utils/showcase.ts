@@ -1,11 +1,11 @@
 import * as THREE from 'three'
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { buildExtrudeGeometry } from './extrude'
-import { createStudioEnvironment } from './glassScene'
+import { bakeEnvironment, createStudioEnvironment } from './glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams } from './presets'
 import { buildPrintTexture } from './printTexture'
 import { DEFAULT_TRACE_OPTIONS, traceImage, type TraceResult } from './trace'
-import { drawSample, HERO_FINISH, HERO_SPOTS, HERO_STORY, LOGO_SAMPLE_IDS, SAMPLES, type Sample } from './samples'
+import { drawSample, HERO_FINISH, HERO_SPOTS, HERO_STORY, LOGO_SAMPLE_IDS, SAMPLES, sampleById, type Sample } from './samples'
 
 /**
  * The landing page's showroom. Every object is built from `SAMPLES` through the same trace →
@@ -26,9 +26,19 @@ interface Placed {
   home: THREE.Vector3
   spin: number
   phase: number
+  /** Entrance progress, 0 → 1. */
+  landing: number
+  /** Eased pointer tilt (x about the horizontal axis, y about the vertical). */
+  look: THREE.Vector2
 }
 
-export const GALLERY_ICONS = ['heart', 'bolt', 'star', 'play', 'leaf', 'ring']
+/** A traced sample and the canvas it was drawn on, which the Color finish samples. */
+interface Traced {
+  trace: TraceResult
+  source: HTMLCanvasElement
+}
+
+const GALLERY_ICONS = ['heart', 'bolt', 'star', 'play', 'leaf', 'ring']
 const ICON_GAP = 150
 const ROW_ICONS_Y = 0
 
@@ -56,7 +66,7 @@ export class Showcase {
   private static readonly BACKDROP_DISTANCE = 6000
   private story: THREE.Mesh | null = null
   private storyDepth = 12
-  private storyTrace: { trace: TraceResult; source: HTMLCanvasElement } | null = null
+  private storyTrace: Traced | null = null
   private target = new THREE.Vector3()
   /** Hero, narrow screens: canvas px from the top that the copy occupies; the marks stay below. */
   private heroClear = 0
@@ -72,15 +82,7 @@ export class Showcase {
     this.renderer.setClearColor(0xe4e4e2, 1)
     this.camera = new THREE.PerspectiveCamera(26, 1, 1, 12000)
     this.pmrem = new THREE.PMREMGenerator(this.renderer)
-    const environment = createStudioEnvironment({ neutral: true })
-    this.scene.environment = this.pmrem.fromScene(environment, 0.02).texture
-    environment.traverse(obj => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.dispose()
-        const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
-        materials.forEach(material => material.dispose())
-      }
-    })
+    this.scene.environment = bakeEnvironment(this.pmrem, createStudioEnvironment({ neutral: true }), 0.02)
 
     // A photo-studio sweep pinned to the camera: the paper the objects sit in front of, and the
     // thing the glass has to refract. Without it transmission samples an empty buffer and reads
@@ -177,12 +179,12 @@ export class Showcase {
   }
 
   /** Build the layout's objects, yielding between them so the page stays responsive. */
-  async load() {
+  async load(): Promise<void> {
     const idle = () => new Promise<void>(r => setTimeout(r, 0))
     if (this.opts.layout === 'hero') {
       for (const spot of HERO_SPOTS) {
         if (this.disposed) return
-        const sample = SAMPLES.find(s => s.id === (spot.id === 'story' ? HERO_STORY : spot.id))!
+        const sample = sampleById(spot.id === 'story' ? HERO_STORY : spot.id)!
         const mesh = this.place(sample, new THREE.Vector3(0, 0, spot.z), spot.size, spot.id, spot.preset)
         if (spot.id === 'story') {
           this.story = mesh
@@ -196,29 +198,29 @@ export class Showcase {
       return
     }
     if (this.opts.layout === 'specimen') {
-      const sample = SAMPLES.find(s => s.id === this.opts.sample) ?? SAMPLES[0]!
+      const sample = (this.opts.sample && sampleById(this.opts.sample)) || SAMPLES[0]!
       this.story = this.place(sample, new THREE.Vector3(), 145, 'story')
       if (this.opts.preset) this.setPreset(this.opts.preset)
       this.onReady?.()
       return
     }
     if (this.opts.layout !== 'gallery') {
-      const brand = SAMPLES.find(s => s.id === 'vitrum')!
+      const brand = sampleById('vitrum')!
       this.story = this.place(brand, new THREE.Vector3(0, 0, 0), 120, 'story')
       this.onReady?.()
       return
     }
     for (const [i, id] of GALLERY_ICONS.entries()) {
       if (this.disposed) return
-      this.place(SAMPLES.find(x => x.id === id)!, new THREE.Vector3(i * ICON_GAP, ROW_ICONS_Y, 0), 92)
+      this.place(sampleById(id)!, new THREE.Vector3(i * ICON_GAP, ROW_ICONS_Y, 0), 92)
       await idle()
     }
     this.onReady?.()
   }
 
-  private trace(sample: Sample, stack = false): { trace: TraceResult; source: HTMLCanvasElement } {
+  private trace(sample: Sample, stack = false): Traced {
     const source = drawSample(sample, 768)
-    const trace = traceImage(source as unknown as ImageBitmap, { ...DEFAULT_TRACE_OPTIONS, resolution: 768, stack, mode: 'auto' })
+    const trace = traceImage(source, { ...DEFAULT_TRACE_OPTIONS, resolution: 768, stack, mode: 'auto' })
     return { trace, source }
   }
 
@@ -241,7 +243,7 @@ export class Showcase {
     if (!built) return null
     const preset = MATERIAL_PRESETS.find(p => p.id === presetId)!
     const params = { ...DEFAULT_GLASS_PARAMS, ...preset.values, depthMm: depth }
-    const material = this.material(params, () => buildPrintTexture(source as unknown as HTMLImageElement, trace))
+    const material = this.material(params, () => buildPrintTexture(source, trace))
     let geometry = built.geometry
     if (roundedIcon) {
       geometry.deleteAttribute('normal')
@@ -270,10 +272,9 @@ export class Showcase {
     group.position.copy(home)
     group.position.y = home.y - 40
     group.scale.setScalar(0.92)
-    group.userData.landing = 0
     this.scene.add(group)
     const n = this.placed.length
-    this.placed.push({ id, group, home: home.clone(), spin: (n % 2 ? -1 : 1) * 0.16, phase: n * 1.37 })
+    this.placed.push({ id, group, home: home.clone(), spin: (n % 2 ? -1 : 1) * 0.16, phase: n * 1.37, landing: 0, look: new THREE.Vector2() })
     this.onPlaced?.(id)
   }
 
@@ -324,14 +325,14 @@ export class Showcase {
   }
 
   /** Swap the story object's finish. */
-  setPreset(id: string) {
+  setPreset(id: string): void {
     const preset = MATERIAL_PRESETS.find(p => p.id === id)
     const mesh = this.story
     if (!preset || !mesh || !this.storyTrace) return
     const params = { ...DEFAULT_GLASS_PARAMS, ...preset.values, depthMm: this.storyDepth }
     const old = mesh.material as THREE.MeshPhysicalMaterial
     const { trace, source } = this.storyTrace
-    mesh.material = this.material(params, () => buildPrintTexture(source as unknown as HTMLImageElement, trace))
+    mesh.material = this.material(params, () => buildPrintTexture(source, trace))
     old.map?.dispose()
     old.dispose()
     this.invalidate()
@@ -344,23 +345,23 @@ export class Showcase {
     }
   }
 
-  setPaused(paused: boolean) { this.paused = paused; this.invalidate() }
+  setPaused(paused: boolean): void { this.paused = paused; this.invalidate() }
 
-  setReducedMotion(reduced: boolean) { this.reducedMotion = reduced; this.invalidate() }
+  setReducedMotion(reduced: boolean): void { this.reducedMotion = reduced; this.invalidate() }
 
   /** Render immediately before capture; no persistent drawing buffer needed. */
-  capture() {
+  capture(): string {
     this.renderer.render(this.scene, this.camera)
     return this.canvas.toDataURL('image/webp', 0.92)
   }
 
   /** Story: 0 at the top of the pinned section, 1 per beat. Drives the object's turn. */
-  setProgress(p: number) {
+  setProgress(p: number): void {
     this.progress = Math.max(0, p)
   }
 
   /** Hero: where the copy ends, in canvas px, so narrow layouts keep the marks under it. */
-  setHeroClear(px: number) {
+  setHeroClear(px: number): void {
     if (Math.abs(px - this.heroClear) < 1) return
     this.heroClear = px
     if (this.opts.layout === 'hero') this.layoutHero()
@@ -368,7 +369,7 @@ export class Showcase {
   }
 
   /** Pointer in canvas CSS px; `inside` false once it leaves the canvas. Objects turn toward it. */
-  setPointer(x: number, y: number, inside = true) {
+  setPointer(x: number, y: number, inside = true): void {
     this.pointer.set(x, y)
     this.pointerIn = inside
   }
@@ -387,12 +388,12 @@ export class Showcase {
     return { x: (out.x * 0.5 + 0.5) * w, y: (-out.y * 0.5 + 0.5) * h, z: out.z }
   }
 
-  setVisible(v: boolean) {
+  setVisible(v: boolean): void {
     this.visible = v
-    if (v && !this.raf && !this.disposed) { this.last = performance.now(); this.loop(this.last) }
+    this.invalidate()
   }
 
-  resize() {
+  resize(): void {
     const w = this.canvas.clientWidth || 1
     const h = this.canvas.clientHeight || 1
     this.renderer.setSize(w, h, false)
@@ -454,8 +455,7 @@ export class Showcase {
 
     for (const o of this.placed) {
       const g = o.group
-      const landing = still ? 1 : Math.min(1, (g.userData.landing as number) + dt * 1.4)
-      g.userData.landing = landing
+      const landing = o.landing = still ? 1 : Math.min(1, o.landing + dt * 1.4)
       const e = 1 - Math.pow(1 - landing, 3)
       g.scale.setScalar(0.92 + 0.08 * e)
 
@@ -472,7 +472,7 @@ export class Showcase {
       const gain = pointerIn ? reach : 0
       const wantY = Math.max(-0.9, Math.min(0.9, dx * (layout === 'gallery' ? 2.2 : 1.1))) * gain
       const wantX = Math.max(-0.6, Math.min(0.6, -dy * (layout === 'gallery' ? 1.6 : 0.8))) * gain
-      const look = g.userData.look as THREE.Vector2 | undefined ?? (g.userData.look = new THREE.Vector2())
+      const look = o.look
       look.x += (wantX - look.x) * follow
       look.y += (wantY - look.y) * follow
       if (still) look.set(0, 0)
@@ -508,14 +508,17 @@ export class Showcase {
     this.renderer.render(this.scene, this.camera)
   }
 
-  dispose() {
+  dispose(): void {
     this.disposed = true
     cancelAnimationFrame(this.raf)
-    this.scene.traverse(obj => {
-      const m = obj as THREE.Mesh
-      if (m.geometry) m.geometry.dispose()
-      const mat = m.material as THREE.MeshPhysicalMaterial | undefined
-      if (mat) { mat.map?.dispose(); mat.dispose() }
+    this.raf = 0
+    this.onPlaced = this.onReady = null
+    this.scene.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return
+      obj.geometry.dispose()
+      const mat = obj.material as THREE.MeshPhysicalMaterial | THREE.MeshBasicMaterial
+      mat.map?.dispose()
+      mat.dispose()
     })
     this.shadowTex.dispose()
     this.backdrop.material.map?.dispose()

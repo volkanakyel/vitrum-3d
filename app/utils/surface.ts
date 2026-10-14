@@ -1,4 +1,4 @@
-import { gaussianBlur } from './relief'
+import { domCanvas, gaussianBlur, srgbToLinear } from './raster'
 
 /**
  * Surface maps for the Color finish, read from the picture itself. A photo carries three things
@@ -29,11 +29,10 @@ export interface SurfaceOptions {
 }
 
 /** sRGB → linear lookup for 8-bit channels. */
-const TO_LINEAR = new Float32Array(256)
-for (let i = 0; i < 256; i++) {
-  const v = i / 255
-  TO_LINEAR[i] = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
-}
+const TO_LINEAR = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255))
+/** The strongest lift `delightGain` gives a shadow; the gain canvas stores gain / MAX_GAIN. */
+const MAX_GAIN = 2.5
+
 const toSRGB = (v: number) => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055)
 
 /** Linear-light luminance per pixel, transparent pixels composited over white. */
@@ -63,7 +62,7 @@ export function delightGain(lum: Float32Array, w: number, h: number, amount: num
   for (let i = 0; i < low.length; i++) {
     const g = mean / Math.max(low[i]!, 0.02)
     // Deep shadows would blow out; a 2.5× lift is as far as a photo's noise floor allows.
-    gain[i] = 1 + (Math.min(2.5, Math.max(0.5, g)) - 1) * amount
+    gain[i] = 1 + (Math.min(MAX_GAIN, Math.max(0.5, g)) - 1) * amount
   }
   return gain
 }
@@ -155,9 +154,7 @@ export interface SurfaceCanvases {
 export function buildSurfaceCanvases(albedo: HTMLCanvasElement, opts: SurfaceOptions, grainSize = 1024): SurfaceCanvases {
   const k = Math.min(1, grainSize / Math.max(albedo.width, albedo.height))
   const sw = Math.max(2, Math.round(albedo.width * k)), sh = Math.max(2, Math.round(albedo.height * k))
-  const small = document.createElement('canvas')
-  small.width = sw
-  small.height = sh
+  const small = domCanvas(sw, sh)
   const sctx = small.getContext('2d', { willReadFrequently: true })!
   sctx.imageSmoothingQuality = 'high'
   sctx.drawImage(albedo, 0, 0, sw, sh)
@@ -175,25 +172,16 @@ export function buildSurfaceCanvases(albedo: HTMLCanvasElement, opts: SurfaceOpt
   if (opts.flatten > 0) {
     // Gain at grain size as a grey canvas, then stretched over the full albedo: the blur is
     // the size of the picture, so nothing is lost in the resample.
-    const gain = delightGain(lum, sw, sh, opts.flatten)
-    const gainBytes = new Uint8ClampedArray(sw * sh * 4)
-    for (let i = 0, o = 0; i < gain.length; i++, o += 4) {
-      const v = Math.round((gain[i]! / 2.5) * 255)
-      gainBytes[o] = v; gainBytes[o + 1] = v; gainBytes[o + 2] = v; gainBytes[o + 3] = 255
-    }
-    const gc = document.createElement('canvas')
-    gc.width = albedo.width
-    gc.height = albedo.height
+    const gainBytes = greyBytes(delightGain(lum, sw, sh, opts.flatten), v => Math.round((v / MAX_GAIN) * 255))
+    const gc = domCanvas(albedo.width, albedo.height)
     const gctx = gc.getContext('2d', { willReadFrequently: true })!
     gctx.imageSmoothingQuality = 'high'
     gctx.drawImage(toCanvas(gainBytes, sw, sh), 0, 0, gc.width, gc.height)
     const gpx = gctx.getImageData(0, 0, gc.width, gc.height).data
     const full = new Float32Array(gc.width * gc.height)
-    for (let i = 0, o = 0; i < full.length; i++, o += 4) full[i] = (gpx[o]! / 255) * 2.5
+    for (let i = 0, o = 0; i < full.length; i++, o += 4) full[i] = (gpx[o]! / 255) * MAX_GAIN
 
-    out = document.createElement('canvas')
-    out.width = albedo.width
-    out.height = albedo.height
+    out = domCanvas(albedo.width, albedo.height)
     const octx = out.getContext('2d', { willReadFrequently: true })!
     octx.drawImage(albedo, 0, 0)
     const img = octx.getImageData(0, 0, out.width, out.height)
@@ -211,9 +199,7 @@ export function buildSurfaceCanvases(albedo: HTMLCanvasElement, opts: SurfaceOpt
 export function softenCanvas(src: HTMLCanvasElement, amount: number): HTMLCanvasElement {
   if (amount <= 0) return src
   const r = amount * 0.025 * Math.max(src.width, src.height)
-  const out = document.createElement('canvas')
-  out.width = src.width
-  out.height = src.height
+  const out = domCanvas(src.width, src.height)
   const ctx = out.getContext('2d', { willReadFrequently: true })!
   ctx.filter = `blur(${r.toFixed(2)}px)`
   // The blur samples transparent black past the edge; draw the edges first so it samples colour.
@@ -224,9 +210,17 @@ export function softenCanvas(src: HTMLCanvasElement, amount: number): HTMLCanvas
 }
 
 function toCanvas(rgba: Uint8ClampedArray<ArrayBuffer>, w: number, h: number): HTMLCanvasElement {
-  const c = document.createElement('canvas')
-  c.width = w
-  c.height = h
+  const c = domCanvas(w, h)
   c.getContext('2d')!.putImageData(new ImageData(rgba, w, h), 0, 0)
   return c
+}
+
+/** A grey, opaque RGBA image with one byte per value. */
+function greyBytes(values: ArrayLike<number>, toByte: (v: number) => number): Uint8ClampedArray<ArrayBuffer> {
+  const out = new Uint8ClampedArray(values.length * 4)
+  for (let i = 0, o = 0; i < values.length; i++, o += 4) {
+    const v = toByte(values[i]!)
+    out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255
+  }
+  return out
 }

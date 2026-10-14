@@ -1,7 +1,7 @@
 import type { MaterialPreset } from '~/utils/presets'
 
 /** A preset's swatch lit as a little sphere: a key highlight, then a bounce light or a core shadow. */
-export function presetSphere(p: MaterialPreset) {
+export function presetSphere(p: MaterialPreset): { background: string; boxShadow: string } {
   const glassy = p.group !== 'metal'
   return {
     background: [

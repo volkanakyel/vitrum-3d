@@ -4,16 +4,16 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
 import { STLExporter } from 'three/addons/exporters/STLExporter.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { MeshTransmissionMaterial } from '@pmndrs/vanilla'
-import type { TraceResult } from './trace'
-import { DEFAULT_GLASS_PARAMS, type Finish, type Geometry, type GlassParams } from './presets'
-export * from './presets'
 import { buildExtrudeGeometry } from './extrude'
-import { buildPrintTexture, buildCropTexture } from './printTexture'
+import { patchTotalInternalReflection, patchWeave, type TirUniforms, type WeaveUniforms } from './glassShaders'
+import { DEFAULT_GLASS_PARAMS, type Finish, type Geometry, type GlassParams } from './presets'
+import { buildCropTexture, buildPrintTexture } from './printTexture'
 import { buildReliefGeometry, reliefScale, type ReliefData } from './relief'
-import { buildSurfaceCanvases, softenCanvas } from './surface'
-import type { ReliefMask } from './relief'
-import type { Crop } from './trace'
 import type { SamplePose } from './samples'
+import { buildSurfaceCanvases, softenCanvas } from './surface'
+import type { Crop, TracedPolygon, TraceResult } from './trace'
+
+export * from './presets'
 
 /**
  * A dark studio with a few bright softboxes. High contrast is what makes glass read as glass:
@@ -60,6 +60,39 @@ export function createStudioEnvironment({ neutral = false } = {}): THREE.Scene {
   return scene
 }
 
+/** Free every mesh's geometry and materials under `root` (a scene only rendered once, into a PMREM). */
+function disposeSceneGraph(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return
+    obj.geometry.dispose()
+    for (const material of Array.isArray(obj.material) ? obj.material : [obj.material]) material.dispose()
+  })
+}
+
+/** A pre-filtered environment map of `scene`; the scene itself is freed once baked. */
+export function bakeEnvironment(pmrem: THREE.PMREMGenerator, scene: THREE.Scene, blur: number): THREE.Texture {
+  const texture = pmrem.fromScene(scene, blur).texture
+  disposeSceneGraph(scene)
+  return texture
+}
+
+const sameCrop = (a: Crop, b: Crop): boolean => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
+
+/** Add the polygons' rings to a canvas path, every point mapped through `to` (canvas px). */
+function pathMapped(ctx: CanvasRenderingContext2D, polygons: readonly TracedPolygon[], to: (x: number, y: number) => [number, number]): void {
+  for (const poly of polygons) {
+    for (const ring of [poly.exterior, ...poly.holes]) {
+      ring.forEach(([x, y], i) => {
+        const [px, py] = to(x, y)
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      })
+      ctx.closePath()
+    }
+  }
+}
+
+const WHITE = new THREE.Color(0xffffff)
+
 export type ViewName = 'angle' | 'front' | 'side' | 'top'
 
 export interface ModelDimensions {
@@ -93,7 +126,6 @@ export class GlassStudio {
   private interactTimer: ReturnType<typeof setTimeout> | undefined
   private pop = 1
   private lastTime = 0
-  private readonly colorKeys = ['tint', 'background'] as const
   private colorA = new THREE.Color()
   private colorB = new THREE.Color()
   private raf = 0
@@ -148,9 +180,19 @@ export class GlassStudio {
     },
   } as const
   /** Parameters that land at once: integers, and the two that rebuild textures. */
-  private static readonly SNAP_KEYS = ['bevelSegments', 'flatten', 'grain', 'soften'] as const
-  /** Procedural weave bump shared by both Color materials: strength and cells per millimetre. */
-  private weaveUniforms = { weaveStrength: { value: 0 }, weaveFreq: { value: 1 } }
+  private static readonly SNAP_KEYS: ReadonlySet<string> = new Set(['bevelSegments', 'flatten', 'grain', 'soften'])
+  /** Size parameters: they ease while a rebuild is cheap and snap once it is not. */
+  private static readonly GEOMETRY_KEYS: ReadonlySet<string> = new Set(['widthMm', 'depthMm', 'bevelMm', 'reliefMm', 'layerMm'])
+  /** Colour parameters ease through RGB rather than snapping. */
+  private static readonly COLOR_KEYS: ReadonlySet<string> = new Set(['tint', 'background'])
+  /** Every parameter the easing loop walks, fixed so a frame allocates nothing. */
+  private static readonly PARAM_KEYS = Object.keys(DEFAULT_GLASS_PARAMS) as (keyof GlassParams)[]
+  /** drei spreads the IOR by a small fraction per unit; this makes the slider's range visible. */
+  private static readonly DISPERSION_GAIN = 2.5
+  private static readonly UP = new THREE.Vector3(0, 1, 0)
+  /** Procedural weave bump on the Color material: strength and cells per millimetre. */
+  private weaveUniforms: WeaveUniforms = { weaveStrength: { value: 0 }, weaveFreq: { value: 1 } }
+  private tirUniforms: TirUniforms
   private view: ViewName = 'angle'
   /** A sample's own pose: a display-only spin in the object's plane and its Angle view. */
   private pose: { spin: number; dir: THREE.Vector3 } | null = null
@@ -158,11 +200,20 @@ export class GlassStudio {
   private snapNext = false
   /** How long the last geometry rebuild took; decides whether size changes ease or snap. */
   private lastRebuildMs = 0
-  private static readonly GEOMETRY_KEYS = ['widthMm', 'depthMm', 'bevelMm', 'reliefMm', 'layerMm'] as const
+  /** See `setFocus`. */
+  private focus = { shift: 0, scale: 1 }
+  /** The `lightAngle` the lights were last aimed for. */
+  private aimedAngle = NaN
+  /** How far out along its direction the key light sits; set per model in `placeFloor`. */
+  private keyDistance = 1
+  /** The middle of the model the lights aim at; set per model in `placeFloor`. */
+  private modelCentre = new THREE.Vector3()
+  /** `background|vignette` the backdrop was last painted for. */
+  private lastBackdrop = ''
+  /** Scratch vector for the per-frame zoom easing. */
+  private zoomOffset = new THREE.Vector3()
   /** Called after every geometry rebuild (and after the mesh is dropped), so the HUD can read the real size. */
   onRebuild: (() => void) | null = null
-  /** drei spreads the IOR by a small fraction per unit; this makes the slider's range visible. */
-  private static readonly DISPERSION_GAIN = 2.5
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' })
@@ -200,7 +251,7 @@ export class GlassStudio {
     this.controls.maxDistance = 4000
 
     this.pmrem = new THREE.PMREMGenerator(this.renderer)
-    this.envStudio = this.pmrem.fromScene(createStudioEnvironment(), 0.02).texture
+    this.envStudio = bakeEnvironment(this.pmrem, createStudioEnvironment(), 0.02)
     this.scene.environment = this.envStudio
     this.renderer.transmissionResolutionScale = 1
     this.scene.background = new THREE.Color(this.params.background)
@@ -277,7 +328,7 @@ export class GlassStudio {
       envMapIntensity: this.params.envIntensity,
     })
 
-    this.patchWeave(this.print)
+    patchWeave(this.print, this.weaveUniforms)
 
     // drei's transmission material: renders the scene into its own buffer twice (back faces, then
     // front faces) so the rims refract the glass behind them instead of a flat background.
@@ -293,7 +344,8 @@ export class GlassStudio {
       attenuationDistance: this.params.attenuationMm,
     })
     this.material.color.set(0xffffff)
-    this.patchTotalInternalReflection()
+    this.tirUniforms = { tirStrength: { value: this.params.tir }, tirPower: { value: 1.5 }, rimChroma: { value: this.params.edgeChroma } }
+    patchTotalInternalReflection(this.material, this.tirUniforms)
     this.material.metalness = 0
     this.material.ior = this.params.ior
     this.material.clearcoat = this.params.clearcoat
@@ -315,15 +367,12 @@ export class GlassStudio {
     if (import.meta.dev) (window as unknown as { __studio: GlassStudio }).__studio = this
   }
 
-  /** See `setFocus`. */
-  private focus = { shift: 0, scale: 1 }
-
   /**
    * Frame the model for a canvas partly covered from below (the phone controls sheet): the image
    * moves up by `shift` css px and is drawn at `scale`, through the projection alone, so the
    * canvas keeps its size and nothing reallocates mid-drag. Exports ignore it.
    */
-  setFocus(shift: number, scale: number) {
+  setFocus(shift: number, scale: number): void {
     if (shift === this.focus.shift && scale === this.focus.scale) return
     this.focus = { shift, scale }
     this.applyFocus()
@@ -343,7 +392,7 @@ export class GlassStudio {
    * @param paint Repaint right away. Resizing the canvas clears it, so a layout-driven resize
    *   (sidebar collapsing) would otherwise show a blank frame until the next tick of the loop.
    */
-  resize(paint = false) {
+  resize(paint = false): void {
     const w = this.canvas.clientWidth || 1
     const h = this.canvas.clientHeight || 1
     this.renderer.setSize(w, h, false)
@@ -437,15 +486,15 @@ export class GlassStudio {
     // Easing a size means one full rebuild per frame. That is fluid while a rebuild fits in a
     // frame; on a dense photo trace (100 ms+) it turns into a stutter, so those snap instead.
     const snapGeometry = this.lastRebuildMs > 24
-    for (const key of Object.keys(t)) {
+    for (const key of GlassStudio.PARAM_KEYS) {
       const tv = t[key]!, pv = p[key]!
       if (tv === pv) continue
       dirty = true
       if (typeof tv === 'number' && typeof pv === 'number') {
-        if ((GlassStudio.SNAP_KEYS as readonly string[]).includes(key) || (snapGeometry && (GlassStudio.GEOMETRY_KEYS as readonly string[]).includes(key))) { p[key] = tv; continue }
+        if (GlassStudio.SNAP_KEYS.has(key) || (snapGeometry && GlassStudio.GEOMETRY_KEYS.has(key))) { p[key] = tv; continue }
         const next = pv + (tv - pv) * k
         p[key] = Math.abs(tv - next) < Math.abs(tv) * 1e-4 + 1e-4 ? tv : next
-      } else if (typeof tv === 'string' && (this.colorKeys as readonly string[]).includes(key)) {
+      } else if (typeof tv === 'string' && GlassStudio.COLOR_KEYS.has(key)) {
         this.colorA.set(pv as string).lerp(this.colorB.set(tv), k)
         const hex = `#${this.colorA.getHexString()}`
         p[key] = hex === pv || this.colorA.equals(this.colorB) ? tv : hex
@@ -461,7 +510,7 @@ export class GlassStudio {
     }
     if (this.zoomGoal) {
       // Ease the distance along the current view ray, so the zoom is smooth and never turns.
-      const off = this.camera.position.clone().sub(this.controls.target)
+      const off = this.zoomOffset.copy(this.camera.position).sub(this.controls.target)
       const d = off.length()
       const kZoom = 1 - Math.exp(-dt * 16)
       const nd = d + (this.zoomGoal - d) * kZoom
@@ -484,13 +533,12 @@ export class GlassStudio {
     this.material.clearcoat = p.clearcoat
     this.material.envMapIntensity = p.envIntensity
     this.material.attenuationColor.set(p.tint)
-    this.material.color.set(p.tint).lerp(new THREE.Color(0xffffff), 0.7)
+    this.material.color.set(p.tint).lerp(WHITE, 0.7)
     this.material.attenuationDistance = p.attenuationMm
     this.material.thickness = p.depthMm
     this.material.iridescence = p.edgeChroma
-    const tir = (this.material as unknown as { tirUniforms: { tirStrength: { value: number }; rimChroma: { value: number } } }).tirUniforms
-    tir.tirStrength.value = p.tir
-    tir.rimChroma.value = p.edgeChroma
+    this.tirUniforms.tirStrength.value = p.tir
+    this.tirUniforms.rimChroma.value = p.edgeChroma
     this.material.uniforms.anisotropicBlur.value = p.blur
     this.material.uniforms._transmission.value = p.clarity
     this.metal.color.set(p.tint)
@@ -546,9 +594,9 @@ export class GlassStudio {
     const active = this.activeGeometry()
     const relief = active === 'inflate' || active === 'relief'
     // A new geometry is a new object: pop it in and glide the camera to a fit, as a new trace does.
-    const swapped = b.geometry !== '' && b.geometry !== this.activeGeometry()
+    const swapped = b.geometry !== '' && b.geometry !== active
     if (
-      b.geometry !== this.activeGeometry() ||
+      b.geometry !== active ||
       Math.abs(b.widthMm - p.widthMm) > 0.01 || Math.abs(b.depthMm - p.depthMm) > 0.01 ||
       (!relief && (Math.abs(b.bevelMm - p.bevelMm) > 0.005 || b.bevelSegments !== p.bevelSegments)) ||
       (active === 'stack' && Math.abs(b.layerMm - p.layerMm) > 0.01) ||
@@ -622,7 +670,6 @@ export class GlassStudio {
     if (this.stage === stage) { this.applyEnvironment(); return }
     this.stage = stage
     const product = stage === 'floor'
-    const rig = product ? GlassStudio.RIGS.floor : GlassStudio.RIGS.wall
     this.renderer.toneMapping = product ? THREE.ACESFilmicToneMapping : THREE.NeutralToneMapping
     this.applyEnvironment()
     this.hemi.visible = this.fill.visible = product
@@ -638,7 +685,6 @@ export class GlassStudio {
    * surfaces reflect turns with them (see `apply`), so the softboxes, the hard key and its shadow
    * all move together, the way walking a light around a real set does.
    */
-  private aimedAngle = NaN
   private aimLights() {
     const rig = this.params.floor ? GlassStudio.RIGS.floor : GlassStudio.RIGS.wall
     const a = THREE.MathUtils.degToRad(this.params.lightAngle)
@@ -647,19 +693,13 @@ export class GlassStudio {
     this.rim.position.copy(rig.rimDir).applyAxisAngle(GlassStudio.UP, a)
     this.fill.position.copy(GlassStudio.RIGS.floor.fillDir).applyAxisAngle(GlassStudio.UP, a)
   }
-  private static readonly UP = new THREE.Vector3(0, 1, 0)
-
-  /** How far out along its direction the key light sits; set per model in `placeFloor`. */
-  private keyDistance = 1
-  /** The middle of the model the lights aim at; set per model in `placeFloor`. */
-  private modelCentre = new THREE.Vector3()
 
   private applyEnvironment() {
     const product = this.stage === 'floor'
     // The Color finish is lit by the four lights alone, as the reference look-dev rig lights
     // it: its own roughness map carries the surface and never sees a room reflection.
     const bare = product && this.params.finish === 'print'
-    if (product && !bare && !this.envRoom) this.envRoom = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+    if (product && !bare && !this.envRoom) this.envRoom = bakeEnvironment(this.pmrem, new RoomEnvironment(), 0.04)
     const env = bare ? null : product ? this.envRoom : this.envStudio
     if (this.scene.environment !== env) this.scene.environment = env
     this.applyEnvironmentLight()
@@ -674,62 +714,6 @@ export class GlassStudio {
     const base = this.stage === 'floor' ? 0.35 : 1
     this.scene.environmentIntensity = base * (this.params.envIntensity / DEFAULT_GLASS_PARAMS.envIntensity)
     this.scene.environmentRotation.y = THREE.MathUtils.degToRad(this.params.lightAngle)
-  }
-
-  /**
-   * A woven bump computed in the shader from the object-space position, so every part of the
-   * surface gets the same cell size whatever the texture coordinates did (the projected photo's
-   * pixels stretch where a camera saw the surface at an angle; this does not). Two thread
-   * directions over and under in a checker, as the reference's fabric canvas, bump-mapped by
-   * screen derivatives, blended across the three axes by the normal, and faded out once a cell
-   * is under two pixels so a far view does not shimmer.
-   */
-  private patchWeave(m: THREE.MeshPhysicalMaterial) {
-    const inner = m.onBeforeCompile
-    const innerKey = m.customProgramCacheKey
-    const u = this.weaveUniforms
-    m.onBeforeCompile = (shader, renderer) => {
-      inner.call(m, shader, renderer)
-      shader.uniforms.weaveStrength = u.weaveStrength
-      shader.uniforms.weaveFreq = u.weaveFreq
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vWeavePos; varying vec3 vWeaveNrm;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWeavePos = position; vWeaveNrm = normal;')
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>
-          uniform float weaveStrength; uniform float weaveFreq;
-          varying vec3 vWeavePos; varying vec3 vWeaveNrm;
-          float weaveH( vec2 q ) {
-            vec2 c = floor( q );
-            float over = mod( c.x + c.y, 2.0 );
-            vec2 f = fract( q );
-            float t = over > 0.5 ? sin( f.x * 3.14159 ) : sin( f.y * 3.14159 );
-            return t * ( 0.7 + 0.3 * over );
-          }
-          vec3 weaveNormal( vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection ) {
-            vec3 vSigmaX = normalize( dFdx( surf_pos.xyz ) );
-            vec3 vSigmaY = normalize( dFdy( surf_pos.xyz ) );
-            vec3 vN = surf_norm;
-            vec3 R1 = cross( vSigmaY, vN );
-            vec3 R2 = cross( vN, vSigmaX );
-            float fDet = dot( vSigmaX, R1 ) * faceDirection;
-            vec3 vGrad = sign( fDet ) * ( dHdxy.x * R1 + dHdxy.y * R2 );
-            return normalize( abs( fDet ) * surf_norm - vGrad );
-          }`)
-        .replace('#include <emissivemap_fragment>', `
-          if ( weaveStrength > 0.0 ) {
-            vec3 wp = vWeavePos * weaveFreq;
-            vec3 an = abs( normalize( vWeaveNrm ) );
-            an /= max( an.x + an.y + an.z, 1e-4 );
-            float wh = weaveH( wp.xy ) * an.z + weaveH( wp.zy ) * an.x + weaveH( wp.xz ) * an.y;
-            float cellsPerPx = max( fwidth( wp.x ), max( fwidth( wp.y ), fwidth( wp.z ) ) );
-            float fade = 1.0 - smoothstep( 0.25, 0.5, cellsPerPx );
-            float k = 0.35 * weaveStrength * fade;
-            if ( k > 0.0 ) normal = weaveNormal( - vViewPosition, normal, vec2( dFdx( wh ), dFdy( wh ) ) * k, faceDirection );
-          }
-          #include <emissivemap_fragment>`)
-    }
-    m.customProgramCacheKey = () => (innerKey ? innerKey.call(m) : '') + '+weave'
   }
 
   /** Floor under the model's lowest point; key light and its shadow camera fitted to the model. */
@@ -765,7 +749,7 @@ export class GlassStudio {
    * @param source The original image, used for the Print finish texture. Sampled at native
    *   resolution (capped) so print detail is not limited by the trace raster.
    */
-  setTrace(trace: TraceResult | null, source: HTMLImageElement | null = null) {
+  setTrace(trace: TraceResult | null, source: HTMLImageElement | null = null): void {
     const first = !this.mesh
     this.trace = trace
     this.source = source
@@ -780,9 +764,9 @@ export class GlassStudio {
   }
 
   /** Height grid for the Relief geometry; `null` drops back to the extruded silhouette. */
-  setRelief(relief: ReliefData | null) {
+  setRelief(relief: ReliefData | null): void {
     const hadMesh = !!this.mesh
-    const cropChanged = !!relief && !!this.relief && (relief.crop.x !== this.relief.crop.x || relief.crop.y !== this.relief.crop.y || relief.crop.w !== this.relief.crop.w || relief.crop.h !== this.relief.crop.h)
+    const cropChanged = !!relief && !!this.relief && !sameCrop(relief.crop, this.relief.crop)
     const maskChanged = !!relief && !!this.relief && !!relief.mask !== !!this.relief.mask
     this.relief = relief
     if (cropChanged || maskChanged) this.dropPrintTexture()
@@ -853,17 +837,10 @@ export class GlassStudio {
     const maps = buildSurfaceCanvases(c, { flatten: this.params.flatten, grain: this.params.grain })
     this.dropSurface()
     this.surfaceSig = sig
-    const tex = (canvas: HTMLCanvasElement, srgb: boolean) => {
-      const t = new THREE.CanvasTexture(canvas)
-      if (srgb) t.colorSpace = THREE.SRGBColorSpace
-      t.anisotropy = this.renderer.capabilities.getMaxAnisotropy()
-      t.minFilter = THREE.LinearMipmapLinearFilter
-      return t
-    }
     const albedo = softenCanvas(maps.albedo, this.params.soften)
-    this.surface.albedo = albedo === c ? null : tex(albedo, true)
-    this.surface.normal = maps.normal ? tex(maps.normal, false) : null
-    this.surface.roughness = maps.roughness ? tex(maps.roughness, false) : null
+    this.surface.albedo = albedo === c ? null : this.canvasTexture(albedo, true)
+    this.surface.normal = maps.normal ? this.canvasTexture(maps.normal, false) : null
+    this.surface.roughness = maps.roughness ? this.canvasTexture(maps.roughness, false) : null
     this.print.map = this.surface.albedo ?? this.printTex
     // Cloth sheen is the fibre's own colour at a grazing angle: black velvet never glows white.
     this.print.sheenColorMap = this.print.map
@@ -874,7 +851,16 @@ export class GlassStudio {
     if (import.meta.dev) console.debug(`[surface] ${Math.round(performance.now() - t0)} ms (${sig})`)
   }
 
-  setParams(next: Partial<GlassParams>) {
+  /** A mipmapped, anisotropic texture of a surface map; colour maps are sRGB, data maps linear. */
+  private canvasTexture(canvas: HTMLCanvasElement, srgb: boolean): THREE.CanvasTexture {
+    const t = new THREE.CanvasTexture(canvas)
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace
+    t.anisotropy = this.renderer.capabilities.getMaxAnisotropy()
+    t.minFilter = THREE.LinearMipmapLinearFilter
+    return t
+  }
+
+  setParams(next: Partial<GlassParams>): void {
     Object.assign(this.target, next)
   }
 
@@ -883,7 +869,7 @@ export class GlassStudio {
    * for the caller that is about to trigger a rebuild anyway (a new trace) and does not want
    * a second one from the easing loop.
    */
-  snapParams(next: Partial<GlassParams>, applyNow = true) {
+  snapParams(next: Partial<GlassParams>, applyNow = true): void {
     Object.assign(this.target, next)
     Object.assign(this.params, next)
     // A rebuild replaces the geometry, never the finish: the materials take the values now
@@ -908,11 +894,7 @@ export class GlassStudio {
     this.dropSurface()
     this.printTexKind = kind
     this.printCanvas = canvas
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy()
-    tex.minFilter = THREE.LinearMipmapLinearFilter
-    tex.generateMipmaps = true
+    const tex = this.canvasTexture(canvas, true)
     this.printTex = tex
     this.print.map = tex
     this.print.sheenColorMap = tex
@@ -920,50 +902,6 @@ export class GlassStudio {
     this.buildSurface()
   }
 
-  /**
-   * Screen-space refraction can only show what is behind the glass, so rims that should go
-   * dark through total internal reflection stay white. Blend the transmitted light toward the
-   * environment reflection as the view angle grazes the surface, which is where TIR happens.
-   */
-  private patchTotalInternalReflection() {
-    const m = this.material
-    const inner = m.onBeforeCompile
-    const tirUniforms = { tirStrength: { value: this.params.tir }, tirPower: { value: 1.5 }, rimChroma: { value: this.params.edgeChroma } }
-    ;(m as unknown as { tirUniforms: typeof tirUniforms }).tirUniforms = tirUniforms
-    m.onBeforeCompile = (shader, renderer) => {
-      inner.call(m, shader, renderer)
-      shader.uniforms.tirStrength = tirUniforms.tirStrength
-      shader.uniforms.tirPower = tirUniforms.tirPower
-      shader.uniforms.rimChroma = tirUniforms.rimChroma
-      shader.fragmentShader = shader.fragmentShader
-        .replace('uniform float chromaticAberration;', 'uniform float chromaticAberration;\nuniform float tirStrength;\nuniform float tirPower;\nuniform float rimChroma;')
-        .replace(
-          'totalDiffuse = mix( totalDiffuse, transmission.rgb, material.transmission );',
-          `{
-            float grazing = pow( 1.0 - saturate( dot( normal, geometryViewDir ) ), tirPower );
-            float tir = saturate( grazing * tirStrength );
-            #ifdef USE_ENVMAP
-              vec3 tirRadiance = getIBLRadiance( geometryViewDir, normal, material.roughness ) * envMapIntensity;
-            #else
-              vec3 tirRadiance = vec3( 0.0 );
-            #endif
-            transmission.rgb = mix( transmission.rgb, tirRadiance, tir );
-            // Thin-film rainbow on the rims: the hue turns with the view angle and drifts across
-            // the surface, so a holographic glass shimmers as it rotates. Quadratic in the
-            // strength so a touch of it stays a touch; at 1 it is the whole look.
-            float chroma = rimChroma * rimChroma * smoothstep( 0.0, 0.9, grazing );
-            float hue = grazing * 1.6 + dot( normal, vec3( 0.35, 0.55, 0.2 ) ) * 0.6 + vWorldPosition.y * 0.004;
-            vec3 spectrum = 0.55 + 0.45 * cos( 6.28318 * ( hue + vec3( 0.0, 0.33, 0.67 ) ) );
-            transmission.rgb = mix( transmission.rgb, transmission.rgb * spectrum * 1.35 + spectrum * 0.08, chroma );
-            totalSpecular *= mix( vec3( 1.0 ), spectrum * 1.6, chroma );
-          }
-          totalDiffuse = mix( totalDiffuse, transmission.rgb, material.transmission );`,
-        )
-    }
-    m.customProgramCacheKey = () => 'glass-tir'
-  }
-
-  private lastBackdrop = ''
   private paintBackdrop() {
     const sig = `${this.params.background}|${this.params.vignette}`
     if (sig === this.lastBackdrop) return
@@ -1042,15 +980,7 @@ export class GlassStudio {
     this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: p.bevelMm, bevelSegments: p.bevelSegments, reliefMm: NaN, layerMm: p.layerMm, geometry: active, relief: null }
     this.scene.add(this.mesh)
     this.paintShadow(bw * scale, bh * scale, p.depthMm, (ctx, sx, sy) => {
-      for (const poly of t.polygons) {
-        for (const ring of [poly.exterior, ...poly.holes]) {
-          ring.forEach(([x, y], i) => {
-            const px = (x - cx) * scale * sx, py = (y - cy) * scale * sy
-            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
-          })
-          ctx.closePath()
-        }
-      }
+      pathMapped(ctx, t.polygons, (x, y) => [(x - cx) * scale * sx, (y - cy) * scale * sy])
     })
     this.lastRebuildMs = performance.now() - t0
     this.placeFloor()
@@ -1086,15 +1016,7 @@ export class GlassStudio {
       const x0 = (-mmPerGrid * (r.width - 1)) / 2 - centre.x
       const y0 = (mmPerGrid * (r.height - 1)) / 2 - centre.y
       this.paintShadow(size.x, size.y, size.z, (ctx, sx, sy) => {
-        for (const poly of t.polygons) {
-          for (const ring of [poly.exterior, ...poly.holes]) {
-            ring.forEach(([x, y], i) => {
-              const px = (x0 + x * kx) * sx, py = -(y0 - y * ky) * sy
-              if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
-            })
-            ctx.closePath()
-          }
-        }
+        pathMapped(ctx, t.polygons, (x, y) => [(x0 + x * kx) * sx, -(y0 - y * ky) * sy])
       })
     } else {
       this.paintShadow(size.x, size.y, size.z, (ctx, sx, sy) => {
@@ -1131,17 +1053,17 @@ export class GlassStudio {
     this.shadowPlane.visible = !this.params.floor
   }
 
-  /** Named camera angles; `frame()` re-fits the distance. */
-  setView(view: ViewName) {
+  /** Named camera angles; `frame()` re-fits the distance. `instant` cuts instead of gliding. */
+  setView(view: ViewName, instant = false): void {
     this.view = view
-    this.frame(true)
+    this.frame(true, instant)
   }
 
   /**
    * Show the next object in a sample's pose (or none). Set before its trace lands: the spin is
    * a transform on the shown mesh only, so exports keep the upright geometry.
    */
-  setPose(pose: SamplePose | null) {
+  setPose(pose: SamplePose | null): void {
     const spin = pose ? THREE.MathUtils.degToRad(pose.spinDeg) : 0
     this.pose = pose ? { spin, dir: new THREE.Vector3(...pose.view).normalize() } : null
     if (this.mesh) this.mesh.rotation.z = spin
@@ -1169,9 +1091,10 @@ export class GlassStudio {
 
   /**
    * Move the camera to a distance that fits the model. Keeps the direction the user orbited to;
-   * `named` snaps to the last named view (Angle, Front, Side, Top) instead.
+   * `named` snaps to the last named view (Angle, Front, Side, Top) instead. `instant` places the
+   * camera at once instead of gliding: a keyboard command answers without animating.
    */
-  frame(named = false) {
+  frame(named = false, instant = false): void {
     const box = this.modelBox()
     if (!box) return
     const size = box.getSize(new THREE.Vector3())
@@ -1188,8 +1111,12 @@ export class GlassStudio {
     this.snapNext = false
     const goal = target.clone().add(dir.multiplyScalar(dist))
     this.zoomGoal = 0
-    if (!placed) this.camera.position.copy(goal)
-    else this.camGoal = goal
+    if (!placed || instant) {
+      this.camera.position.copy(goal)
+      this.camGoal = null
+    } else {
+      this.camGoal = goal
+    }
     this.camera.near = Math.max(0.1, dist / 100)
     this.camera.far = dist * 20
     this.camera.updateProjectionMatrix()
@@ -1257,16 +1184,22 @@ export class GlassStudio {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio * scale, 4))
     this.resize()
     this.renderPasses()
-    const blob = await new Promise<Blob>((resolve, reject) =>
-      this.canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'),
-    )
-    this.renderer.setPixelRatio(prevRatio)
-    this.focus = prevFocus
-    this.resize()
-    return blob
+    try {
+      return await new Promise<Blob>((resolve, reject) =>
+        this.canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'),
+      )
+    } finally {
+      this.renderer.setPixelRatio(prevRatio)
+      this.focus = prevFocus
+      this.resize()
+    }
   }
 
-  dispose() {
+  dispose(): void {
+    this.disposed = true
+    cancelAnimationFrame(this.raf)
+    clearTimeout(this.interactTimer)
+    this.onRebuild = null
     this.relief = null
     this.printTex?.dispose()
     this.dropSurface()
@@ -1275,9 +1208,8 @@ export class GlassStudio {
     this.print.dispose()
     this.floor.geometry.dispose()
     this.floor.material.dispose()
-    this.disposed = true
-    cancelAnimationFrame(this.raf)
-    clearTimeout(this.interactTimer)
+    this.key.dispose()
+    this.timer.dispose()
     this.canvas.removeEventListener('wheel', this.onWheel, { capture: true })
     this.controls.dispose()
     this.mesh?.geometry.dispose()
@@ -1293,6 +1225,7 @@ export class GlassStudio {
     this.fboBack.dispose()
     this.pmrem.dispose()
     this.renderer.dispose()
+    if (import.meta.dev) delete (window as unknown as { __studio?: GlassStudio }).__studio
   }
 }
 

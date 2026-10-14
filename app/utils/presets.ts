@@ -181,6 +181,3 @@ export function activePresetId(g: GlassParams): string | null {
 export function applyPreset(g: GlassParams, p: MaterialPreset): void {
   Object.assign(g, p.values)
 }
-
-/** @deprecated kept for older imports; use MATERIAL_PRESETS. */
-export const GLASS_PRESETS = MATERIAL_PRESETS.filter(p => p.group === 'glass').map(p => ({ id: p.id, label: p.label, values: p.values }))

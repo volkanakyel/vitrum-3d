@@ -1,4 +1,5 @@
 import { contours as d3Contours } from 'd3-contour'
+import { gaussianBlur, makeCanvas, rasterizeOutline, sourceSize } from './raster'
 
 export type SourceMode = 'auto' | 'dark' | 'light' | 'alpha' | 'color'
 export type ResolvedMode = Exclude<SourceMode, 'auto'>
@@ -42,6 +43,9 @@ export interface TraceLayer {
   area: number
 }
 
+/** Axis-aligned box in raster px. */
+export interface PixelBox { minX: number; minY: number; maxX: number; maxY: number }
+
 export interface TraceResult {
   polygons: TracedPolygon[]
   /** Stack traces only: colour regions to raise above the base (`polygons`). */
@@ -52,7 +56,7 @@ export interface TraceResult {
   width: number
   height: number
   /** Bounding box of the traced polygons in raster px. */
-  bbox: { minX: number; minY: number; maxX: number; maxY: number }
+  bbox: PixelBox
   /** Mode actually used (resolved when `auto`). */
   resolvedMode: ResolvedMode
   /** Iso value the contour was cut at, after contrast normalisation. */
@@ -62,7 +66,7 @@ export interface TraceResult {
   /** Fraction of the raster covered by the traced polygons. */
   coverage: number
   /** Region of the source image the raster covers, as fractions of the source (0..1). */
-  crop: { x: number; y: number; w: number; h: number }
+  crop: Crop
   /** Typical stroke width of the artwork in raster px (2·area / perimeter); guides bevel size. */
   strokeWidth: number
   /** Total vertex count after simplification. */
@@ -83,26 +87,11 @@ export const DEFAULT_TRACE_OPTIONS: TraceOptions = {
 }
 
 /**
- * Anything the tracer can rasterize. An `HTMLImageElement` on the main thread, an
- * `ImageBitmap` inside the trace worker (bitmaps are transferable; image elements are not).
+ * Anything the tracer can rasterize. An image or a canvas on the main thread (the landing page
+ * traces its drawn samples), an `ImageBitmap` inside the trace worker (bitmaps are transferable;
+ * image elements are not).
  */
-export type TraceSource = HTMLImageElement | ImageBitmap
-
-function sourceSize(img: TraceSource): [number, number] {
-  if ('naturalWidth' in img) return [img.naturalWidth || img.width, img.naturalHeight || img.height]
-  return [img.width, img.height]
-}
-
-/** A 2D canvas that works on the main thread and inside a worker (no `document` there). */
-export function makeCanvas(w: number, h: number): HTMLCanvasElement | OffscreenCanvas {
-  if (typeof document !== 'undefined') {
-    const c = document.createElement('canvas')
-    c.width = w
-    c.height = h
-    return c
-  }
-  return new OffscreenCanvas(w, h)
-}
+export type TraceSource = HTMLImageElement | HTMLCanvasElement | ImageBitmap
 
 export async function loadImage(file: File): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(file)
@@ -119,6 +108,7 @@ export async function loadImage(file: File): Promise<HTMLImageElement> {
   }
 }
 
+/** A region of the source, as fractions of its size (0..1). */
 export interface Crop { x: number; y: number; w: number; h: number }
 const FULL: Crop = { x: 0, y: 0, w: 1, h: 1 }
 
@@ -190,7 +180,7 @@ export function traceImage(img: TraceSource, opts: TraceOptions): TraceResult {
  * white page still counts), blurred a little so anti-aliasing does not fray it. Border-touching
  * regions are the page itself and are dropped; holes are ignored (this is the outer outline).
  */
-export function findOuter(data: ImageData, background: [number, number, number], upscale: number): TracedPolygon | null {
+function findOuter(data: ImageData, background: [number, number, number], upscale: number): TracedPolygon | null {
   const { width, height } = data
   const alphaOk = hasUsefulAlpha(data)
   const raw = buildField(data, alphaOk ? 'alpha' : 'color', background, false)
@@ -203,17 +193,12 @@ export function findOuter(data: ImageData, background: [number, number, number],
       if (x < band || y < band || x >= width - band || y >= height - band) field[y * width + x] = 0
     }
   }
-  const threshold = alphaOk ? 0.5 : 0.02
-  const gen = d3Contours().size([width, height]).smooth(true).thresholds([threshold])
-  const [multi] = gen(Array.from(field))
   let best: TracedPolygon | null = null, bestArea = 0
-  if (multi) {
-    for (const poly of multi.coordinates) {
-      const exterior = poly[0] as Ring
-      if (!exterior || exterior.length < 4) continue
-      const a = Math.abs(ringArea(exterior))
-      if (a > bestArea) { bestArea = a; best = { exterior, holes: [] } }
-    }
+  for (const poly of contourAt(field, width, height, alphaOk ? 0.5 : 0.02)) {
+    const exterior = poly[0] as Ring
+    if (!exterior || exterior.length < 4) continue
+    const a = Math.abs(ringArea(exterior))
+    if (a > bestArea) { bestArea = a; best = { exterior, holes: [] } }
   }
   return bestArea >= width * height * 0.01 ? best : null
 }
@@ -225,7 +210,7 @@ export function findOuter(data: ImageData, background: [number, number, number],
  * split into `stackLayers` colours by k-means, the biggest colour is the base's own face, and
  * every other colour is contoured into a layer.
  */
-export function traceStack(img: TraceSource, opts: TraceOptions): TraceResult {
+function traceStack(img: TraceSource, opts: TraceOptions): TraceResult {
   const [iw, ih] = sourceSize(img)
   const data = rasterize(img, opts.resolution)
   const { width, height } = data
@@ -241,21 +226,9 @@ export function traceStack(img: TraceSource, opts: TraceOptions): TraceResult {
   if (!base.length) return { ...artwork, layers: [] }
 
   // Base mask at raster resolution.
-  const canvas = makeCanvas(width, height)
-  const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
-  ctx.beginPath()
-  for (const poly of base) {
-    for (const ring of [poly.exterior, ...poly.holes]) {
-      ring.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
-      ctx.closePath()
-    }
-  }
-  ctx.fillStyle = '#000'
-  ctx.fill('evenodd')
-  const mpx = ctx.getImageData(0, 0, width, height).data
-  const inside = new Uint8Array(width * height)
+  const inside = rasterizeOutline({ polygons: base, width, height }, width, height)
   let baseArea = 0
-  for (let i = 0, p = 3; i < inside.length; i++, p += 4) if (mpx[p]! > 127) { inside[i] = 1; baseArea++ }
+  for (let i = 0; i < inside.length; i++) baseArea += inside[i]!
 
   // Colours inside the base, composited over the page.
   const px = data.data
@@ -270,7 +243,7 @@ export function traceStack(img: TraceSource, opts: TraceOptions): TraceResult {
   const assign = kmeans(rgb, inside, k)
   // Biggest colour is the base face; every other colour rises as a layer.
   const counts = new Array<number>(k).fill(0)
-  const sums = new Array<[number, number, number]>(k).fill([0, 0, 0]).map(() => [0, 0, 0] as [number, number, number])
+  const sums = Array.from({ length: k }, (): [number, number, number] => [0, 0, 0])
   for (let i = 0; i < inside.length; i++) {
     if (!inside[i]) continue
     const c = assign[i]!
@@ -286,47 +259,29 @@ export function traceStack(img: TraceSource, opts: TraceOptions): TraceResult {
     for (let i = 0; i < field.length; i++) field[i] = inside[i] && assign[i] === c ? 1 : 0
     // A touch of blur rounds the pixel staircase of a hard colour boundary before contouring.
     const smooth = blurField(field, width, height, Math.max(0.8, (upscale - 1) * 0.28))
-    const gen = d3Contours().size([width, height]).smooth(true).thresholds([0.5])
-    const [multi] = gen(Array.from(smooth))
     const polygons: TracedPolygon[] = []
     let area = 0
-    if (multi) {
-      for (const poly of multi.coordinates) {
-        const exterior = poly[0] as Ring
-        if (!exterior || exterior.length < 4) continue
-        const a = Math.abs(ringArea(exterior))
-        if (a < dropBelow) continue
-        const holes = (poly.slice(1) as Ring[]).filter(h => Math.abs(ringArea(h)) >= dropBelow).map(h => simplifyRing(h, opts.simplify)).filter(h => h.length >= 3)
-        polygons.push({ exterior: simplifyRing(exterior, opts.simplify), holes: opts.fillHoles ? [] : holes })
-        area += a - holes.reduce((s, h) => s + Math.abs(ringArea(h)), 0)
-      }
+    for (const poly of contourAt(smooth, width, height, 0.5)) {
+      const exterior = poly[0] as Ring
+      if (!exterior || exterior.length < 4) continue
+      const a = Math.abs(ringArea(exterior))
+      if (a < dropBelow) continue
+      const holes = (poly.slice(1) as Ring[]).filter(h => Math.abs(ringArea(h)) >= dropBelow).map(h => simplifyRing(h, opts.simplify)).filter(h => h.length >= 3)
+      polygons.push({ exterior: simplifyRing(exterior, opts.simplify), holes: opts.fillHoles ? [] : holes })
+      area += a - holesArea(holes)
     }
     if (!polygons.length) continue
     // A colour that is only ever a thin ring is the anti-aliasing between two real colours, not
     // a layer of the object: its stroke width (2·area / perimeter) is a pixel or two of source.
-    let perim = 0
-    for (const p of polygons) for (const ring of [p.exterior, ...p.holes]) for (let i = 0; i < ring.length; i++) perim += Math.sqrt(dist2(ring[i]!, ring[(i + 1) % ring.length]!))
+    const perim = perimeterOf(polygons)
     if (perim > 0 && (2 * area) / perim < upscale * 1.5) continue
     const n = counts[c]!
     const hex = (v: number) => Math.round(v / n).toString(16).padStart(2, '0')
     layers.push({ polygons, color: `#${hex(sums[c]![0])}${hex(sums[c]![1])}${hex(sums[c]![2])}`, area: area / baseArea })
   }
 
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  let vertexCount = 0, areaSum = 0, perimSum = 0
-  for (const p of base) {
-    areaSum += Math.abs(ringArea(p.exterior)) - p.holes.reduce((a, h) => a + Math.abs(ringArea(h)), 0)
-    for (const ring of [p.exterior, ...p.holes]) {
-      vertexCount += ring.length
-      for (let i = 0; i < ring.length; i++) perimSum += Math.sqrt(dist2(ring[i]!, ring[(i + 1) % ring.length]!))
-      for (const [x, y] of ring) {
-        if (x < minX) minX = x
-        if (y < minY) minY = y
-        if (x > maxX) maxX = x
-        if (y > maxY) maxY = y
-      }
-    }
-  }
+  const stats = polygonStats(base)
+  let vertexCount = stats.vertexCount
   for (const l of layers) for (const p of l.polygons) for (const ring of [p.exterior, ...p.holes]) vertexCount += ring.length
   return {
     polygons: base,
@@ -334,13 +289,13 @@ export function traceStack(img: TraceSource, opts: TraceOptions): TraceResult {
     hasTile: useOuter,
     width,
     height,
-    bbox: { minX, minY, maxX, maxY },
+    bbox: stats.bbox,
     resolvedMode: useOuter ? (hasUsefulAlpha(data) ? 'alpha' : 'color') : artwork.resolvedMode,
     threshold: opts.threshold,
     background,
     coverage: baseArea / (width * height),
     crop: { ...FULL },
-    strokeWidth: perimSum > 0 ? (2 * areaSum) / perimSum : 0,
+    strokeWidth: stats.strokeWidth,
     vertexCount,
     palette: countPalette(data, upscale),
   }
@@ -396,7 +351,7 @@ function kmeans(rgb: Float32Array, mask: Uint8Array, k: number): Uint8Array {
  * Estimate the page background from the outer 2px frame of the raster: the median of each
  * channel, so a logo touching one edge cannot pull the estimate toward itself.
  */
-export function estimateBackground(data: ImageData): [number, number, number] {
+function estimateBackground(data: ImageData): [number, number, number] {
   const { width, height } = data
   const px = data.data
   const r: number[] = [], g: number[] = [], b: number[] = []
@@ -452,36 +407,18 @@ function normalize(field: Float32Array): Float32Array {
  * every curve of the outline, and no amount of simplification straightens that honestly.
  */
 function blurField(field: Float32Array, w: number, h: number, sigma: number): Float32Array {
-  if (sigma < 0.4) return field
-  const r = Math.max(1, Math.round(sigma * 0.9))
-  const tmp = new Float32Array(field.length)
-  let src = field, dst = tmp
-  for (let pass = 0; pass < 3; pass++) {
-    // horizontal
-    for (let y = 0; y < h; y++) {
-      const row = y * w
-      let acc = 0
-      for (let x = -r; x <= r; x++) acc += src[row + Math.min(w - 1, Math.max(0, x))]!
-      for (let x = 0; x < w; x++) {
-        dst[row + x] = acc / (2 * r + 1)
-        acc += src[row + Math.min(w - 1, x + r + 1)]! - src[row + Math.max(0, x - r)]!
-      }
-    }
-    // vertical
-    for (let x = 0; x < w; x++) {
-      let acc = 0
-      for (let y = -r; y <= r; y++) acc += dst[Math.min(h - 1, Math.max(0, y)) * w + x]!
-      for (let y = 0; y < h; y++) {
-        src[y * w + x] = acc / (2 * r + 1)
-        acc += dst[Math.min(h - 1, y + r + 1) * w + x]! - dst[Math.max(0, y - r) * w + x]!
-      }
-    }
-  }
-  return src
+  if (sigma >= 0.4) gaussianBlur(field, w, h, sigma)
+  return field
+}
+
+/** The iso-line of a field at `threshold`, smoothed, as d3's multipolygon coordinates. */
+function contourAt(field: Float32Array, w: number, h: number, threshold: number): number[][][][] {
+  const [multi] = d3Contours().size([w, h]).smooth(true).thresholds([threshold])(Array.from(field))
+  return multi?.coordinates ?? []
 }
 
 /** Build a scalar field in [0,1] where 1 = "logo" for the given mode. */
-export function buildField(
+function buildField(
   data: ImageData,
   mode: ResolvedMode,
   background: [number, number, number],
@@ -541,6 +478,40 @@ function ringArea(ring: Ring): number {
   return s / 2
 }
 
+function holesArea(holes: readonly Ring[]): number {
+  return holes.reduce((s, h) => s + Math.abs(ringArea(h)), 0)
+}
+
+/** Summed edge length of every ring, exteriors and holes. */
+function perimeterOf(polygons: readonly TracedPolygon[]): number {
+  let perim = 0
+  for (const p of polygons) for (const ring of [p.exterior, ...p.holes]) for (let i = 0; i < ring.length; i++) perim += Math.sqrt(dist2(ring[i]!, ring[(i + 1) % ring.length]!))
+  return perim
+}
+
+/**
+ * Bounds, vertex count and typical stroke width (2·area / perimeter) of traced polygons. An
+ * empty set has an inverted (infinite) box; callers decide what that means.
+ */
+function polygonStats(polygons: readonly TracedPolygon[]): { bbox: PixelBox; vertexCount: number; strokeWidth: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  let vertexCount = 0, areaSum = 0
+  for (const p of polygons) {
+    areaSum += Math.abs(ringArea(p.exterior)) - holesArea(p.holes)
+    for (const ring of [p.exterior, ...p.holes]) {
+      vertexCount += ring.length
+      for (const [x, y] of ring) {
+        if (x < minX) minX = x
+        if (y < minY) minY = y
+        if (x > maxX) maxX = x
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+  const perim = perimeterOf(polygons)
+  return { bbox: { minX, minY, maxX, maxY }, vertexCount, strokeWidth: perim > 0 ? (2 * areaSum) / perim : 0 }
+}
+
 function touchesBorder(ring: Ring, w: number, h: number): boolean {
   const eps = 0.51
   for (const [x, y] of ring) {
@@ -557,12 +528,12 @@ function simplifyRing(ring: Ring, tol: number): Ring {
     : ring
   if (pts.length < 4) return pts
   // Anchor on the two farthest-apart points so the closed loop simplifies symmetrically.
-  let a = 0, b = 0, best = -1
+  let b = 0, best = -1
   for (let i = 0; i < pts.length; i++) {
     const d = dist2(pts[0]!, pts[i]!)
     if (d > best) { best = d; b = i }
   }
-  const part1 = rdp(pts.slice(a, b + 1), tol)
+  const part1 = rdp(pts.slice(0, b + 1), tol)
   const part2 = rdp([...pts.slice(b), pts[0]!], tol)
   const out = [...part1.slice(0, -1), ...part2.slice(0, -1)]
   return out.length >= 3 ? out : pts
@@ -616,26 +587,22 @@ function traceMode(
 ): Candidate {
   const { width, height } = data
   const field = blurField(buildField(data, mode, background), width, height, blur)
-  const gen = d3Contours().size([width, height]).smooth(true).thresholds([threshold])
-  const [multi] = gen(Array.from(field))
   const polygons: TracedPolygon[] = []
   const bordered: TracedPolygon[] = []
   let area = 0, borderedArea = 0
-  if (multi) {
-    for (const poly of multi.coordinates) {
-      const exterior = poly[0] as Ring
-      if (!exterior || exterior.length < 4) continue
-      const holes = poly.slice(1) as Ring[]
-      const a = Math.abs(ringArea(exterior)) - holes.reduce((s, h) => s + Math.abs(ringArea(h)), 0)
-      if (a < 4) continue
-      if (dropBorder && touchesBorder(exterior, width, height)) {
-        bordered.push({ exterior, holes })
-        borderedArea += a
-        continue
-      }
-      polygons.push({ exterior, holes })
-      area += a
+  for (const poly of contourAt(field, width, height, threshold)) {
+    const exterior = poly[0] as Ring
+    if (!exterior || exterior.length < 4) continue
+    const holes = poly.slice(1) as Ring[]
+    const a = Math.abs(ringArea(exterior)) - holesArea(holes)
+    if (a < 4) continue
+    if (dropBorder && touchesBorder(exterior, width, height)) {
+      bordered.push({ exterior, holes })
+      borderedArea += a
+      continue
     }
+    polygons.push({ exterior, holes })
+    area += a
   }
   // Nothing survived the border filter: fall back to the border-touching regions without a
   // second contour pass.
@@ -660,7 +627,7 @@ function distinctness(c: Candidate, colorField: Float32Array, threshold: number)
  * @param upscale Working-raster px per source px. Above 1 the field is blurred by half that
  *   many px so interpolated source pixels do not stamp their grid into the outline.
  */
-export function traceImageData(
+function traceImageData(
   data: ImageData,
   opts: TraceOptions,
   knownBackground?: [number, number, number],
@@ -719,37 +686,21 @@ export function traceImageData(
           .filter(h => h.length >= 3),
     }))
 
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  let vertexCount = 0
-  let areaSum = 0, perimSum = 0
-  for (const p of polygons) {
-    areaSum += Math.abs(ringArea(p.exterior)) - p.holes.reduce((a, h) => a + Math.abs(ringArea(h)), 0)
-    for (const ring of [p.exterior, ...p.holes]) {
-      vertexCount += ring.length
-      for (let i = 0; i < ring.length; i++) perimSum += Math.sqrt(dist2(ring[i]!, ring[(i + 1) % ring.length]!))
-      for (const [x, y] of ring) {
-        if (x < minX) minX = x
-        if (y < minY) minY = y
-        if (x > maxX) maxX = x
-        if (y > maxY) maxY = y
-      }
-    }
-  }
-  if (!polygons.length) { minX = minY = 0; maxX = width; maxY = height }
+  const stats = polygonStats(polygons)
 
   return {
     polygons,
     hasTile: false,
     width,
     height,
-    bbox: { minX, minY, maxX, maxY },
+    bbox: polygons.length ? stats.bbox : { minX: 0, minY: 0, maxX: width, maxY: height },
     resolvedMode: chosen.mode,
     threshold: opts.threshold,
     background,
     coverage: chosen.area / total,
     crop: { ...FULL },
-    strokeWidth: perimSum > 0 ? (2 * areaSum) / perimSum : 0,
-    vertexCount,
+    strokeWidth: stats.strokeWidth,
+    vertexCount: stats.vertexCount,
     palette,
   }
 }
@@ -759,7 +710,7 @@ export function traceImageData(
  * that hold ≥0.1% of the pixels so anti-aliasing ramps do not count. Flat artwork lands under
  * ~15; photographs and painted illustrations run well past that.
  */
-export function countPalette(data: ImageData, upscale = 1): number {
+function countPalette(data: ImageData, upscale = 1): number {
   const px = data.data
   const bins = new Uint32Array(4096)
   let n = 0

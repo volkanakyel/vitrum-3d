@@ -1,15 +1,24 @@
-import type { Crop, Ring, TraceResult } from './trace'
-import { distanceToEdge } from './relief'
+import { distanceToEdge, domCanvas, rasterizeOutline, sourceSize, type Outline } from './raster'
+import type { Crop, TraceResult } from './trace'
 
-/** The source region as it is, at native resolution (capped): the Relief without a cutout. */
-export function buildCropTexture(img: HTMLImageElement, crop: Crop, maxSize = 2048): HTMLCanvasElement {
-  const iw = img.naturalWidth || img.width
-  const ih = img.naturalHeight || img.height
+/** What the print textures sample: the imported image, or a sample drawn to a canvas. */
+type PrintSource = HTMLImageElement | HTMLCanvasElement
+
+/**
+ * The source pixels a crop covers and the canvas size that holds them at native resolution,
+ * never upsampled past `maxSize` on the longer side.
+ */
+function cropRegion(img: PrintSource, crop: Crop, maxSize: number) {
+  const [iw, ih] = sourceSize(img)
   const sx = crop.x * iw, sy = crop.y * ih, sw = crop.w * iw, sh = crop.h * ih
   const k = Math.min(1, maxSize / Math.max(sw, sh))
-  const c = document.createElement('canvas')
-  c.width = Math.max(2, Math.round(sw * k))
-  c.height = Math.max(2, Math.round(sh * k))
+  return { sx, sy, sw, sh, w: Math.max(2, Math.round(sw * k)), h: Math.max(2, Math.round(sh * k)) }
+}
+
+/** The source region as it is, at native resolution (capped): the Relief without a cutout. */
+export function buildCropTexture(img: PrintSource, crop: Crop, maxSize = 2048): HTMLCanvasElement {
+  const { sx, sy, sw, sh, w, h } = cropRegion(img, crop, maxSize)
+  const c = domCanvas(w, h)
   const ctx = c.getContext('2d')!
   ctx.imageSmoothingQuality = 'high'
   // Composite over white so transparent PNG areas print as page, not black.
@@ -19,68 +28,30 @@ export function buildCropTexture(img: HTMLImageElement, crop: Crop, maxSize = 20
   return c
 }
 
-/** Any traced outline: the print trace or a view's relief mask. */
-export interface Outline {
-  polygons: { exterior: Ring; holes: Ring[] }[]
-  width: number
-  height: number
-}
-
 /**
  * Texture for the Print finish: the source image at native resolution, with the traced
  * silhouette's colours pushed outward into the page so extrusion walls and bevels that sample
  * near the outline never pick up a white or transparent fringe.
  */
-export function buildPrintTexture(img: HTMLImageElement, trace: TraceResult, maxSize = 2048): HTMLCanvasElement {
-  const iw = img.naturalWidth || img.width
-  const ih = img.naturalHeight || img.height
+export function buildPrintTexture(img: PrintSource, trace: TraceResult, maxSize = 2048): HTMLCanvasElement {
   // The texture covers the same region the trace raster does (the artwork crop when the tracer
-  // zoomed in), at the source's own pixels, never upsampled past a sensible cap.
-  const c = trace.crop
-  const sx = c.x * iw, sy = c.y * ih, sw = c.w * iw, sh = c.h * ih
-  const k = Math.min(1, maxSize / Math.max(sw, sh))
-  const w = Math.max(2, Math.round(sw * k))
-  const h = Math.max(2, Math.round(sh * k))
-
-  const src = document.createElement('canvas')
-  src.width = w
-  src.height = h
+  // zoomed in), at the source's own pixels.
+  const { sx, sy, sw, sh, w, h } = cropRegion(img, trace.crop, maxSize)
+  const src = domCanvas(w, h)
   const sctx = src.getContext('2d', { willReadFrequently: true })!
   sctx.imageSmoothingQuality = 'high'
   sctx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h)
-  return padSilhouette(src, trace).canvas
-}
-
-/** The outline rasterised at a canvas's size: 1 inside (even-odd, so counters are holes). */
-export function rasterizeOutline(outline: Outline, w: number, h: number): Uint8Array {
-  const mctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true })!
-  mctx.canvas.width = w
-  mctx.canvas.height = h
-  const kx = w / outline.width, ky = h / outline.height
-  const path = new Path2D()
-  for (const poly of outline.polygons) {
-    for (const ring of [poly.exterior, ...poly.holes]) {
-      ring.forEach(([x, y], i) => (i ? path.lineTo(x * kx, y * ky) : path.moveTo(x * kx, y * ky)))
-      path.closePath()
-    }
-  }
-  mctx.fillStyle = '#000'
-  mctx.fill(path, 'evenodd')
-  const mpx = mctx.getImageData(0, 0, w, h).data
-  const mask = new Uint8Array(w * h)
-  for (let i = 0, p = 3; i < mask.length; i++, p += 4) mask[i] = mpx[p]! > 127 ? 1 : 0
-  return mask
+  return padSilhouette(src, trace)
 }
 
 /**
  * Push a silhouette's colours outward into the page. The mask is the outline itself, eroded by
  * ~5 trace pixels so anti-aliased edge pixels, JPEG ringing and the edge's own shadow line fall
- * outside and get padded over with clean interior colour. The padding is done on the GPU via canvas compositing: the masked
- * image is stamped under itself in rings of growing radius, then flattened onto the average
- * silhouette colour for anything further away. Returns the padded canvas and the mask of where
- * its colour is trustworthy (the outline plus the padding's reach).
+ * outside and get padded over with clean interior colour. The padding is done on the GPU via
+ * canvas compositing: the masked image is stamped under itself in rings of growing radius, then
+ * flattened onto the average silhouette colour for anything further away.
  */
-export function padSilhouette(src: HTMLCanvasElement, outline: Outline): { canvas: HTMLCanvasElement; inside: Uint8Array } {
+function padSilhouette(src: HTMLCanvasElement, outline: Outline): HTMLCanvasElement {
   const w = src.width, h = src.height
   const sctx = src.getContext('2d', { willReadFrequently: true })!
   const data = sctx.getImageData(0, 0, w, h)
@@ -107,15 +78,11 @@ export function padSilhouette(src: HTMLCanvasElement, outline: Outline): { canva
   const avg = n ? `rgb(${Math.round(sr / n)},${Math.round(sg / n)},${Math.round(sb / n)})` : '#808080'
 
   // Masked image: alpha = eroded mask.
-  const masked = document.createElement('canvas')
-  masked.width = w
-  masked.height = h
+  const masked = domCanvas(w, h)
   for (let i = 0, p = 3; i < eroded.length; i++, p += 4) px[p] = eroded[i] ? 255 : 0
   masked.getContext('2d')!.putImageData(data, 0, 0)
 
-  const out = document.createElement('canvas')
-  out.width = w
-  out.height = h
+  const out = domCanvas(w, h)
   const ctx = out.getContext('2d')!
   ctx.drawImage(masked, 0, 0)
   // Rings of offsets stamped underneath: 16 directions per radius, radii growing geometrically.
@@ -130,11 +97,7 @@ export function padSilhouette(src: HTMLCanvasElement, outline: Outline): { canva
   ctx.fillStyle = avg
   ctx.fillRect(0, 0, w, h)
   ctx.globalCompositeOperation = 'source-over'
-  // Where the padded colour can be trusted: the outline grown by the padding's reach. A vertex
-  // that lands on the outline itself reads padded interior
-  // colour instead of being refused, which drew the outline's raster steps onto the surface.
-  const inside = dilate(mask, w, h, Math.max(erodePx, Math.round(w * 0.03)))
-  return { canvas: out, inside }
+  return out
 }
 
 /** The page colour when the four corners agree (within a little noise); null for a busy background. */
@@ -151,14 +114,5 @@ function erode(mask: Uint8Array, w: number, h: number, r: number): Uint8Array {
   const d = distanceToEdge(mask, w, h)
   const out = new Uint8Array(mask.length)
   for (let i = 0; i < out.length; i++) out[i] = d[i]! > r ? 1 : 0
-  return out
-}
-
-function dilate(mask: Uint8Array, w: number, h: number, r: number): Uint8Array {
-  const inv = new Uint8Array(mask.length)
-  for (let i = 0; i < mask.length; i++) inv[i] = mask[i] ? 0 : 1
-  const d = distanceToEdge(inv, w, h)
-  const out = new Uint8Array(mask.length)
-  for (let i = 0; i < out.length; i++) out[i] = d[i]! <= r ? 1 : 0
   return out
 }

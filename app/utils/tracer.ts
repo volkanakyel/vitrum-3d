@@ -1,3 +1,4 @@
+import { sourceSize } from './raster'
 import { computeRelief, type ReliefData, type ReliefMask, type ReliefOptions } from './relief'
 import { traceImage, type Crop, type TraceOptions, type TraceResult } from './trace'
 import type { TraceWorkerRequest, TraceWorkerResponse } from '~/workers/trace.worker'
@@ -5,19 +6,17 @@ import type { TraceWorkerRequest, TraceWorkerResponse } from '~/workers/trace.wo
 /** Longest side the worker's copy of the source is capped at; no trace raster is larger. */
 const MAX_SOURCE_PX = 4096
 
-export interface Traced {
-  result: TraceResult
-  /** Milliseconds spent tracing, wherever it ran. */
+/** A finished job: its result, and how long it took where. */
+interface Timed<T> {
+  result: T
+  /** Milliseconds spent computing, wherever it ran. */
   ms: number
-  /** `worker` when traced off the main thread, `main` for the synchronous fallback. */
+  /** `worker` when computed off the main thread, `main` for the synchronous fallback. */
   where: 'worker' | 'main'
 }
 
-export interface Relieved {
-  result: ReliefData
-  ms: number
-  where: 'worker' | 'main'
-}
+export type Traced = Timed<TraceResult>
+export type Relieved = Timed<ReliefData>
 
 type Settle<T> = { resolve: (v: T | null) => void; reject: (e: Error) => void }
 type Work =
@@ -68,7 +67,7 @@ export class Tracer {
    * Give the worker its own copy of the image. The copy is made asynchronously; `trace()`
    * waits for it, so a trace issued right after `setSource` is ordered correctly.
    */
-  setSource(img: HTMLImageElement | null) {
+  setSource(img: HTMLImageElement | null): void {
     this.image = img
     this.workerHasSource = false
     const worker = this.worker
@@ -191,7 +190,7 @@ export class Tracer {
     this.workerHasSource = false
   }
 
-  dispose() {
+  dispose(): void {
     this.pending.trace?.resolve(null)
     this.pending.relief?.resolve(null)
     this.pending = { trace: null, relief: null }
@@ -204,8 +203,7 @@ export class Tracer {
 
 /** The source as a transferable bitmap, downscaled only when larger than any trace raster. */
 async function toBitmap(img: HTMLImageElement): Promise<ImageBitmap> {
-  const iw = img.naturalWidth || img.width
-  const ih = img.naturalHeight || img.height
+  const [iw, ih] = sourceSize(img)
   if (!iw || !ih) throw new Error('Image has no intrinsic size')
   const k = Math.min(1, MAX_SOURCE_PX / Math.max(iw, ih))
   if (k < 1) {

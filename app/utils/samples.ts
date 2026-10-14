@@ -5,6 +5,7 @@
  */
 
 import { LOGOS, type Logo } from './logos'
+import { domCanvas } from './raster'
 
 export interface Sample {
   id: string
@@ -26,10 +27,14 @@ export interface SamplePose {
   view: [number, number, number]
 }
 
+/** Samples are dark ink on a white page, the way most marks are exported. */
+const PAGE = '#ffffff'
+const INK = '#0d0e12'
+
 /** A 100×100 SVG path drawn to fill the canvas with `pad` px of page around it. */
-function mark(d: string, opts: { evenodd?: boolean; ink?: string; tile?: string } = {}) {
+function mark(d: string, opts: { evenodd?: boolean; ink?: string; tile?: string } = {}): Sample['draw'] {
   return (ctx: CanvasRenderingContext2D, size: number) => {
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = PAGE
     ctx.fillRect(0, 0, size, size)
     const pad = size * 0.14
     const k = (size - pad * 2) / 100
@@ -42,23 +47,23 @@ function mark(d: string, opts: { evenodd?: boolean; ink?: string; tile?: string 
       roundRect(ctx, 0, 0, 100, 100, 24)
       ctx.fill()
     }
-    ctx.fillStyle = opts.ink ?? '#0d0e12'
+    ctx.fillStyle = opts.ink ?? INK
     ctx.fill(new Path2D(d), opts.evenodd ? 'evenodd' : 'nonzero')
     ctx.restore()
   }
 }
 
 /** A brand mark from `logos.ts`, fitted into the frame at its own aspect ratio, drawn flat. */
-function logo(l: Logo) {
+function logo(l: Logo): Sample['draw'] {
   return (ctx: CanvasRenderingContext2D, size: number) => {
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = PAGE
     ctx.fillRect(0, 0, size, size)
     const [x, y, w, h] = l.viewBox
     const k = (size * 0.72) / Math.max(w, h)
     ctx.save()
     ctx.translate((size - w * k) / 2 - x * k, (size - h * k) / 2 - y * k)
     ctx.scale(k, k)
-    ctx.fillStyle = '#0d0e12'
+    ctx.fillStyle = INK
     for (const p of l.paths) ctx.fill(new Path2D(p.d), l.evenodd ? 'evenodd' : 'nonzero')
     ctx.restore()
   }
@@ -71,7 +76,7 @@ const LOGO_FINISH: Record<string, string> = {
   discord: 'milk', spotify: 'titanium', apple: 'silver', stripe: 'frosted',
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   ctx.beginPath()
   ctx.moveTo(x + r, y)
   ctx.arcTo(x + w, y, x + w, y + h, r)
@@ -92,14 +97,14 @@ function starPath(points = 5, outer = 46, inner = 20, cx = 50, cy = 52): string 
 }
 
 /** Original rounded interface icons, drawn as thick strokes that retain their counters in 3D. */
-function interfaceIcon(kind: 'camera' | 'chat') {
+function interfaceIcon(kind: 'camera' | 'chat'): Sample['draw'] {
   return (ctx: CanvasRenderingContext2D, size: number) => {
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = PAGE
     ctx.fillRect(0, 0, size, size)
     ctx.save()
     ctx.translate(size * 0.12, size * 0.12)
     ctx.scale(size * 0.0076, size * 0.0076)
-    ctx.strokeStyle = ctx.fillStyle = '#0d0e12'
+    ctx.strokeStyle = ctx.fillStyle = INK
     ctx.lineWidth = 9
     ctx.lineJoin = ctx.lineCap = 'round'
     if (kind === 'camera') {
@@ -197,8 +202,7 @@ export function sampleById(id: string): Sample | undefined {
 
 /** Rasterise a sample onto a fresh canvas. */
 export function drawSample(sample: Sample, size = 512): HTMLCanvasElement {
-  const c = document.createElement('canvas')
-  c.width = c.height = size
+  const c = domCanvas(size, size)
   sample.draw(c.getContext('2d')!, size)
   return c
 }
@@ -212,9 +216,4 @@ export function sampleFile(sample: Sample, size = 1024): Promise<File> {
       resolve(new File([blob], `${sample.id}.png`, { type: 'image/png' }))
     }, 'image/png')
   })
-}
-
-/** The sample as a data URL for `<img>` previews. */
-export function sampleDataUrl(sample: Sample, size = 160): string {
-  return drawSample(sample, size).toDataURL('image/png')
 }

@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import type { TraceResult } from './trace'
+import type { Ring, TraceResult, TracedPolygon } from './trace'
 
 /** Everything the extrude builder needs from the studio parameters; all in millimetres. */
 export interface ExtrudeBuild {
@@ -45,12 +45,12 @@ export function buildExtrudeGeometry(t: TraceResult, p: ExtrudeBuild): Extruded 
   const scale = p.widthMm / Math.max(bw, 1e-6)
   const cx = (t.bbox.minX + t.bbox.maxX) / 2
   const cy = (t.bbox.minY + t.bbox.maxY) / 2
-  const toMm = ([x, y]: [number, number]) => new THREE.Vector2((x - cx) * scale, -(y - cy) * scale)
+  const toMm = ([x, y]: Ring[number]) => new THREE.Vector2((x - cx) * scale, -(y - cy) * scale)
   const uvAt = (x: number, y: number): [number, number] => [
     (x / scale + cx) / t.width,
     1 - (cy - y / scale) / t.height,
   ]
-  const UVGenerator = {
+  const UVGenerator: THREE.UVGenerator = {
     generateTopUV(_g: THREE.ExtrudeGeometry, v: number[], a: number, b: number, c: number) {
       return [a, b, c].map(i => new THREE.Vector2(...uvAt(v[i * 3]!, v[i * 3 + 1]!)))
     },
@@ -63,40 +63,31 @@ export function buildExtrudeGeometry(t: TraceResult, p: ExtrudeBuild): Extruded 
   const bevel = Math.max(0, Math.min(p.bevelMm, p.depthMm / 2 - 0.01))
   const coreDepth = Math.max(0.01, p.depthMm - 2 * bevel)
   const cornerR = Math.max(bevel * 0.9, p.widthMm * 0.004)
-  const geometries: THREE.BufferGeometry[] = []
-  for (const poly of t.polygons) {
-    const shape = new THREE.Shape(roundSharpCorners(poly.exterior.map(toMm), cornerR))
-    for (const hole of poly.holes) shape.holes.push(new THREE.Path(roundSharpCorners(hole.map(toMm), cornerR)))
-    geometries.push(new THREE.ExtrudeGeometry(shape, {
-      depth: coreDepth,
+  /** One region as a core `depth` thick plus an inward bevel, its sharp corners rounded to `radius`. */
+  const extrude = (poly: TracedPolygon, depth: number, bevelMm: number, bevelSegments: number, radius: number) => {
+    const shape = new THREE.Shape(roundSharpCorners(poly.exterior.map(toMm), radius))
+    for (const hole of poly.holes) shape.holes.push(new THREE.Path(roundSharpCorners(hole.map(toMm), radius)))
+    return new THREE.ExtrudeGeometry(shape, {
+      depth,
       curveSegments: 1,
-      bevelEnabled: bevel > 0,
-      bevelThickness: bevel,
-      bevelSize: bevel,
-      bevelOffset: -bevel,
-      bevelSegments: p.bevelSegments,
+      bevelEnabled: bevelMm > 0,
+      bevelThickness: bevelMm,
+      bevelSize: bevelMm,
+      bevelOffset: -bevelMm,
+      bevelSegments,
       UVGenerator,
-    }))
+    })
   }
+  const geometries: THREE.BufferGeometry[] = t.polygons.map(poly => extrude(poly, coreDepth, bevel, p.bevelSegments, cornerR))
   if (p.stack && t.layers) {
     const topZ = coreDepth + bevel
     const layerBevel = Math.max(0, Math.min(bevel * 0.6, p.layerMm * 0.45))
     const layerCore = Math.max(0.01, p.layerMm - 2 * layerBevel)
     const layerR = Math.max(layerBevel * 0.9, p.widthMm * 0.003)
+    const layerSegments = Math.max(1, Math.round(p.bevelSegments / 2))
     for (const layer of t.layers) {
       for (const poly of layer.polygons) {
-        const shape = new THREE.Shape(roundSharpCorners(poly.exterior.map(toMm), layerR))
-        for (const hole of poly.holes) shape.holes.push(new THREE.Path(roundSharpCorners(hole.map(toMm), layerR)))
-        const geo = new THREE.ExtrudeGeometry(shape, {
-          depth: layerCore,
-          curveSegments: 1,
-          bevelEnabled: layerBevel > 0,
-          bevelThickness: layerBevel,
-          bevelSize: layerBevel,
-          bevelOffset: -layerBevel,
-          bevelSegments: Math.max(1, Math.round(p.bevelSegments / 2)),
-          UVGenerator,
-        })
+        const geo = extrude(poly, layerCore, layerBevel, layerSegments, layerR)
         // ExtrudeGeometry spans z ∈ [-bevel, depth + bevel]; seat the layer just under the face.
         geo.translate(0, 0, topZ - 0.05 + layerBevel)
         geometries.push(geo)
