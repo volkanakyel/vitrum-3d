@@ -19,6 +19,8 @@ defineOptions({ inheritAttrs: false })
 
 const { openMobile, setOpenMobile } = useSidebar()
 const { height, peek, half, full, inset, snap } = useStudioSheet()
+// Studio-only component: the last input being a key (Escape, ⌘B) means the sheet lands at once.
+const { keyed } = useStudioContext()
 const reduced = useReducedMotion()
 const { height: vh } = useWindowSize()
 
@@ -30,11 +32,11 @@ function target(s: SheetSnap) {
   return s === 'peek' ? peek.value : s === 'half' ? half.value : full.value
 }
 
-function go(s: SheetSnap, velocity = 0, delay = 0) {
+function go(s: SheetSnap, velocity = 0, delay = 0, instant = false) {
   snap.value = s
   anim?.stop()
   const to = target(s)
-  if (reduced.value) {
+  if (reduced.value || instant) {
     height.set(to)
     return
   }
@@ -84,8 +86,8 @@ watch(vh, () => {
 // Keep the sidebar's open state in step, both ways.
 watch(snap, (s) => setOpenMobile(s !== 'peek'))
 watch(openMobile, (o) => {
-  if (o && snap.value === 'peek') go('half')
-  else if (!o && snap.value !== 'peek') go('peek')
+  if (o && snap.value === 'peek') go('half', 0, 0, keyed.value)
+  else if (!o && snap.value !== 'peek') go('peek', 0, 0, keyed.value)
 })
 
 // ─── Drag ────────────────────────────────────────────────────────────────────────────────────
@@ -100,6 +102,9 @@ function rubber(over: number) {
 }
 
 function onDown(e: PointerEvent) {
+  // A second finger mid-drag is ignored: switching fingers must not make the sheet jump. (A drag
+  // that never went live may have lost its pointerup outside the sheet, so it can be replaced.)
+  if (drag?.live) return
   swallowClick = false
   if (e.button !== 0 || !(e.target as Element).closest('[data-sheet-grip]')) return
   drag = { id: e.pointerId, y0: e.clientY, h0: height.get(), live: false, samples: [{ y: e.clientY, t: e.timeStamp }] }
@@ -156,7 +161,8 @@ function toggle() {
 }
 
 useEventListener('keydown', (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && snap.value !== 'peek') go('peek')
+  // Keyboard-initiated: lands at once, no spring.
+  if (e.key === 'Escape' && snap.value !== 'peek') go('peek', 0, 0, true)
 })
 </script>
 
@@ -188,7 +194,8 @@ useEventListener('keydown', (e: KeyboardEvent) => {
       :aria-expanded="snap !== 'peek'"
       @click="toggle"
     >
-      <span class="h-[5px] w-9 rounded-full bg-foreground/15 transition-[width,background-color] duration-200 ease-out group-active/grip:w-11 group-active/grip:bg-foreground/30 group-focus-visible/grip:bg-lamp motion-reduce:transition-none" />
+      <!-- Stretches on press with `scale`, not `width`: no layout per frame. 44 / 36 = 1.22. -->
+      <span class="h-[5px] w-9 rounded-full bg-foreground/15 transition-[scale,background-color] duration-200 ease-out group-active/grip:bg-foreground/30 group-focus-visible/grip:bg-lamp motion-safe:group-active/grip:scale-x-[1.22]" />
     </button>
     <div class="flex min-h-0 w-full flex-1 flex-col">
       <slot />

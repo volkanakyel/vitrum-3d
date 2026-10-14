@@ -34,7 +34,11 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
       v-bind="{ ...$attrs, ...forwarded }"
       :class="
         cn(
-          'glass relative text-popover-foreground [--glass-blur:24px] [--glass-tint:rgba(255,255,255,.8)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-72 max-w-(--reka-popover-content-available-width) rounded-2xl border-0 p-4 origin-(--reka-popover-content-transform-origin) outline-hidden',
+          'glass relative z-50 w-72 max-w-(--reka-popover-content-available-width) rounded-2xl border-0 p-4 text-popover-foreground outline-hidden [--glass-blur:24px] [--glass-tint:rgba(255,255,255,.8)]',
+          // Scales out of its trigger in 180ms and leaves faster (130ms); reka waits for the exit's
+          // `animationend` before unmounting. Reduced motion keeps only the fade.
+          'origin-(--reka-popover-content-transform-origin) transition-[opacity,scale] duration-180 ease-out starting:opacity-0 motion-safe:starting:scale-95',
+          'data-[state=closed]:animate-[fade-out_130ms_var(--ease-out)_forwards] data-[state=closed]:duration-130 motion-safe:data-[state=closed]:scale-95',
           props.class,
         )
       "

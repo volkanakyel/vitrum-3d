@@ -24,7 +24,15 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
     <TooltipContent
       data-slot="tooltip-content"
       v-bind="{ ...forwarded, ...$attrs }"
-      :class="cn('bench glass relative text-foreground [--glass-blur:16px] animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-fit rounded-lg px-2.5 py-1.5 text-[12px] text-balance', props.class)"
+      :class="cn(
+        'bench glass relative z-50 w-fit rounded-lg px-2.5 py-1.5 text-[12px] text-balance text-foreground [--glass-blur:16px]',
+        // Grows out of its trigger in 125ms; a neighbour opened straight after (reka's `instant-open`)
+        // appears with no animation at all. The exit is a 100ms fade: reka waits for its
+        // `animationend` before unmounting. Reduced motion keeps the fade, drops the scale.
+        'origin-(--reka-tooltip-content-transform-origin) transition-[opacity,scale] duration-125 ease-out starting:opacity-0 motion-safe:starting:scale-97',
+        'data-[state=instant-open]:transition-none data-[state=closed]:animate-[fade-out_100ms_var(--ease-out)_forwards] motion-safe:data-[state=closed]:scale-97',
+        props.class,
+      )"
     >
       <slot />
     </TooltipContent>

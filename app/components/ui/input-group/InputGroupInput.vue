@@ -10,13 +10,10 @@ const props = defineProps<{
 
 <template>
   <Input
-    data-slot="sidebar-input"
-    data-sidebar="input"
+    data-slot="input-group-control"
     :class="cn(
-      'bg-background h-8 w-full shadow-none',
+      'flex-1 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent',
       props.class,
     )"
-  >
-    <slot />
-  </Input>
+  />
 </template>
