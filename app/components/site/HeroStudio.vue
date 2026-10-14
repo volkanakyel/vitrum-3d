@@ -10,7 +10,7 @@ defineProps<{ preset: string; paused: boolean; clear?: number }>()
 const emit = defineEmits<{ ready: []; unavailable: [] }>()
 
 // Morph only while on screen: from further down the page it would fly in from outside the viewport.
-const stage = ref<HTMLElement | null>(null)
+const stage = useTemplateRef('stage')
 const stageVisible = useElementVisibility(stage)
 </script>
 

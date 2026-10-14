@@ -15,10 +15,8 @@ const STEPS = [
   { title: 'Finished and exported', text: 'Glass, metal or colour, out as a PNG, a GLB or an STL.' },
 ] as const
 
-const root = ref<HTMLElement | null>(null)
-const inView = useInView(root)
-const reduced = useReducedMotion()
-const running = computed(() => inView.value && !reduced.value)
+const root = useTemplateRef<HTMLElement>('root')
+const { reduced, running } = useDemoPlayback(root)
 const INTERVAL = 3200
 const { index: active, hold } = useCycle(STEPS.length, INTERVAL, running, 7000)
 
@@ -139,6 +137,24 @@ const state = (i: number) => (i < active.value ? 'done' : i === active.value ? '
 const uid = useId()
 const glow = `iso-glow-${uid}`
 const glass = `iso-glass-${uid}`
+/** The step highlight glides between steps; under reduced motion it just moves. */
+const highlight = computed(() => (reduced.value ? { duration: 0 } : { type: 'spring' as const, stiffness: 420, damping: 40 }))
+
+/*
+ * Linework reads `--line`, which each layer sets from its state (off, done, on); colour changes
+ * ease with `FADE`. The `group/layer` variants light the parts of the plate that is on.
+ */
+const FADE = 'duration-360 ease-[ease]'
+const ROUND = '[stroke-linejoin:round] [stroke-linecap:round]'
+const LAYER = 'group/layer [--line:var(--graphite-300)] transition-transform duration-520 ease-spring data-[state=done]:[--line:var(--graphite-500)] data-[state=on]:[--line:var(--lamp)] data-[state=on]:-translate-y-[5px] motion-reduce:transition-none'
+const PLATE_TOP = `fill-white/62 transition-[fill] ${FADE} group-data-[state=on]/layer:fill-[color-mix(in_srgb,var(--lamp)_7%,rgba(255,255,255,.8))]`
+const PLATE_SIDE = 'fill-(--graphite-200)/70'
+const PASS = {
+  glow: `fill-none stroke-lamp stroke-[2.6] ${ROUND} opacity-0 transition-opacity duration-420 ease-[ease] group-data-[state=on]/layer:opacity-40`,
+  line: `fill-none stroke-(--line) stroke-[0.9] ${ROUND} transition-[stroke] ${FADE}`,
+} as const
+const FACE = 'stroke-(--azure-700)/32 stroke-[0.7] [stroke-linejoin:round]'
+const FILE_EDGE = 'stroke-(--line) stroke-[0.8] [stroke-linejoin:round]'
 </script>
 
 <template>
@@ -147,8 +163,7 @@ const glass = `iso-glass-${uid}`
     class="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-2 rounded-window bg-slab p-2 shadow-pane max-desk:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] max-tab:grid-cols-1"
   >
     <div
-      class="lightbox iso relative grid place-items-center overflow-hidden rounded-pane bg-[radial-gradient(90%_70%_at_50%_0%,var(--graphite-0)_0%,transparent_70%),linear-gradient(180deg,var(--graphite-50),var(--graphite-100))] px-8 py-10 shadow-[inset_0_0_0_1px_var(--hairline),inset_0_1px_0_var(--graphite-0)] max-tab:px-3 max-tab:py-6"
-      :data-running="running"
+      class="lightbox relative grid place-items-center overflow-hidden rounded-pane bg-[radial-gradient(90%_70%_at_50%_0%,var(--graphite-0)_0%,transparent_70%),linear-gradient(180deg,var(--graphite-50),var(--graphite-100))] px-8 py-10 shadow-[inset_0_0_0_1px_var(--hairline),inset_0_1px_0_var(--graphite-0)] max-tab:px-3 max-tab:py-6"
     >
       <svg
         class="block h-auto max-h-[max(300px,calc(100svh-400px))] w-full max-w-[460px] max-tab:max-h-none"
@@ -183,49 +198,45 @@ const glass = `iso-glass-${uid}`
           </linearGradient>
         </defs>
 
-        <g
+        <!-- Light runs down the lit guides, the direction the work flows. -->
+        <path
           v-for="(d, i) in GUIDES"
           :key="`guide-${i}`"
-          class="iso-guide"
+          class="fill-none stroke-(--graphite-300) stroke-[0.8] [stroke-dasharray:1.5_3] transition-[stroke] data-lit:stroke-lamp/70"
+          :class="[FADE, { 'animate-[iso-flow_900ms_linear_infinite]': running && active > i }]"
+          :d="d"
           :data-lit="active > i || undefined"
-        >
-          <path :d="d" />
-        </g>
+        />
 
         <!-- Painted bottom up, so each plate frosts the ones below it. -->
         <g
           v-for="i in [3, 2, 1, 0]"
           :key="i"
-          class="iso-layer"
+          :class="LAYER"
           :data-state="state(i)"
           @pointerenter="pick(i)"
         >
-          <g class="iso-plate">
-            <polygon
-              class="iso-plate-side"
-              :points="LAYERS[i]!.plate.right"
-            />
-            <polygon
-              class="iso-plate-side"
-              :points="LAYERS[i]!.plate.front"
-            />
-            <polygon
-              class="iso-plate-top"
-              :points="LAYERS[i]!.plate.top"
-            />
-          </g>
+          <polygon
+            :class="PLATE_SIDE"
+            :points="LAYERS[i]!.plate.right"
+          />
+          <polygon
+            :class="PLATE_SIDE"
+            :points="LAYERS[i]!.plate.front"
+          />
+          <polygon
+            :class="PLATE_TOP"
+            :points="LAYERS[i]!.plate.top"
+          />
 
           <!-- Linework once in grey, once again blurred in azure as the glow. -->
           <g
-            v-for="pass in ['glow', 'line']"
+            v-for="pass in (['glow', 'line'] as const)"
             :key="pass"
-            :class="pass === 'glow' ? 'iso-halo' : 'iso-lines'"
+            :class="PASS[pass]"
             :filter="pass === 'glow' ? `url(#${glow})` : undefined"
           >
-            <polygon
-              :points="LAYERS[i]!.plate.top"
-              fill="none"
-            />
+            <polygon :points="LAYERS[i]!.plate.top" />
             <path :d="LAYERS[i]!.plate.edges" />
             <path
               v-if="i === 1"
@@ -242,7 +253,7 @@ const glass = `iso-glass-${uid}`
               />
               <path
                 :d="WIRE.posts"
-                class="iso-faint"
+                class="opacity-50"
               />
               <path :d="WIRE.top" />
             </template>
@@ -251,45 +262,46 @@ const glass = `iso-glass-${uid}`
           <polygon
             v-for="(p, k) in i === 0 ? FLAT : []"
             :key="`flat-${k}`"
-            class="iso-flat"
+            class="fill-ink opacity-80"
             :points="p"
-            
           />
 
           <template v-if="i === 3">
             <polygon
               v-for="(f, k) in FINISH.sides"
               :key="`side-${k}`"
-              class="iso-face"
+              :class="FACE"
               :points="f.points"
               :style="{ fill: `color-mix(in srgb, var(--azure-100) ${Math.round(30 + f.shade * 65)}%, var(--azure-300))` }"
             />
             <polygon
               v-for="(p, k) in FINISH.tops"
               :key="`top-${k}`"
-              class="iso-face"
+              :class="FACE"
               :points="p"
               :fill="`url(#${glass})`"
             />
+            <!-- The tiles land one after another when the last step comes on. -->
             <g
               v-for="(file, k) in FILES"
               :key="file.name"
-              class="iso-file"
+              class="transition-transform duration-520 ease-spring group-data-[state=on]/layer:-translate-y-[3px] motion-reduce:transition-none"
               :style="{ transitionDelay: `${k * 70}ms` }"
             >
               <polygon
-                class="iso-plate-side"
+                :class="[PLATE_SIDE, FILE_EDGE]"
                 :points="file.sides"
               />
               <polygon
-                class="iso-plate-top"
+                :class="[PLATE_TOP, FILE_EDGE]"
                 :points="file.top"
               />
               <text
                 :transform="FLOOR"
                 :x="file.x0 + 1.3"
                 :y="file.y0 + 5.2"
-                class="iso-file-label"
+                class="fill-(--line) text-[3.1px] font-semibold tracking-[0.02em] transition-[fill]"
+                :class="FADE"
               >{{ file.name }}</text>
             </g>
           </template>
@@ -297,24 +309,32 @@ const glass = `iso-glass-${uid}`
           <circle
             v-for="([cx, cy], k) in i === 1 ? TRACE.nodes : []"
             :key="`node-${k}`"
-            class="iso-node"
+            class="fill-white stroke-(--line) stroke-[0.9] transition-[stroke,fill] group-data-[state=on]/layer:fill-lamp"
+            :class="FADE"
             :cx="cx"
             :cy="cy"
             r="1.8"
           />
 
-          <g class="iso-marker">
-            <path :d="`M${MARKERS[i]!.x + 9} ${MARKERS[i]!.y}H${MARKERS[i]!.tip}`" />
-            <circle
-              :cx="MARKERS[i]!.x"
-              :cy="MARKERS[i]!.y"
-              r="9"
-            />
-            <text
-              :x="MARKERS[i]!.x"
-              :y="MARKERS[i]!.y + 3.4"
-            >{{ i + 1 }}</text>
-          </g>
+          <path
+            class="stroke-(--line) stroke-[0.8] transition-[stroke]"
+            :class="FADE"
+            :d="`M${MARKERS[i]!.x + 9} ${MARKERS[i]!.y}H${MARKERS[i]!.tip}`"
+          />
+          <circle
+            class="fill-white stroke-(--line) stroke-[0.8] transition-[fill,stroke] group-data-[state=on]/layer:fill-lamp"
+            :class="FADE"
+            :cx="MARKERS[i]!.x"
+            :cy="MARKERS[i]!.y"
+            r="9"
+          />
+          <text
+            class="fill-(--graphite-500) text-[11.5px] font-medium tabular-nums transition-[fill] group-data-[state=on]/layer:fill-white"
+            :class="FADE"
+            :x="MARKERS[i]!.x"
+            :y="MARKERS[i]!.y + 3.4"
+            text-anchor="middle"
+          >{{ i + 1 }}</text>
         </g>
       </svg>
     </div>
@@ -326,7 +346,7 @@ const glass = `iso-glass-${uid}`
       >
         <button
           type="button"
-          class="relative flex w-full items-start gap-4 rounded-[18px] px-5 py-[14px] text-left [@media(max-height:780px)]:py-2.5 transition-[scale] duration-[380ms] ease-spring focus-ring [--ring-offset:2px] active:scale-[.985] active:duration-100 motion-reduce:transition-none"
+          class="relative flex w-full items-start gap-4 rounded-[18px] px-5 py-[14px] text-left press [--press:.985] focus-ring [--ring-offset:2px] [@media(max-height:780px)]:py-2.5"
           :aria-pressed="active === i"
           @click="pick(i)"
           @focus="pick(i)"
@@ -336,7 +356,7 @@ const glass = `iso-glass-${uid}`
             v-if="active === i"
             layout-id="iso-step"
             class="absolute inset-0 rounded-[18px] bg-well"
-            :transition="{ type: 'spring', stiffness: 420, damping: 40 }"
+            :transition="highlight"
             aria-hidden="true"
           />
           <!-- The number doubles as the timer: while the steps advance on their own, a hairline arc
@@ -352,7 +372,7 @@ const glass = `iso-glass-${uid}`
                 cx="19"
                 cy="19"
                 r="18"
-                class="fill-none stroke-(--lamp)/20"
+                class="fill-none stroke-lamp/20"
                 stroke-width="1.25"
               />
               <circle
@@ -362,14 +382,14 @@ const glass = `iso-glass-${uid}`
                 cy="19"
                 r="18"
                 pathLength="1"
-                class="fill-none stroke-(--lamp) [stroke-dasharray:1] [stroke-linecap:round] animate-[iso-ring_var(--interval)_linear_both]"
+                class="fill-none stroke-lamp [stroke-dasharray:1] [stroke-linecap:round] animate-[iso-ring_var(--interval)_linear_both]"
                 stroke-width="1.25"
                 :style="{ '--interval': `${INTERVAL}ms` }"
               />
             </svg>
             <span
-              class="grid size-7 place-items-center rounded-full text-[14px] font-medium tabular-nums transition-[background-color,color,box-shadow] duration-300"
-              :class="active === i ? 'bg-(--lamp) text-white' : 'text-ink-3 shadow-[0_0_0_1px_var(--hairline-strong)]'"
+              class="grid size-7 place-items-center rounded-full text-[14px] font-medium tabular-nums transition-[background-color,color,box-shadow] duration-300 ease-[ease]"
+              :class="active === i ? 'bg-lamp text-white' : 'text-ink-3 shadow-[0_0_0_1px_var(--hairline-strong)]'"
             >{{ i + 1 }}</span>
           </span>
           <span class="relative flex min-w-0 flex-col gap-1">
@@ -381,106 +401,3 @@ const glass = `iso-glass-${uid}`
     </ol>
   </div>
 </template>
-
-<style scoped>
-.iso {
-  --line-off: var(--graphite-300);
-  --line-done: var(--graphite-500);
-}
-.iso-layer {
-  --line: var(--line-off);
-  transition: transform 520ms var(--ease-spring);
-}
-.iso-layer[data-state='done'] { --line: var(--line-done); }
-.iso-layer[data-state='on'] {
-  --line: var(--lamp);
-  transform: translateY(-5px);
-}
-
-.iso-lines, .iso-halo {
-  fill: none;
-  stroke: var(--line);
-  stroke-width: 0.9;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-.iso-lines * { transition: stroke 360ms ease; }
-.iso-faint { opacity: 0.5; }
-.iso-halo {
-  stroke: var(--lamp);
-  stroke-width: 2.6;
-  opacity: 0;
-  transition: opacity 420ms ease;
-}
-.iso-layer[data-state='on'] .iso-halo { opacity: 0.4; }
-
-.iso-plate-top {
-  fill: rgba(255, 255, 255, 0.62);
-  transition: fill 360ms ease;
-}
-.iso-plate-side { fill: color-mix(in srgb, var(--graphite-200) 70%, transparent); }
-.iso-layer[data-state='on'] .iso-plate-top { fill: color-mix(in srgb, var(--lamp) 7%, rgba(255, 255, 255, 0.8)); }
-
-.iso-flat { fill: var(--ink); opacity: 0.8; }
-.iso-face {
-  stroke: color-mix(in srgb, var(--azure-700) 32%, transparent);
-  stroke-width: 0.7;
-  stroke-linejoin: round;
-}
-.iso-node {
-  fill: #fff;
-  stroke: var(--line);
-  stroke-width: 0.9;
-  transition: stroke 360ms ease, fill 360ms ease;
-}
-.iso-layer[data-state='on'] .iso-node { fill: var(--lamp); }
-
-.iso-file .iso-plate-top, .iso-file .iso-plate-side { stroke: var(--line); stroke-width: 0.8; stroke-linejoin: round; }
-.iso-file-label {
-  font-size: 3.1px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  fill: var(--line);
-  transition: fill 360ms ease;
-}
-/* The tiles land one after another when the last step comes on. */
-.iso-file { transition: transform 520ms var(--ease-spring); }
-.iso-layer[data-state='on'] .iso-file { transform: translateY(-3px); }
-
-.iso-marker path { stroke: var(--line); stroke-width: 0.8; transition: stroke 360ms ease; }
-.iso-marker circle {
-  fill: #fff;
-  stroke: var(--line);
-  stroke-width: 0.8;
-  transition: fill 360ms ease, stroke 360ms ease;
-}
-.iso-marker text {
-  font-size: 11.5px;
-  font-weight: 500;
-  text-anchor: middle;
-  fill: var(--graphite-500);
-  font-feature-settings: 'tnum';
-  transition: fill 360ms ease;
-}
-.iso-layer[data-state='on'] .iso-marker circle { fill: var(--lamp); }
-.iso-layer[data-state='on'] .iso-marker text { fill: #fff; }
-
-.iso-guide path {
-  fill: none;
-  stroke: var(--graphite-300);
-  stroke-width: 0.8;
-  stroke-dasharray: 1.5 3;
-  transition: stroke 360ms ease;
-}
-.iso-guide[data-lit] path { stroke: color-mix(in srgb, var(--lamp) 70%, transparent); }
-/* Light runs down the lit guides, the direction the work flows. */
-@media (prefers-reduced-motion: no-preference) {
-  .iso[data-running='true'] .iso-guide[data-lit] path { animation: iso-flow 900ms linear infinite; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .iso-layer, .iso-file { transition: none; }
-}
-@keyframes iso-flow {
-  to { stroke-dashoffset: -9; }
-}
-</style>

@@ -17,18 +17,19 @@ function exampleSwatch(id: string) {
 const preset = ref<string>(HERO_FINISH)
 const live = ref(false)
 // Where the hero copy ends, so the 3D marks on narrow screens settle in the room beneath it.
-const heroEl = ref<HTMLElement | null>(null)
-const heroActions = ref<HTMLElement | null>(null)
-const { top: heroTop } = useElementBounding(heroEl)
+const hero = useTemplateRef('hero')
+const heroActions = useTemplateRef('heroActions')
+const { top: heroTop } = useElementBounding(hero)
 const { bottom: actionsBottom } = useElementBounding(heroActions)
 const heroClear = computed(() => Math.max(0, actionsBottom.value - heroTop.value))
 const paused = ref(false)
 const { status: shareStatus, fallbackUrl: shareUrl, share } = useShare()
 
+const title = 'Vitrum — Custom 3D icons from any logo'
 useSeoMeta({
-  title: 'Vitrum — Custom 3D icons from any logo',
+  title,
   description: 'Turn an SVG or PNG logo into a 3D icon in glass, metal or colour. Export a PNG, a GLB for three.js or an STL for print. Free, in your browser, no sign-up.',
-  ogTitle: 'Vitrum — Custom 3D icons from any logo',
+  ogTitle: title,
   ogDescription: 'Drop in an SVG, pick a finish, export PNG, GLB or STL. No Blender required.',
   ogType: 'website',
   ogImage: socialImage,
@@ -36,7 +37,7 @@ useSeoMeta({
   ogImageHeight: 630,
   ogImageAlt: 'Glass and metal 3D icons made with Vitrum.',
   twitterCard: 'summary_large_image',
-  twitterTitle: 'Vitrum — Custom 3D icons from any logo',
+  twitterTitle: title,
   twitterDescription: 'SVG in, glass and metal 3D icons out. PNG, GLB and STL export, right in your browser.',
   twitterImage: socialImage,
 })
@@ -73,7 +74,7 @@ function shareLook() {
 
 // The cursor's light. Position is written straight to the element once a frame; a long CSS
 // transition on transform gives it its lag, so it glides on the compositor, not in Vue.
-const glint = ref<HTMLElement | null>(null)
+const glint = useTemplateRef('glint')
 const glintOn = ref(false)
 let glintFrame = 0
 let glintAt = { x: 0, y: 0 }
@@ -95,6 +96,10 @@ onBeforeUnmount(() => cancelAnimationFrame(glintFrame))
 /* Classes shared by the hero and closing call-to-action rows. */
 const actions = 'flex flex-wrap items-center gap-3 max-2xs:w-full'
 const action = 'max-2xs:flex-[1_1_100%]'
+/* Gallery prints: the export tiles' soft pane; on hover its shadow deepens a touch. */
+const printPane = 'bg-[linear-gradient(180deg,color-mix(in_oklab,var(--shell)_55%,white)_0%,var(--shell)_70%)] shadow-[inset_0_0_0_1px_rgba(38,40,46,.05),inset_0_1px_0_rgba(255,255,255,.9),0_1px_2px_rgba(38,40,46,.03),0_16px_36px_-24px_rgba(38,40,46,.16)] transition-shadow duration-500 ease-out group-hover:shadow-[inset_0_0_0_1px_rgba(38,40,46,.06),inset_0_1px_0_rgba(255,255,255,.9),0_1px_2px_rgba(38,40,46,.04),0_22px_44px_-24px_rgba(38,40,46,.24)]'
+/* The print's "Remix" chip rises on hover or keyboard focus; under reduced motion it only fades. */
+const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-[3px] transition-[opacity,filter,translate,scale] duration-[220ms,220ms,320ms,320ms] ease-out group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100 group-hover:blur-[0px] group-focus-visible:translate-y-0 group-focus-visible:scale-100 group-focus-visible:opacity-100 group-focus-visible:blur-[0px] motion-reduce:translate-y-0 motion-reduce:scale-100 motion-reduce:blur-[0px] motion-reduce:transition-opacity'
 </script>
 
 <template>
@@ -113,12 +118,12 @@ const action = 'max-2xs:flex-[1_1_100%]'
       class="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[1200px]"
       aria-hidden="true"
     >
-      <span class="hero-aura hero-aura-a absolute top-[60px] left-[calc(50%-760px)] size-[720px] rounded-full bg-[radial-gradient(closest-side,rgba(91,158,244,.2),rgba(91,158,244,.07)_55%,rgba(91,158,244,0))]" />
-      <span class="hero-aura hero-aura-b absolute top-[300px] left-[calc(50%+60px)] size-[680px] rounded-full bg-[radial-gradient(closest-side,rgba(42,114,224,.13),rgba(42,114,224,.04)_55%,rgba(42,114,224,0))]" />
+      <span class="aura-a absolute top-[60px] left-[calc(50%-760px)] size-[720px] will-change-transform rounded-full bg-[radial-gradient(closest-side,rgba(91,158,244,.2),rgba(91,158,244,.07)_55%,rgba(91,158,244,0))]" />
+      <span class="aura-b absolute top-[300px] left-[calc(50%+60px)] size-[680px] will-change-transform rounded-full bg-[radial-gradient(closest-side,rgba(42,114,224,.13),rgba(42,114,224,.04)_55%,rgba(42,114,224,0))]" />
       <span
         ref="glint"
-        class="hero-glint absolute top-0 left-0 size-[560px] rounded-full bg-[radial-gradient(closest-side,rgba(91,158,244,.16),rgba(91,158,244,.05)_50%,rgba(91,158,244,0))]"
-        :class="{ 'is-on': glintOn }"
+        class="absolute top-0 left-0 size-[560px] rounded-full bg-[radial-gradient(closest-side,rgba(91,158,244,.16),rgba(91,158,244,.05)_50%,rgba(91,158,244,0))] [transform:translate3d(50vw,360px,0)] transition-[transform,opacity] duration-[1100ms,600ms] ease-[var(--ease-out),ease] will-change-transform motion-reduce:hidden hover-none:hidden"
+        :class="glintOn ? 'opacity-100' : 'opacity-0'"
       />
     </div>
     <!-- The lamp over the table: one soft overhead light the hero sits under. -->
@@ -131,7 +136,7 @@ const action = 'max-2xs:flex-[1_1_100%]'
          itself around it: on wide screens the marks hold the headline between them, on narrow
          ones they gather underneath. -->
     <section
-      ref="heroEl"
+      ref="hero"
       class="relative h-svh min-h-[660px] max-tab:min-h-[720px]"
       aria-labelledby="hero-title"
       @pointermove="moveGlint"
@@ -147,7 +152,7 @@ const action = 'max-2xs:flex-[1_1_100%]'
       />
 
       <div class="frame pointer-events-none relative z-[2] flex h-full flex-col items-center justify-center pb-[13vh] text-center max-tab:justify-start max-tab:pt-[124px] max-tab:pb-0">
-        <p class="mb-7 flex animate-rise items-center gap-2.5 text-[15px] text-ink-2 motion-reduce:animate-none max-tab:mb-6">
+        <p class="mb-7 flex animate-rise items-center gap-2.5 text-[15px] text-ink-2 max-tab:mb-6">
           <LiveDot
             on
             pulse
@@ -158,15 +163,15 @@ const action = 'max-2xs:flex-[1_1_100%]'
           id="hero-title"
           class="heading-hero bg-[linear-gradient(180deg,var(--ink)_35%,color-mix(in_srgb,var(--ink)_62%,transparent))] bg-clip-text pb-[0.08em] text-transparent max-2xs:text-[38px]"
         >
-          <span class="block animate-rise animation-delay-60 motion-reduce:animate-none">Custom 3D icons</span>
-          <span class="block animate-rise animation-delay-120 motion-reduce:animate-none">from any logo.</span>
+          <span class="block animate-rise animation-delay-60">Custom 3D icons</span>
+          <span class="block animate-rise animation-delay-120">from any logo.</span>
         </h1>
-        <p class="mt-6 max-w-[46ch] animate-rise text-lead text-balance animation-delay-180 motion-reduce:animate-none max-2xs:text-[17px]">
+        <p class="mt-6 max-w-[46ch] animate-rise text-lead text-balance animation-delay-180 max-2xs:text-[17px]">
           Drop in an SVG or PNG and get it back in glass, metal or colour. Export a PNG for your designs, a GLB for three.js or an STL for print.
         </p>
         <div
           ref="heroActions"
-          class="pointer-events-auto mt-9 animate-rise justify-center animation-delay-240 motion-reduce:animate-none"
+          class="pointer-events-auto mt-9 animate-rise justify-center animation-delay-240"
           :class="actions"
         >
           <SiteButton
@@ -190,8 +195,8 @@ const action = 'max-2xs:flex-[1_1_100%]'
       <!-- Docked on the screen's lower edge once the scene is live: before that there is nothing to re-finish. -->
       <div class="absolute inset-x-0 bottom-[max(28px,env(safe-area-inset-bottom))] z-[2] flex h-12 justify-center max-phone:bottom-5">
         <Transition
-          enter-active-class="transition-[opacity,translate] duration-[420ms] ease-out-quint motion-reduce:transition-none"
-          enter-from-class="opacity-0 translate-y-2"
+          enter-active-class="transition-[opacity,translate] duration-[420ms] ease-out"
+          enter-from-class="translate-y-2 opacity-0 motion-reduce:translate-y-0"
         >
           <HeroFinishBar
             v-if="live"
@@ -218,7 +223,7 @@ const action = 'max-2xs:flex-[1_1_100%]'
             :to="{ path: '/studio', query: { sample: logo.id } }"
             :aria-label="`Open the ${logo.name} logo in the studio`"
             :title="logo.name"
-            class="grid size-10 place-items-center rounded-full text-ink-3 transition-[color,background-color,scale] duration-[150ms,150ms,380ms] ease-[ease,ease,var(--ease-spring)] focus-ring [--ring-offset:2px] hover:bg-well-strong hover:text-ink active:scale-[.92] active:duration-100 motion-reduce:transition-none max-phone:size-9"
+            class="grid size-10 place-items-center rounded-full text-ink-3 press focus-ring [--press:.92] [--ring-offset:2px] hover:bg-well-strong hover:text-ink max-phone:size-9"
           >
             <LogoMark
               :id="logo.id"
@@ -241,7 +246,8 @@ const action = 'max-2xs:flex-[1_1_100%]'
         text="Everything you need to ship custom 3D icons for a site, an app or a deck, without opening a 3D tool."
       />
 
-      <IsoPipeline />
+      <!-- Below the fold: server-rendered as usual, hydrated (and its JS fetched) once scrolled to. -->
+      <LazyIsoPipeline hydrate-on-visible />
     </section>
 
     <section
@@ -263,10 +269,13 @@ const action = 'max-2xs:flex-[1_1_100%]'
         >
           <NuxtLink
             :to="{ path: '/studio', query: { sample: example.id, finish: example.preset } }"
-            class="print group flex flex-col gap-3.5 rounded-[20px] transition-[scale] duration-[420ms] ease-spring focus-ring [--ring-offset:6px] active:scale-[.98] active:duration-100 motion-reduce:transition-none max-tab:gap-3"
+            class="group flex flex-col gap-3.5 rounded-[20px] press focus-ring [--press:.98] [--ring-offset:6px] max-tab:gap-3"
             :aria-label="`Open the ${example.name} example in ${example.finish.toLowerCase()} in the studio`"
           >
-            <span class="pane relative block aspect-square overflow-hidden rounded-[20px]">
+            <span
+              class="relative block aspect-square overflow-hidden rounded-[20px]"
+              :class="printPane"
+            >
               <img
                 :src="`/images/${example.image}.webp`"
                 :alt="`${example.name} logo rendered in 3D, ${example.finish.toLowerCase()}`"
@@ -274,15 +283,16 @@ const action = 'max-2xs:flex-[1_1_100%]'
                 height="1024"
                 loading="lazy"
                 decoding="async"
-                class="absolute inset-0 block size-full scale-[.76] object-cover [mask-image:radial-gradient(closest-side,#000_74%,transparent)] transition-transform duration-[1100ms] ease-out-quint motion-reduce:transition-none pointer-fine:group-hover:scale-[.79]"
+                class="absolute inset-0 block size-full scale-[.76] object-cover [mask-image:radial-gradient(closest-side,#000_74%,transparent)] transition-[scale] duration-[1100ms] ease-out group-hover:scale-[.79] motion-reduce:transition-none"
               >
               <!-- Rises on hover or keyboard focus: what the click does. -->
               <span
-                class="remix absolute right-2.5 bottom-2.5 flex h-7 items-center gap-1.5 rounded-full bg-surface/90 pr-[3px] pl-2.5 text-[12.5px] font-medium tracking-[-0.005em] text-ink shadow-[0_0_0_1px_rgba(38,40,46,.05),0_6px_16px_-6px_rgba(38,40,46,.22)] backdrop-blur-md"
+                class="absolute right-2.5 bottom-2.5 flex h-7 items-center gap-1.5 rounded-full bg-surface/90 pr-[3px] pl-2.5 text-[12.5px] font-medium tracking-[-0.005em] text-ink shadow-[0_0_0_1px_rgba(38,40,46,.05),0_6px_16px_-6px_rgba(38,40,46,.22)] backdrop-blur-md"
+                :class="remixChip"
                 aria-hidden="true"
               >
                 Remix
-                <span class="grid size-[22px] place-items-center rounded-full bg-primary text-primary-foreground">
+                <span class="grid size-[22px] shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
                   <Icon
                     name="arrow-up-right"
                     :size="12"
@@ -290,8 +300,8 @@ const action = 'max-2xs:flex-[1_1_100%]'
                 </span>
               </span>
             </span>
-            <span class="flex flex-col gap-1 px-1">
-              <strong class="text-[15px] font-medium tracking-[-0.012em] text-ink">{{ example.name }}</strong>
+            <span class="flex min-w-0 flex-col gap-1 px-1">
+              <strong class="truncate text-[15px] font-medium tracking-[-0.012em] text-ink">{{ example.name }}</strong>
               <small class="flex min-w-0 items-center gap-1.5 text-[13.5px] text-ink-3">
                 <span
                   class="size-[11px] shrink-0 rounded-full"
@@ -318,7 +328,7 @@ const action = 'max-2xs:flex-[1_1_100%]'
         title="One icon, three files"
         text="Each export is made for where it goes next: a flat image for your designs, a model for the web, a mesh for the printer."
       />
-      <ExportFormats />
+      <LazyExportFormats hydrate-on-visible />
     </section>
 
     <!-- The closing panel: copy beside one render, on a white pane. -->
@@ -444,60 +454,9 @@ const action = 'max-2xs:flex-[1_1_100%]'
 </template>
 
 <style scoped>
-/* Gallery prints: the same soft pane as the export tiles; on hover the shadow deepens a touch. */
-.pane {
-  background: linear-gradient(180deg, color-mix(in oklab, var(--shell) 55%, white) 0%, var(--shell) 70%);
-  box-shadow:
-    inset 0 0 0 1px rgba(38, 40, 46, 0.05),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 1px 2px rgba(38, 40, 46, 0.03),
-    0 16px 36px -24px rgba(38, 40, 46, 0.16);
-  transition: box-shadow 500ms var(--ease-out-quint);
-}
-.remix {
-  opacity: 0;
-  filter: blur(3px);
-  translate: 0 4px;
-  scale: 0.96;
-  transform-origin: right bottom;
-  transition: opacity 220ms ease-out, filter 220ms ease-out, translate 320ms var(--ease-out-quint), scale 320ms var(--ease-out-quint);
-}
-.print:focus-visible .remix {
-  opacity: 1;
-  filter: none;
-  translate: none;
-  scale: 1;
-}
-@media (hover: hover) and (pointer: fine) {
-  .print:hover .pane {
-    box-shadow:
-      inset 0 0 0 1px rgba(38, 40, 46, 0.06),
-      inset 0 1px 0 rgba(255, 255, 255, 0.9),
-      0 1px 2px rgba(38, 40, 46, 0.04),
-      0 22px 44px -24px rgba(38, 40, 46, 0.24);
-  }
-  .print:hover .remix {
-    opacity: 1;
-    filter: none;
-    translate: none;
-    scale: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pane, .remix { transition: none; }
-  .remix { filter: none; translate: none; scale: 1; }
-}
-
 /* Slow, out-of-phase drifts: two lights that never line up the same way twice in a minute. */
-.hero-aura {
-  will-change: transform;
-}
-.hero-aura-a {
-  animation: aura-a 19s ease-in-out infinite alternate;
-}
-.hero-aura-b {
-  animation: aura-b 23s ease-in-out -6s infinite alternate;
-}
+.aura-a { animation: aura-a 19s ease-in-out infinite alternate; }
+.aura-b { animation: aura-b 23s ease-in-out -6s infinite alternate; }
 @keyframes aura-a {
   from { transform: translate3d(0, 0, 0) scale(1); }
   to { transform: translate3d(90px, 60px, 0) scale(1.12); }
@@ -506,22 +465,7 @@ const action = 'max-2xs:flex-[1_1_100%]'
   from { transform: translate3d(0, 0, 0) scale(1.08); }
   to { transform: translate3d(-110px, -40px, 0) scale(0.94); }
 }
-
-.hero-glint {
-  opacity: 0;
-  transform: translate3d(50vw, 360px, 0);
-  transition: transform 1100ms var(--ease-out-quint), opacity 600ms ease;
-  will-change: transform;
-}
-.hero-glint.is-on {
-  opacity: 1;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .hero-aura { animation: none; }
-  .hero-glint { display: none; }
-}
-@media not (hover: hover) {
-  .hero-glint { display: none; }
+  .aura-a, .aura-b { animation: none; }
 }
 </style>

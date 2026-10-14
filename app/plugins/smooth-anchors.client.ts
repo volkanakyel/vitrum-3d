@@ -10,7 +10,8 @@
  * - The URL gets the hash without a history entry of its own, and without touching the router's
  *   `history.state` (vue-router keeps its position data there).
  * - Focus moves to the target afterwards, so the next Tab continues from there.
- * - Reduced motion: the jump is instant, as before.
+ * - Reduced motion, or a link activated from the keyboard (Enter fires a click with `detail` 0):
+ *   the jump is instant. Keyboard navigation repeats too often to wait on a glide.
  */
 export default defineNuxtPlugin(() => {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -23,11 +24,11 @@ export default defineNuxtPlugin(() => {
     for (const e of INTERRUPTS) window.removeEventListener(e, stop)
   }
 
-  function glide(to: number, done: () => void) {
+  function glide(to: number, instant: boolean, done: () => void) {
     stop()
     const from = window.scrollY
     const distance = to - from
-    if (Math.abs(distance) < 2 || reduced.matches) {
+    if (instant || Math.abs(distance) < 2 || reduced.matches) {
       window.scrollTo(0, to)
       done()
       return
@@ -65,6 +66,6 @@ export default defineNuxtPlugin(() => {
     // "Back to top" and the skip link land on the page's own start: keep the URL clean there.
     const url = id === 'main-content' ? window.location.pathname + window.location.search : `#${id}`
     window.history.replaceState(window.history.state, '', url)
-    glide(destination(target), () => focus(target))
+    glide(destination(target), e.detail === 0, () => focus(target))
   })
 })

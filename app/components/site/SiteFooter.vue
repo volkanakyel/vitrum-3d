@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const link = 'inline-flex items-center gap-[7px] transition-colors duration-150 hover:text-ink focus-ring [--ring-offset:5px] focus-visible:rounded-[3px] motion-reduce:transition-none'
+const link = 'inline-flex items-center gap-[7px] press focus-ring [--ring-offset:5px] hover:text-ink focus-visible:rounded-[3px]'
 </script>
 
 <template>
@@ -8,7 +8,7 @@ const link = 'inline-flex items-center gap-[7px] transition-colors duration-150 
       <div class="grid grid-cols-[1.6fr_1fr_1fr] gap-10 pt-20 max-desk:grid-cols-[1.2fr_1fr_1fr] max-desk:gap-[25px] max-tab:grid-cols-[1fr_1fr] max-tab:gap-x-5 max-tab:gap-y-8 max-tab:pt-12">
         <div class="flex items-start gap-5 max-desk:gap-3 max-tab:col-span-full">
           <AppIcon :size="44" />
-          <p class="mt-px font-(family-name:--font-display) text-[24px] leading-[1.15] font-medium tracking-[-.045em] text-ink max-desk:text-[24px]">
+          <p class="mt-px font-(family-name:--font-display) text-[24px] leading-[1.15] font-medium tracking-[-.045em] text-ink">
             Custom 3D icons,<br>straight from your SVG.
           </p>
         </div>
@@ -48,7 +48,7 @@ const link = 'inline-flex items-center gap-[7px] transition-colors duration-150 
           >
             Start from a sample logo
           </NuxtLink>
-          <span class="text-[15px] text-ink-3">PNG, GLB & STL exports</span>
+          <span class="text-ink-3">PNG, GLB & STL exports</span>
         </div>
       </div>
       <div class="mt-16 mb-8 flex items-center justify-between gap-5 max-tab:mt-10 max-tab:mb-5">
@@ -58,7 +58,7 @@ const link = 'inline-flex items-center gap-[7px] transition-colors duration-150 
         <a
           href="#main-content"
           v-glass
-          class="glass relative mt-[60px] grid size-14 place-items-center rounded-full text-ink transition-[translate,scale] duration-[380ms] ease-spring focus-ring [--ring-offset:5px] active:scale-[.92] active:duration-100 motion-reduce:transition-none pointer-fine:hover:-translate-y-1 max-tab:mt-[25px] max-tab:size-11 max-tab:shrink-0"
+          class="glass relative mt-[60px] grid size-14 shrink-0 place-items-center rounded-full text-ink transition-[translate,scale] duration-[380ms] ease-spring focus-ring [--ring-offset:5px] hover:-translate-y-1 active:scale-[.92] active:duration-100 active:ease-out motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:active:scale-100 max-tab:mt-[25px] max-tab:size-11"
           aria-label="Back to top"
         ><Icon
           name="arrow-up"

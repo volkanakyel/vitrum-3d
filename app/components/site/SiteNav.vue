@@ -9,18 +9,22 @@ const links = [
 ]
 const scrolled = ref(false)
 const menuOpen = ref(false)
-const menuToggle = ref<HTMLButtonElement | null>(null)
+const menuToggle = useTemplateRef('menuToggle')
 const active = ref('')
 /** The link under the pointer; the highlight pill follows it and falls back to the active one. */
 const hovered = ref('')
 const sections = ref<HTMLElement[]>([])
 const lit = computed(() => hovered.value || active.value)
-const header = ref<HTMLElement | null>(null)
+const header = useTemplateRef('header')
 const reduced = useReducedMotion()
-/* Springs collapse to an instant change when the visitor asks for less motion. */
+/** Above this width (the `tab` breakpoint) the inline links show and the menu no longer exists. */
+const MENU_MAX_WIDTH = 800
+/* The pill springs between links; under reduced motion it moves instantly. */
 const pillTransition = computed(() => (reduced.value ? { duration: 0 } : { type: 'spring' as const, stiffness: 520, damping: 40 }))
-const menuTransition = computed(() => (reduced.value ? { duration: 0 } : { type: 'spring' as const, stiffness: 420, damping: 38 }))
-const menuExit = computed(() => (reduced.value ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' as const }))
+/* The menu unfolds on a quick ease-out and folds away faster. Reduced motion keeps only the fade. */
+const menuClosed = computed(() => (reduced.value ? { opacity: 0 } : { opacity: 0, height: 0 }))
+const menuOpenTransition = computed(() => ({ duration: reduced.value ? 0.15 : 0.26, ease: EASE_OUT }))
+const menuExit = computed(() => ({ duration: reduced.value ? 0.12 : 0.18, ease: EASE_OUT }))
 
 function onScroll() {
   scrolled.value = window.scrollY > 24
@@ -42,7 +46,7 @@ useEventListener('pointerdown', (e: PointerEvent) => {
   if (menuOpen.value && !header.value?.contains(e.target as Node)) closeMenu()
 })
 useEventListener('resize', () => {
-  if (menuOpen.value && window.innerWidth > 800) closeMenu()
+  if (menuOpen.value && window.innerWidth > MENU_MAX_WIDTH) closeMenu()
 }, { passive: true })
 useIntersectionObserver(
   sections,
@@ -63,7 +67,7 @@ const focus = 'focus-ring [--ring-offset:4px]'
   <!-- Sits flat on the bench at the top; once the page moves it becomes a frosted slab. -->
   <header
     ref="header"
-    class="frame-nav fixed inset-x-0 top-[max(12px,env(safe-area-inset-top))] z-40 rounded-[22px] transition-[background-color,box-shadow,backdrop-filter] duration-300 ease-[ease] motion-reduce:transition-none max-tab:rounded-[20px]"
+    class="frame-nav fixed inset-x-0 top-[max(12px,env(safe-area-inset-top))] z-40 rounded-[22px] transition-[background-color,box-shadow,backdrop-filter] duration-300 ease-[ease] max-tab:rounded-[20px]"
     :class="
       scrolled || menuOpen
         ? 'glass [--glass-blur:20px]'
@@ -85,14 +89,14 @@ const focus = 'focus-ring [--ring-offset:4px]'
     >
       <NuxtLink
         to="/"
-        class="group/brand flex items-center gap-[9px] justify-self-start rounded-full text-ink max-3xs:gap-[7px]"
+        class="group/brand flex items-center gap-[9px] justify-self-start rounded-full text-ink press max-3xs:gap-[7px]"
         :class="focus"
         aria-label="Vitrum home"
         @click="closeMenu"
       >
         <AppIcon
           :size="30"
-          class="transition-transform duration-500 ease-spring motion-reduce:transition-none pointer-fine:group-hover/brand:-rotate-8"
+          class="transition-[rotate] duration-500 ease-spring group-hover/brand:-rotate-8 motion-reduce:transition-none"
         />
         <span class="text-[16px] font-semibold tracking-[-.03em] max-3xs:text-[15px]">Vitrum</span>
       </NuxtLink>
@@ -105,7 +109,7 @@ const focus = 'focus-ring [--ring-offset:4px]'
           v-for="link in links"
           :key="link.id"
           :href="`#${link.id}`"
-          class="relative flex min-h-[38px] items-center rounded-full px-4 text-[15px] transition-colors duration-150 ease-[ease] motion-reduce:transition-none"
+          class="relative flex min-h-[38px] items-center rounded-full px-4 text-[15px] press"
           :class="[focus, lit === link.id ? 'text-ink' : 'text-ink-2']"
           :aria-current="active === link.id ? 'location' : undefined"
           @pointerenter="hovered = link.id"
@@ -136,7 +140,7 @@ const focus = 'focus-ring [--ring-offset:4px]'
         <button
           ref="menuToggle"
           type="button"
-          class="hidden size-11 items-center justify-center rounded-full bg-surface text-ink shadow-raise transition-[scale] duration-300 ease-spring active:scale-[.94] active:duration-100 max-tab:flex"
+          class="hidden size-11 items-center justify-center rounded-full bg-surface text-ink shadow-raise press [--press:.94] max-tab:flex"
           :class="focus"
           :aria-expanded="menuOpen"
           aria-controls="mobile-navigation"
@@ -161,17 +165,17 @@ const focus = 'focus-ring [--ring-offset:4px]'
           key="menu"
           class="overflow-hidden"
           aria-label="Menu"
-          :initial="{ opacity: 0, height: 0 }"
+          :initial="menuClosed"
           :animate="{ opacity: 1, height: 'auto' }"
-          :exit="{ opacity: 0, height: 0, transition: menuExit }"
-          :transition="menuTransition"
+          :exit="{ ...menuClosed, transition: menuExit }"
+          :transition="menuOpenTransition"
         >
           <div class="grid border-t border-hairline px-[18px] pt-[9px] pb-[17px]">
             <a
               v-for="link in links"
               :key="link.id"
               :href="`#${link.id}`"
-              class="flex min-h-12 items-center justify-between rounded-[10px] text-[17px] text-ink"
+              class="flex min-h-12 items-center justify-between rounded-tile text-[17px] text-ink press [--press:.98]"
               :class="focus"
               :aria-current="active === link.id ? 'location' : undefined"
               @click="closeMenu"

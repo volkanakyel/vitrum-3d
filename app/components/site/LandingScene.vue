@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { useEventListener } from '@vueuse/core'
+import { useDocumentVisibility, useEventListener, useIntersectionObserver, useMediaQuery, useResizeObserver } from '@vueuse/core'
 import type { Showcase } from '~/utils/showcase'
 
-const props = withDefaults(defineProps<{ preset: string; paused?: boolean; clear?: number }>(), { paused: false, clear: 0 })
+const { preset, paused = false, clear = 0 } = defineProps<{ preset: string; paused?: boolean; clear?: number }>()
 const emit = defineEmits<{ ready: []; unavailable: [] }>()
-const canvas = ref<HTMLCanvasElement | null>(null)
+const canvas = useTemplateRef('canvas')
 const ready = ref(false)
 let scene: Showcase | null = null
 let disposed = false
-let cleanup = () => {}
 
-watch(() => props.preset, value => scene?.setPreset(value))
-watch(() => props.paused, value => scene?.setPaused(value))
-watch(() => props.clear, value => scene?.setHeroClear(value))
+watch(() => preset, value => scene?.setPreset(value))
+watch(() => paused, value => scene?.setPaused(value))
+watch(() => clear, value => scene?.setHeroClear(value))
 
 // The objects follow the cursor anywhere over the hero, not only over the canvas: from the
 // headline above, they already turn up toward it. Below the stage they ease back to idle.
@@ -26,52 +25,40 @@ function onPointer(event: PointerEvent) {
   scene?.setPointer(event.clientX - rect.left, y, inside)
 }
 
-function onPointerLeave() { scene?.setPointer(0, 0, false) }
-
 useEventListener(window, 'pointermove', onPointer, { passive: true })
-useEventListener(document, 'pointerleave', onPointerLeave)
+useEventListener(document, 'pointerleave', () => scene?.setPointer(0, 0, false))
+
+// Render only while the canvas is on screen and the tab is in front.
+const intersecting = ref(true)
+const tab = useDocumentVisibility()
+const visible = computed(() => intersecting.value && tab.value === 'visible')
+useIntersectionObserver(canvas, ([entry]) => { intersecting.value = entry?.isIntersecting ?? false })
+watch(visible, value => scene?.setVisible(value))
+useResizeObserver(canvas, () => scene?.resize())
+// The scene reads the preference itself when it is built; this keeps it current afterwards.
+const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+watch(reducedMotion, value => scene?.setReducedMotion(value))
+useEventListener(canvas, 'webglcontextlost', (event: Event) => {
+  event.preventDefault()
+  ready.value = false
+  scene?.setVisible(false)
+  emit('unavailable')
+})
 
 onMounted(async () => {
   try {
     const { Showcase } = await import('~/utils/showcase')
     if (disposed || !canvas.value) return
-    scene = new Showcase(canvas.value, { layout: 'hero', narrow: false, preset: props.preset })
-    scene.setPaused(props.paused)
-    scene.setHeroClear(props.clear)
-    const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onMotion = () => scene?.setReducedMotion(motion.matches)
-    let intersecting = true
-    const updateVisibility = () => scene?.setVisible(intersecting && document.visibilityState === 'visible')
-    const observer = new IntersectionObserver(([entry]) => {
-      intersecting = entry?.isIntersecting ?? false
-      updateVisibility()
-    })
-    observer.observe(canvas.value)
-    const resize = new ResizeObserver(() => scene?.resize())
-    resize.observe(canvas.value)
-    motion.addEventListener('change', onMotion)
-    document.addEventListener('visibilitychange', updateVisibility)
-    const onContextLost = (event: Event) => {
-      event.preventDefault()
-      ready.value = false
-      scene?.setVisible(false)
-      emit('unavailable')
-    }
-    canvas.value.addEventListener('webglcontextlost', onContextLost)
-    cleanup = () => {
-      observer.disconnect()
-      resize.disconnect()
-      motion.removeEventListener('change', onMotion)
-      document.removeEventListener('visibilitychange', updateVisibility)
-      canvas.value?.removeEventListener('webglcontextlost', onContextLost)
-    }
+    scene = new Showcase(canvas.value, { layout: 'hero', narrow: false, preset })
+    scene.setPaused(paused)
+    scene.setHeroClear(clear)
+    scene.setVisible(visible.value)
     await scene.load()
     if (disposed) return
-    scene.setPreset(props.preset)
+    scene.setPreset(preset)
     ready.value = true
     emit('ready')
   } catch {
-    cleanup()
     scene?.dispose()
     scene = null
     emit('unavailable')
@@ -80,8 +67,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disposed = true
-  cleanup()
   scene?.dispose()
+  scene = null
 })
 </script>
 
