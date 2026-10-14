@@ -126,8 +126,9 @@ const FILES = ['PNG', 'GLB', 'STL'].map((name, k) => {
   const w = 8
   return {
     name,
-    x0,
-    y0,
+    // Label anchor: the tile's centre, so every name sits centred whatever its width.
+    cx: x0 + w / 2,
+    cy: y0 + w / 2,
     top: pts([[x0, y0, 0], [x0 + w, y0, 0], [x0 + w, y0 + w, 0], [x0, y0 + w, 0]]),
     sides: pts([[x0 + w, y0, 0], [x0 + w, y0 + w, 0], [x0, y0 + w, 0], [x0, y0 + w, -0.8], [x0 + w, y0 + w, -0.8], [x0 + w, y0, -0.8]]),
   }
@@ -298,8 +299,10 @@ const FILE_EDGE = 'stroke-(--line) stroke-[0.8] [stroke-linejoin:round]'
               />
               <text
                 :transform="FLOOR"
-                :x="file.x0 + 1.3"
-                :y="file.y0 + 5.2"
+                :x="file.cx"
+                :y="file.cy"
+                text-anchor="middle"
+                dominant-baseline="central"
                 class="fill-(--line) text-[3.1px] font-semibold tracking-[0.02em] transition-[fill]"
                 :class="FADE"
               >{{ file.name }}</text>
