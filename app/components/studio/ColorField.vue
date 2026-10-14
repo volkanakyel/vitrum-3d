@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
 const props = defineProps<{ label: string; modelValue: string; swatches?: string[] }>()
 const emit = defineEmits<{ 'update:modelValue': [string] }>()
@@ -43,12 +45,15 @@ watch(() => props.modelValue, v => {
 function commit() { emit('update:modelValue', hsvToHex(...hsv.value)) }
 
 const hueHex = computed(() => hsvToHex(hsv.value[0], 1, 1))
-const hexDraft = ref(props.modelValue)
-watch(() => props.modelValue, v => (hexDraft.value = v))
+const hexDraft = ref(props.modelValue.replace(/^#/, ''))
+watch(() => props.modelValue, v => (hexDraft.value = v.replace(/^#/, '')))
 function commitHex() {
-  const v = hexDraft.value.startsWith('#') ? hexDraft.value : `#${hexDraft.value}`
+  const v = `#${hexDraft.value.replace(/^#/, '')}`
   if (/^#[0-9a-f]{6}$/i.test(v)) emit('update:modelValue', v.toLowerCase())
-  else hexDraft.value = props.modelValue
+  else hexDraft.value = props.modelValue.replace(/^#/, '')
+}
+function pickSwatch(v: unknown) {
+  if (typeof v === 'string' && v) emit('update:modelValue', v)
 }
 
 // --- pointer handling on the saturation/value square and hue strip ------------
@@ -76,17 +81,19 @@ const onHue = (e: PointerEvent) => drag(e, x => { hsv.value = [x * 359.99, hsv.v
 
 <template>
   <div class="flex h-6 items-center justify-between">
-    <span class="text-[12.5px] text-foreground/85">{{ label }}</span>
+    <span class="text-[13.5px] text-ink-2">{{ label }}</span>
     <Popover>
       <PopoverTrigger as-child>
         <button
-          class="group -mr-1.5 flex h-5 items-center gap-1.5 rounded-full px-1.5 transition-[background-color,box-shadow] hover:bg-well data-[state=open]:bg-card data-[state=open]:shadow-[0_0_0_1px_var(--ring)]"
+          type="button"
+          :aria-label="`${label}: ${modelValue}`"
+          class="group -mr-1.5 flex h-6 items-center gap-2 rounded-[8px] pr-2 pl-1 transition-[background-color,box-shadow] duration-150 hover:bg-well focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none data-[state=open]:bg-card data-[state=open]:shadow-raise"
         >
           <span
-            class="size-3 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.12),inset_0_1px_1px_rgba(255,255,255,0.4)]"
+            class="size-4 rounded-[5px] shadow-[inset_0_0_0_1px_rgba(38,40,46,0.12),inset_0_1px_0_rgba(255,255,255,0.35),0_1px_1px_rgba(38,40,46,0.08)]"
             :style="{ background: modelValue }"
           />
-          <span class="font-mono text-[11.5px] text-foreground/75 tabular-nums group-hover:text-foreground">{{ modelValue }}</span>
+          <span class="text-[13px] font-medium text-ink-2 uppercase tabular-nums group-hover:text-foreground">{{ modelValue.replace('#', '') }}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" :side-offset="6" class="w-56 rounded-2xl p-3">
@@ -110,25 +117,38 @@ const onHue = (e: PointerEvent) => drag(e, x => { hsv.value = [x * 359.99, hsv.v
             :style="{ left: `${(hsv[0] / 360) * 100}%`, background: hueHex }"
           />
         </div>
-        <div class="mt-3 flex items-center gap-2">
-          <span class="size-7 shrink-0 rounded-lg shadow-[inset_0_0_0_1px_rgba(17,18,20,0.1)]" :style="{ background: modelValue }" />
-          <input
+        <InputGroup class="mt-3 h-8 rounded-[10px] border-0 bg-card shadow-raise has-[[data-slot=input-group-control]:focus-visible]:ring-ring/35">
+          <InputGroupAddon class="pl-1.5">
+            <span
+              class="size-5 rounded-[6px] shadow-[inset_0_0_0_1px_rgba(38,40,46,0.12),inset_0_1px_0_rgba(255,255,255,0.35)]"
+              :style="{ background: modelValue }"
+            />
+            <span class="text-[13px] font-medium text-muted-foreground">#</span>
+          </InputGroupAddon>
+          <InputGroupInput
             v-model="hexDraft"
-            class="h-7 w-full rounded-lg bg-card px-2 font-mono text-[12px] uppercase shadow-raise outline-none focus-visible:ring-[3px] focus-visible:ring-ring/35"
+            :aria-label="`${label} hex value`"
+            maxlength="7"
+            class="pl-0 text-[13px] font-medium uppercase tabular-nums md:text-[13px]"
             spellcheck="false"
             @blur="commitHex"
             @keydown.enter="commitHex"
-          >
-        </div>
-        <div class="mt-3 grid grid-cols-10 gap-1">
-          <button
-            v-for="c in palette" :key="c"
-            class="aspect-square rounded-full shadow-[inset_0_0_0_1px_rgba(17,18,20,0.1)] transition hover:scale-110"
-            :class="{ 'ring-2 ring-foreground ring-offset-1': c.toLowerCase() === modelValue.toLowerCase() }"
-            :style="{ background: c }"
-            @click="emit('update:modelValue', c)"
           />
-        </div>
+        </InputGroup>
+        <ToggleGroup
+          type="single"
+          :model-value="palette.find(c => c.toLowerCase() === modelValue.toLowerCase())"
+          class="mt-3 grid w-full grid-cols-10 gap-1"
+          @update:model-value="pickSwatch"
+        >
+          <ToggleGroupItem
+            v-for="c in palette" :key="c"
+            :value="c"
+            :aria-label="c"
+            class="aspect-square h-auto min-w-0 rounded-full p-0 shadow-[inset_0_0_0_1px_rgba(38,40,46,0.1)] transition-[scale,box-shadow] duration-150 hover:scale-110 data-[state=on]:shadow-[inset_0_0_0_1px_rgba(38,40,46,0.1),0_0_0_2px_var(--card),0_0_0_3.5px_var(--lamp)]"
+            :style="{ background: c }"
+          />
+        </ToggleGroup>
       </PopoverContent>
     </Popover>
   </div>

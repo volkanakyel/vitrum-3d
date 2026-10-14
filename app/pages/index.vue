@@ -1,15 +1,27 @@
 <script setup lang="ts">
-import { useEventListener } from '@vueuse/core'
+import { useElementBounding, useEventListener } from '@vueuse/core'
 import { LANDING_EXAMPLES, LANDING_FAQS, landingLooks } from '~/data/landing'
 import { LOGOS } from '~/utils/logos'
 import { HERO_FINISH } from '~/utils/samples'
+import { MATERIAL_PRESETS } from '~/utils/presets'
 
 const route = useRoute()
 const siteUrl = useRuntimeConfig().public.siteUrl
 const socialImage = siteUrl ? new URL('/images/vitrum-social.png', siteUrl).href : '/images/vitrum-social.png'
 const looks = landingLooks()
+// A gallery caption's finish dot: the studio swatch's lighting, without the large sphere's shading.
+function exampleSwatch(id: string) {
+  const p = MATERIAL_PRESETS.find(m => m.id === id)
+  return p ? { background: presetSphere(p).background, boxShadow: 'inset 0 0 0 1px rgba(38,40,46,.16), 0 1px 1px rgba(38,40,46,.08)' } : undefined
+}
 const preset = ref<string>(HERO_FINISH)
 const live = ref(false)
+// Where the hero copy ends, so the 3D marks on narrow screens settle in the room beneath it.
+const heroEl = ref<HTMLElement | null>(null)
+const heroActions = ref<HTMLElement | null>(null)
+const { top: heroTop } = useElementBounding(heroEl)
+const { bottom: actionsBottom } = useElementBounding(heroActions)
+const heroClear = computed(() => Math.max(0, actionsBottom.value - heroTop.value))
 const paused = ref(false)
 const { status: shareStatus, fallbackUrl: shareUrl, share } = useShare()
 
@@ -37,6 +49,14 @@ function restoreFinish(value: unknown) {
 // Read the final URL once that restoration has completed; keep later navigations reactive.
 onNuxtReady(() => restoreFinish(new URLSearchParams(window.location.search).get('finish')))
 watch(() => route.query.finish, restoreFinish)
+// Keep the address shareable: the current finish rides along in `?finish=` without a navigation.
+watch(preset, (value) => {
+  if (!import.meta.client) return
+  const url = new URL(window.location.href)
+  if (value === HERO_FINISH) url.searchParams.delete('finish')
+  else url.searchParams.set('finish', value)
+  history.replaceState(history.state, '', url)
+})
 
 // R toggles auto-rotate, same as in the studio.
 useEventListener('keydown', (e: KeyboardEvent) => {
@@ -51,52 +71,102 @@ function shareLook() {
   void share({ title: 'Vitrum', text: 'Custom 3D icons from any logo, made in the browser.', url: url.href })
 }
 
+// The cursor's light. Position is written straight to the element once a frame; a long CSS
+// transition on transform gives it its lag, so it glides on the compositor, not in Vue.
+const glint = ref<HTMLElement | null>(null)
+const glintOn = ref(false)
+let glintFrame = 0
+let glintAt = { x: 0, y: 0 }
+function moveGlint(event: PointerEvent) {
+  if (event.pointerType !== 'mouse') return
+  const host = glint.value?.parentElement
+  if (!host) return
+  const rect = host.getBoundingClientRect()
+  glintAt = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+  glintOn.value = true
+  if (glintFrame) return
+  glintFrame = requestAnimationFrame(() => {
+    glintFrame = 0
+    glint.value?.style.setProperty('transform', `translate3d(${glintAt.x - 280}px, ${glintAt.y - 280}px, 0)`)
+  })
+}
+onBeforeUnmount(() => cancelAnimationFrame(glintFrame))
+
 /* Classes shared by the hero and closing call-to-action rows. */
-const actions = 'flex flex-wrap items-center gap-2.5 max-2xs:w-full'
+const actions = 'flex flex-wrap items-center gap-3 max-2xs:w-full'
 const action = 'max-2xs:flex-[1_1_100%]'
 </script>
 
 <template>
   <!--
     Spacing: one section rhythm (--section), one card inset (8px, so inner radii are the outer
-    radius minus 8), one grid gap (--gap). Each section has its own form so the page doesn't repeat
-    itself: a window, one drawing, a gallery, one dark panel, a plain list.
+    radius minus 8), one heading-to-content gap. Each section has its own form so the page doesn't
+    repeat itself: a stage, one drawing, a gallery, one panel, a plain list.
   -->
   <main
     id="main-content"
-    class="relative overflow-clip bg-shell text-ink [--gap:20px] [--section:clamp(136px,15vw,224px)] max-tab:[--gap:14px]"
+    class="relative overflow-clip bg-shell text-ink [--section:clamp(128px,13vw,200px)]"
   >
+    <!-- Light through glass: two pools of azure drift slowly behind the hero, and a third trails
+         the cursor, as if the icons below were refracting the lamp onto the table. -->
+    <div
+      class="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[1200px]"
+      aria-hidden="true"
+    >
+      <span class="hero-aura hero-aura-a absolute top-[60px] left-[calc(50%-760px)] size-[720px] rounded-full bg-[radial-gradient(closest-side,rgba(91,158,244,.2),rgba(91,158,244,.07)_55%,rgba(91,158,244,0))]" />
+      <span class="hero-aura hero-aura-b absolute top-[300px] left-[calc(50%+60px)] size-[680px] rounded-full bg-[radial-gradient(closest-side,rgba(42,114,224,.13),rgba(42,114,224,.04)_55%,rgba(42,114,224,0))]" />
+      <span
+        ref="glint"
+        class="hero-glint absolute top-0 left-0 size-[560px] rounded-full bg-[radial-gradient(closest-side,rgba(91,158,244,.16),rgba(91,158,244,.05)_50%,rgba(91,158,244,0))]"
+        :class="{ 'is-on': glintOn }"
+      />
+    </div>
     <!-- The lamp over the table: one soft overhead light the hero sits under. -->
     <span
-      class="pointer-events-none absolute top-[-320px] left-1/2 h-[960px] w-[min(1400px,140vw)] -translate-x-1/2 bg-[radial-gradient(closest-side,rgba(255,255,255,.95),rgba(255,255,255,.4)_45%,transparent_75%)]"
+      class="pointer-events-none absolute top-[-320px] left-1/2 z-[1] h-[1040px] w-[min(1400px,140vw)] -translate-x-1/2 bg-[radial-gradient(closest-side,var(--graphite-0),color-mix(in_srgb,var(--graphite-0)_40%,transparent)_45%,transparent_75%)]"
       aria-hidden="true"
     />
 
+    <!-- One screen tall on every device. The 3D set is full-bleed behind the copy and arranges
+         itself around it: on wide screens the marks hold the headline between them, on narrow
+         ones they gather underneath. -->
     <section
-      class="frame relative pt-[168px] text-center max-tab:pt-32"
+      ref="heroEl"
+      class="relative h-svh min-h-[660px] max-tab:min-h-[720px]"
       aria-labelledby="hero-title"
+      @pointermove="moveGlint"
+      @pointerleave="glintOn = false"
     >
-      <!-- The hero copy and window share one entrance, copy first. -->
-      <div class="flex flex-col items-center">
-        <p
-          v-glass
-          class="bench glass relative mb-8 inline-flex h-8 animate-rise items-center gap-2.5 rounded-full pr-3.5 pl-3 text-[12px] text-ink-2 [--glass-tint-top:#33353c] [--glass-tint:#25272d] motion-reduce:animate-none max-tab:mb-6"
-        >
-          <LiveDot on />
+      <HeroStudio
+        class="z-0"
+        :preset="preset"
+        :paused="paused"
+        :clear="heroClear"
+        @ready="live = true"
+        @unavailable="live = false"
+      />
+
+      <div class="frame pointer-events-none relative z-[2] flex h-full flex-col items-center justify-center pb-[13vh] text-center max-tab:justify-start max-tab:pt-[124px] max-tab:pb-0">
+        <p class="mb-7 flex animate-rise items-center gap-2.5 text-[15px] text-ink-2 motion-reduce:animate-none max-tab:mb-6">
+          <LiveDot
+            on
+            pulse
+          />
           Free, and nothing leaves your browser
         </p>
         <h1
           id="hero-title"
-          class="heading-hero bg-[linear-gradient(180deg,var(--ink)_30%,color-mix(in_srgb,var(--ink)_58%,transparent))] bg-clip-text pb-[0.08em] text-transparent max-2xs:text-[34px]"
+          class="heading-hero bg-[linear-gradient(180deg,var(--ink)_35%,color-mix(in_srgb,var(--ink)_62%,transparent))] bg-clip-text pb-[0.08em] text-transparent max-2xs:text-[38px]"
         >
           <span class="block animate-rise animation-delay-60 motion-reduce:animate-none">Custom 3D icons</span>
           <span class="block animate-rise animation-delay-120 motion-reduce:animate-none">from any logo.</span>
         </h1>
-        <p class="mt-6 max-w-[50ch] animate-rise text-[15.5px] leading-[1.55] tracking-[-0.012em] text-balance text-ink-2 animation-delay-180 motion-reduce:animate-none max-tab:text-[16px] max-2xs:text-[15px]">
+        <p class="mt-6 max-w-[46ch] animate-rise text-lead text-balance animation-delay-180 motion-reduce:animate-none max-2xs:text-[17px]">
           Drop in an SVG or PNG and get it back in glass, metal or colour. Export a PNG for your designs, a GLB for three.js or an STL for print.
         </p>
         <div
-          class="mt-10 animate-rise justify-center animation-delay-240 motion-reduce:animate-none"
+          ref="heroActions"
+          class="pointer-events-auto mt-9 animate-rise justify-center animation-delay-240 motion-reduce:animate-none"
           :class="actions"
         >
           <SiteButton
@@ -117,44 +187,48 @@ const action = 'max-2xs:flex-[1_1_100%]'
         </div>
       </div>
 
-      <div class="mt-14 max-tab:mt-10">
-        <HeroStudio
-          :preset="preset"
-          :paused="paused"
-          @ready="live = true"
-          @unavailable="live = false"
-        />
+      <!-- Docked on the screen's lower edge once the scene is live: before that there is nothing to re-finish. -->
+      <div class="absolute inset-x-0 bottom-[max(28px,env(safe-area-inset-bottom))] z-[2] flex h-12 justify-center max-phone:bottom-5">
+        <Transition
+          enter-active-class="transition-[opacity,translate] duration-[420ms] ease-out-quint motion-reduce:transition-none"
+          enter-from-class="opacity-0 translate-y-2"
+        >
+          <HeroFinishBar
+            v-if="live"
+            v-model="preset"
+            :looks="looks"
+          />
+        </Transition>
       </div>
-
-      <nav
-        class="mt-6 flex items-center justify-center gap-4 max-tab:flex-col max-tab:gap-3"
-        aria-label="Open a brand logo in the studio"
-      >
-        <p class="text-[13px] whitespace-nowrap text-ink-3">
-          Try it on a logo you know
-        </p>
-        <ul class="flex flex-wrap justify-center gap-1.5">
-          <li
-            v-for="logo in LOGOS"
-            :key="logo.id"
-          >
-            <NuxtLink
-              :to="{ path: '/studio', query: { sample: logo.id } }"
-              :aria-label="`Open the ${logo.name} logo in the studio`"
-              :title="logo.name"
-              v-glass
-              class="glass relative grid size-10 place-items-center rounded-full text-ink-2 transition-[color,translate,scale] duration-[150ms,380ms,380ms] ease-[ease,var(--ease-spring),var(--ease-spring)] focus-ring [--ring-offset:3px] hover:text-ink active:scale-[.94] active:duration-100 motion-reduce:transition-none max-phone:size-9 pointer-fine:hover:-translate-y-[3px]"
-            >
-              <LogoMark
-                :id="logo.id"
-                :size="17"
-                mono
-              />
-            </NuxtLink>
-          </li>
-        </ul>
-      </nav>
     </section>
+
+    <nav
+      class="frame relative z-[2] mt-14 flex items-center justify-center gap-5 max-tab:mt-10 max-tab:flex-col max-tab:gap-4"
+      aria-label="Open a brand logo in the studio"
+    >
+      <p class="text-[15px] whitespace-nowrap text-ink-3">
+        Try it on a logo you know
+      </p>
+      <ul class="flex flex-wrap justify-center gap-1">
+        <li
+          v-for="logo in LOGOS"
+          :key="logo.id"
+        >
+          <NuxtLink
+            :to="{ path: '/studio', query: { sample: logo.id } }"
+            :aria-label="`Open the ${logo.name} logo in the studio`"
+            :title="logo.name"
+            class="grid size-10 place-items-center rounded-full text-ink-3 transition-[color,background-color,scale] duration-[150ms,150ms,380ms] ease-[ease,ease,var(--ease-spring)] focus-ring [--ring-offset:2px] hover:bg-well-strong hover:text-ink active:scale-[.92] active:duration-100 motion-reduce:transition-none max-phone:size-9"
+          >
+            <LogoMark
+              :id="logo.id"
+              :size="17"
+              mono
+            />
+          </NuxtLink>
+        </li>
+      </ul>
+    </nav>
 
     <section
       id="features"
@@ -180,49 +254,71 @@ const action = 'max-2xs:flex-[1_1_100%]'
         title="Made from logos you know"
         text="Each render came straight out of the studio at its default settings. Open one to remix it, or drop in your own mark."
       />
-      <!-- A shelf, not cards: small renders in one row, bare on the table. The name is a frosted
-           chip on the render; the finish sits underneath. -->
-      <div class="grid grid-cols-6 gap-3.5 max-desk:grid-cols-3 max-tab:gap-3 max-phone:grid-cols-2">
-        <NuxtLink
+      <!-- A quiet row of prints: six even frames, each mark small with room around it, captioned
+           with its name and a swatch of its finish. It wraps to three, then two, on narrower screens. -->
+      <ul class="grid grid-cols-6 gap-x-4 gap-y-8 max-desk:grid-cols-3 max-desk:gap-x-5 max-desk:gap-y-10 max-fold:grid-cols-2 max-fold:gap-x-4">
+        <li
           v-for="example in LANDING_EXAMPLES"
           :key="example.id"
-          :to="{ path: '/studio', query: { sample: example.id, finish: example.preset } }"
-          class="group flex flex-col gap-2.5 rounded-[18px] transition-[scale] duration-[420ms] ease-spring focus-ring [--ring-offset:4px] active:scale-[.97] active:duration-100 motion-reduce:transition-none"
-          :aria-label="`Open the ${example.name} example in ${example.finish.toLowerCase()} in the studio`"
         >
-          <span class="relative block aspect-square overflow-hidden rounded-[18px] bg-[#e7e9ef] shadow-[0_0_0_1px_var(--hairline),0_20px_40px_-28px_rgba(38,40,46,.4)]">
-            <img
-              :src="`/images/${example.image}.webp`"
-              :alt="`${example.name} logo rendered in 3D, ${example.finish.toLowerCase()}`"
-              width="720"
-              height="720"
-              loading="lazy"
-              decoding="async"
-              class="absolute inset-0 block size-full object-cover transition-transform duration-[900ms] ease-out-quint motion-reduce:transition-none pointer-fine:group-hover:scale-[1.06]"
-            >
-            <span class="glass absolute bottom-2 left-2 flex h-7 max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-full pr-1 pl-2 [--glass-blur:14px] max-phone:pr-2">
-              <LogoMark
-                :id="example.id"
-                :size="12"
-                mono
-                class="shrink-0 text-ink"
-              />
-              <strong class="truncate text-[11.5px] font-medium tracking-[-0.01em]">{{ example.name }}</strong>
-              <!-- Hover says where the tile goes. -->
-              <span class="grid size-5 shrink-0 place-items-center rounded-full bg-ink text-white opacity-0 transition-[opacity,scale] duration-300 ease-spring scale-50 motion-reduce:transition-none max-phone:hidden pointer-fine:group-hover:scale-100 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-visible:scale-100 pointer-fine:group-focus-visible:opacity-100">
-                <Icon
-                  name="arrow-up-right"
-                  :size="11"
-                />
+          <NuxtLink
+            :to="{ path: '/studio', query: { sample: example.id, finish: example.preset } }"
+            class="print group flex flex-col gap-3.5 rounded-[20px] transition-[scale] duration-[420ms] ease-spring focus-ring [--ring-offset:6px] active:scale-[.98] active:duration-100 motion-reduce:transition-none max-tab:gap-3"
+            :aria-label="`Open the ${example.name} example in ${example.finish.toLowerCase()} in the studio`"
+          >
+            <span class="pane relative block aspect-square overflow-hidden rounded-[20px]">
+              <img
+                :src="`/images/${example.image}.webp`"
+                :alt="`${example.name} logo rendered in 3D, ${example.finish.toLowerCase()}`"
+                width="1024"
+                height="1024"
+                loading="lazy"
+                decoding="async"
+                class="absolute inset-0 block size-full scale-[.76] object-cover [mask-image:radial-gradient(closest-side,#000_74%,transparent)] transition-transform duration-[1100ms] ease-out-quint motion-reduce:transition-none pointer-fine:group-hover:scale-[.79]"
+              >
+              <!-- Rises on hover or keyboard focus: what the click does. -->
+              <span
+                class="remix absolute right-2.5 bottom-2.5 flex h-7 items-center gap-1.5 rounded-full bg-surface/90 pr-[3px] pl-2.5 text-[12.5px] font-medium tracking-[-0.005em] text-ink shadow-[0_0_0_1px_rgba(38,40,46,.05),0_6px_16px_-6px_rgba(38,40,46,.22)] backdrop-blur-md"
+                aria-hidden="true"
+              >
+                Remix
+                <span class="grid size-[22px] place-items-center rounded-full bg-primary text-primary-foreground">
+                  <Icon
+                    name="arrow-up-right"
+                    :size="12"
+                  />
+                </span>
               </span>
             </span>
-          </span>
-          <small class="px-1 text-[12px] text-ink-3">{{ example.finish }}</small>
-        </NuxtLink>
-      </div>
-      <p class="mt-6 max-w-[70ch] text-[11.5px] leading-normal text-ink-3">
+            <span class="flex flex-col gap-1 px-1">
+              <strong class="text-[15px] font-medium tracking-[-0.012em] text-ink">{{ example.name }}</strong>
+              <small class="flex min-w-0 items-center gap-1.5 text-[13.5px] text-ink-3">
+                <span
+                  class="size-[11px] shrink-0 rounded-full"
+                  :style="exampleSwatch(example.preset)"
+                />
+                <span class="truncate">{{ example.finish }}</span>
+              </small>
+            </span>
+          </NuxtLink>
+        </li>
+      </ul>
+      <p class="mt-10 max-w-[70ch] text-[14px] leading-[1.55] text-ink-3">
         Logos belong to their owners and appear only to show what Vitrum can do. Vitrum isn’t affiliated with these brands.
       </p>
+    </section>
+
+    <section
+      id="export"
+      class="frame scroll-mt-24 pt-(--section)"
+      aria-labelledby="export-title"
+    >
+      <SectionHeading
+        id="export-title"
+        title="One icon, three files"
+        text="Each export is made for where it goes next: a flat image for your designs, a model for the web, a mesh for the printer."
+      />
+      <ExportFormats />
     </section>
 
     <!-- The closing panel: copy beside one render, on a white pane. -->
@@ -230,23 +326,19 @@ const action = 'max-2xs:flex-[1_1_100%]'
       class="frame pt-(--section)"
       aria-labelledby="closing-title"
     >
-      <div class="grid min-h-[420px] grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] overflow-hidden rounded-window bg-slab p-2 shadow-pane max-tab:grid-cols-1">
-        <div class="flex flex-col items-start justify-center p-14 max-desk:px-9 max-desk:py-11 max-tab:px-5 max-tab:pt-8 max-tab:pb-6">
-          <p class="mb-6 flex items-center gap-2 text-[12.5px] text-ink-3">
-            <LiveDot on />
-            Free, no account, nothing to install
-          </p>
+      <div class="grid min-h-[480px] grid-cols-[minmax(0,1.1fr)_minmax(0,.9fr)] overflow-hidden rounded-window bg-slab p-2 shadow-pane max-tab:grid-cols-1">
+        <div class="flex flex-col items-start justify-center p-16 max-desk:px-10 max-desk:py-12 max-tab:px-6 max-tab:pt-10 max-tab:pb-8">
           <h2
             id="closing-title"
-            class="heading-section max-w-[14ch] bg-[linear-gradient(180deg,var(--ink)_30%,color-mix(in_srgb,var(--ink)_55%,transparent))] bg-clip-text pb-[0.06em] text-transparent"
+            class="heading-section max-w-[13ch]"
           >
             Your next icon set is a minute away.
           </h2>
-          <p class="mt-5 max-w-[40ch] text-[15px] leading-[1.6] text-ink-2">
+          <p class="mt-6 max-w-[40ch] text-lead">
             Drop in your SVG, pick a finish, export.
           </p>
           <div
-            class="mt-9 justify-start"
+            class="mt-10 justify-start"
             :class="actions"
           >
             <SiteButton
@@ -270,14 +362,14 @@ const action = 'max-2xs:flex-[1_1_100%]'
           </div>
           <p
             v-if="shareStatus"
-            class="mt-3 text-[12.5px] text-[#2c6b56]"
+            class="mt-3 text-[15px] text-ink-2"
             role="status"
           >
             {{ shareStatus }}
           </p>
           <label
             v-if="shareUrl"
-            class="mt-3 block w-full text-[12.5px]"
+            class="mt-3 block w-full text-[15px]"
           >Share this link<input
             :value="shareUrl"
             readonly
@@ -285,27 +377,35 @@ const action = 'max-2xs:flex-[1_1_100%]'
             @focus="($event.target as HTMLInputElement).select()"
           ></label>
         </div>
-        <div
-          class="relative min-h-[300px] overflow-hidden rounded-pane bg-[#e7e9ef] max-tab:-order-1 max-tab:aspect-[16/10] max-tab:min-h-0"
+        <!-- An icon set, literally: four marks from one session, one finish each. -->
+        <ul
+          class="grid min-h-[320px] grid-cols-2 gap-2 max-tab:-order-1 max-tab:min-h-0"
           aria-hidden="true"
         >
-          <img
-            src="/images/logo-framer-champagne.webp"
-            width="720"
-            height="720"
-            alt=""
-            loading="lazy"
-            decoding="async"
-            class="absolute inset-0 size-full object-cover"
+          <li
+            v-for="img in ['camera-frosted', 'spark-silver', 'heart-ceramic', 'chat-milk']"
+            :key="img"
+            class="relative aspect-square overflow-hidden rounded-[12px] bg-shell"
           >
-        </div>
+            <img
+              :src="`/images/set/${img}.webp`"
+              width="1024"
+              height="1024"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              class="absolute inset-0 size-full object-cover"
+            >
+            <span class="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_0_0_1px_rgba(38,40,46,.05),inset_0_1px_0_rgba(255,255,255,.85)]" />
+          </li>
+        </ul>
       </div>
     </section>
 
-    <!-- Frosted rows on the table; the open one brightens. -->
+    <!-- A plain list on the table, divided by hairlines. -->
     <section
       id="questions"
-      class="frame grid scroll-mt-24 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-16 pt-(--section) pb-(--section) max-tab:grid-cols-1 max-tab:gap-8"
+      class="frame grid scroll-mt-24 grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-20 pt-(--section) pb-[calc(var(--section)*.75)] max-desk:gap-12 max-tab:grid-cols-1 max-tab:gap-10"
       aria-labelledby="faq-title"
     >
       <div>
@@ -315,27 +415,26 @@ const action = 'max-2xs:flex-[1_1_100%]'
         >
           Questions
         </h2>
-        <p class="mt-5 max-w-[34ch] text-[15px] leading-[1.6] text-ink-2 max-tab:hidden">
+        <p class="mt-6 max-w-[32ch] text-lead max-tab:hidden">
           The short answers. The studio explains the rest as you go.
         </p>
       </div>
-      <div class="flex flex-col gap-2">
+      <div class="border-t border-hairline-strong">
         <details
           v-for="faq in LANDING_FAQS"
           :key="faq.question"
-          v-glass
-          class="faq glass group relative rounded-[20px] open:[--glass-tint-top:#fff] open:[--glass-tint:rgba(255,255,255,.86)]"
+          class="faq group border-b border-hairline-strong"
         >
-          <summary class="flex min-h-16 cursor-pointer list-none items-center justify-between gap-5 rounded-[20px] py-4 pr-4 pl-5 text-[14.5px] font-medium tracking-[-0.015em] focus-ring [--ring-offset:3px] [&::-webkit-details-marker]:hidden">
+          <summary class="flex min-h-[80px] cursor-pointer list-none items-center justify-between gap-6 py-5 text-[18px] font-medium tracking-[-0.018em] text-ink focus-ring [--ring-offset:-2px] focus-visible:rounded-[6px] [&::-webkit-details-marker]:hidden">
             {{ faq.question }}
-            <span class="grid size-8 shrink-0 place-items-center rounded-full bg-well-strong text-ink-2 transition-[rotate,background-color,color] duration-[380ms,200ms,200ms] ease-[var(--ease-spring),ease,ease] group-open:rotate-45 group-open:bg-ink group-open:text-shell motion-reduce:transition-none">
+            <span class="grid size-8 shrink-0 place-items-center rounded-full text-ink-3 shadow-[inset_0_0_0_1px_var(--hairline-strong)] transition-[rotate,background-color,color,box-shadow] duration-[380ms,200ms,200ms,200ms] ease-[var(--ease-spring),ease,ease,ease] group-open:rotate-45 group-open:bg-ink group-open:text-shell group-open:shadow-none group-hover:text-ink motion-reduce:transition-none">
               <Icon
                 name="plus"
                 :size="15"
               />
             </span>
           </summary>
-          <p class="max-w-[60ch] pr-5 pb-5 pl-5 text-[14px] leading-[1.6] text-ink-2">
+          <p class="max-w-[60ch] pr-14 pb-8 text-[17px] leading-[1.65] text-ink-2 max-tab:pr-0">
             {{ faq.answer }}
           </p>
         </details>
@@ -343,3 +442,86 @@ const action = 'max-2xs:flex-[1_1_100%]'
     </section>
   </main>
 </template>
+
+<style scoped>
+/* Gallery prints: the same soft pane as the export tiles; on hover the shadow deepens a touch. */
+.pane {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--shell) 55%, white) 0%, var(--shell) 70%);
+  box-shadow:
+    inset 0 0 0 1px rgba(38, 40, 46, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(38, 40, 46, 0.03),
+    0 16px 36px -24px rgba(38, 40, 46, 0.16);
+  transition: box-shadow 500ms var(--ease-out-quint);
+}
+.remix {
+  opacity: 0;
+  filter: blur(3px);
+  translate: 0 4px;
+  scale: 0.96;
+  transform-origin: right bottom;
+  transition: opacity 220ms ease-out, filter 220ms ease-out, translate 320ms var(--ease-out-quint), scale 320ms var(--ease-out-quint);
+}
+.print:focus-visible .remix {
+  opacity: 1;
+  filter: none;
+  translate: none;
+  scale: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .print:hover .pane {
+    box-shadow:
+      inset 0 0 0 1px rgba(38, 40, 46, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 1px 2px rgba(38, 40, 46, 0.04),
+      0 22px 44px -24px rgba(38, 40, 46, 0.24);
+  }
+  .print:hover .remix {
+    opacity: 1;
+    filter: none;
+    translate: none;
+    scale: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pane, .remix { transition: none; }
+  .remix { filter: none; translate: none; scale: 1; }
+}
+
+/* Slow, out-of-phase drifts: two lights that never line up the same way twice in a minute. */
+.hero-aura {
+  will-change: transform;
+}
+.hero-aura-a {
+  animation: aura-a 19s ease-in-out infinite alternate;
+}
+.hero-aura-b {
+  animation: aura-b 23s ease-in-out -6s infinite alternate;
+}
+@keyframes aura-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(90px, 60px, 0) scale(1.12); }
+}
+@keyframes aura-b {
+  from { transform: translate3d(0, 0, 0) scale(1.08); }
+  to { transform: translate3d(-110px, -40px, 0) scale(0.94); }
+}
+
+.hero-glint {
+  opacity: 0;
+  transform: translate3d(50vw, 360px, 0);
+  transition: transform 1100ms var(--ease-out-quint), opacity 600ms ease;
+  will-change: transform;
+}
+.hero-glint.is-on {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-aura { animation: none; }
+  .hero-glint { display: none; }
+}
+@media not (hover: hover) {
+  .hero-glint { display: none; }
+}
+</style>

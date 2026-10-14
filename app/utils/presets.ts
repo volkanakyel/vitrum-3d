@@ -61,6 +61,8 @@ export interface GlassParams {
   tint: string
   attenuationMm: number
   envIntensity: number
+  /** Where the studio's light comes from: the room and its lights turned about the vertical, in degrees. */
+  lightAngle: number
   background: string
   /** How much darker the backdrop gets toward the corners (0..1). */
   vignette: number
@@ -98,10 +100,11 @@ export const DEFAULT_GLASS_PARAMS: GlassParams = {
   tint: '#ffffff',
   attenuationMm: 400,
   envIntensity: 2.2,
-  // A mid-grey wall with a real vignette: clear glass on a white wall is invisible, on this it
-  // shows its rims, its dispersion and the room it refracts.
-  background: '#e6e9ef',
-  vignette: 0.5,
+  lightAngle: 0,
+  // A pale cool wall with a soft vignette: clear glass on pure white is invisible, on this it
+  // still shows its rims, its dispersion and the room it refracts.
+  background: '#eef0f4',
+  vignette: 0.4,
   exposure: 1,
   fov: 28,
   autoRotate: true,

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { LOGOS } from '~/utils/logos'
 
 definePageMeta({ layout: 'studio', key: 'studio' })
 
@@ -58,7 +59,7 @@ onMounted(() => {
 <template>
   <SidebarProvider
     class="h-svh min-h-0"
-    style="--sidebar-width: 320px"
+    style="--sidebar-width: 352px"
     @dragover.prevent="dragging = true"
     @dragleave.prevent="dragging = false"
     @drop.prevent="onDrop"
@@ -95,7 +96,7 @@ onMounted(() => {
               </TooltipContent>
             </Tooltip>
             <span class="mx-1 h-4 w-px bg-hairline max-sm:hidden" />
-            <span class="flex h-7 min-w-0 items-center gap-2 rounded-full pr-3 pl-2.5 font-mono text-[11.5px] text-ink-2 max-sm:hidden">
+            <span class="flex h-7 min-w-0 items-center gap-2 rounded-full pr-3 pl-2.5 text-[13px] text-ink-2 max-sm:hidden">
               <LiveDot :on="ready" />
               <span class="truncate">{{ fileName || 'Untitled' }}</span>
             </span>
@@ -108,63 +109,12 @@ onMounted(() => {
             </NuxtLink>
           </div>
 
-          <div class="flex items-center gap-2">
-            <div class="flex h-8 items-center rounded-full bg-card p-[3px] shadow-raise">
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    :disabled="!ready || !!exporting"
-                    class="h-[26px] rounded-full px-2.5 text-[12px] max-sm:size-[26px] max-sm:px-0"
-                    aria-label="Export PNG"
-                    @click="doExport('png')"
-                  >
-                    <Icon
-                      name="camera"
-                      :size="13"
-                    />
-                    <span class="max-sm:sr-only">PNG</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Render the current view at 2×</TooltipContent>
-              </Tooltip>
-              <span class="h-3.5 w-px bg-hairline" />
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    :disabled="!ready || !!exporting"
-                    class="h-[26px] rounded-full px-2.5 text-[12px] max-sm:size-[26px] max-sm:px-0"
-                    aria-label="Export STL"
-                    @click="doExport('stl')"
-                  >
-                    <Icon
-                      name="layers"
-                      :size="13"
-                    />
-                    <span class="max-sm:sr-only">STL</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Binary STL in millimetres</TooltipContent>
-              </Tooltip>
-            </div>
-            <Button
-              size="sm"
-              :disabled="!ready || !!exporting"
-              class="h-8 gap-2 pr-1.5 pl-3.5 text-[12.5px]"
-              @click="doExport('glb')"
-            >
-              <Icon
-                name="download"
-                :size="14"
-              />
-              <span class="max-sm:hidden">Export GLB</span>
-              <span class="sm:hidden">GLB</span>
-              <kbd class="h-5 rounded-full bg-primary-foreground/[0.08] px-1.5 text-[10px] text-primary-foreground/60 shadow-none max-sm:hidden">⌘E</kbd>
-            </Button>
-          </div>
+          <ExportMenu
+            :disabled="!ready"
+            :exporting="exporting"
+            :dims="dims"
+            @export="doExport"
+          />
         </header>
 
         <main
@@ -233,6 +183,7 @@ onMounted(() => {
                     variant="ghost"
                     size="icon"
                     class="size-8 pointer-coarse:size-9"
+                    aria-label="Fit to view"
                     :disabled="!ready"
                     @click="viewer?.frame()"
                   >
@@ -254,6 +205,8 @@ onMounted(() => {
                     size="icon"
                     class="size-8 pointer-coarse:size-9"
                     :class="{ 'bg-well-strong text-foreground': glass.autoRotate }"
+                    aria-label="Auto rotate"
+                    :aria-pressed="glass.autoRotate"
                     @click="glass.autoRotate = !glass.autoRotate"
                   >
                     <Icon
@@ -270,12 +223,27 @@ onMounted(() => {
   </motion.div>
           </motion.div>
 
+          <!-- Quick finishes on the stage's right edge (desktop; the phone sheet has its own strip). -->
+          <AnimatePresence>
+            <motion.div
+              v-if="subject"
+              key="rail"
+              class="absolute top-1/2 right-4 z-10 -translate-y-1/2 max-md:hidden"
+              :initial="{ opacity: 0, x: 12 }"
+              :animate="{ opacity: 1, x: 0 }"
+              :exit="{ opacity: 0, x: 12, transition: { duration: 0.16, ease: 'easeOut' } }"
+              :transition="{ type: 'spring', stiffness: 300, damping: 30, delay: 0.2 }"
+            >
+              <FinishRail :glass="glass" />
+            </motion.div>
+          </AnimatePresence>
+
           <!-- Dimensions readout -->
           <AnimatePresence>
             <motion.div
               v-if="dims"
               key="hud"
-              class="bench glass absolute top-4 left-4 flex h-7 items-center rounded-full px-1 font-mono text-[11.5px] tabular-nums"
+              class="bench glass absolute top-4 left-4 flex h-7 items-center rounded-full px-1 text-[12.5px] font-medium tabular-nums"
               :initial="{ opacity: 0, y: -6 }"
               :animate="{ opacity: 1, y: 0 }"
               :exit="{ opacity: 0, y: -6 }"
@@ -289,9 +257,9 @@ onMounted(() => {
                   class="mx-0.5 h-3 w-px bg-hairline"
                 />
                 <span class="flex items-center gap-1.5 px-2">
-                  <b class="index font-semibold text-ink-3">{{ c[0] }}</b>
+                  <b class="font-medium text-ink-3">{{ c[0] }}</b>
                   <span class="text-foreground">{{ c[1] }}</span>
-                  <span class="text-[10px] text-ink-3">mm</span>
+                  <span class="text-[12px] text-ink-3">mm</span>
                 </span>
               </template>
               <span class="mx-0.5 h-3 w-px bg-hairline" />
@@ -316,7 +284,7 @@ onMounted(() => {
                 aria-hidden="true"
               />
               <span
-                class="absolute top-1/2 left-1/2 size-[640px] -translate-x-1/2 -translate-y-[62%] animate-breathe rounded-full bg-[radial-gradient(closest-side,rgba(176,138,92,0.2),rgba(176,138,92,0.06)_55%,rgba(176,138,92,0)_75%)] motion-reduce:animate-none"
+                class="absolute top-1/2 left-1/2 size-[640px] -translate-x-1/2 -translate-y-[62%] animate-breathe rounded-full bg-[radial-gradient(closest-side,rgba(42,114,224,0.2),rgba(42,114,224,0.06)_55%,rgba(42,114,224,0)_75%)] motion-reduce:animate-none"
                 aria-hidden="true"
               />
               <span
@@ -374,7 +342,33 @@ onMounted(() => {
                     Try the mark
                   </Button>
                 </div>
-                <div class="mt-7 flex items-center justify-center gap-3 text-[11px] text-ink-3 pointer-coarse:hidden">
+                <!-- Or skip the file picker: open a known mark, traced and finished. -->
+                <div class="mt-7 border-t border-hairline pt-6">
+                  <p class="mb-3 text-[12.5px] text-ink-3">
+                    Or start from a logo
+                  </p>
+                  <ul class="flex flex-wrap justify-center gap-1">
+                    <li
+                      v-for="logo in LOGOS"
+                      :key="logo.id"
+                    >
+                      <button
+                        type="button"
+                        :aria-label="`Open the ${logo.name} logo`"
+                        :title="logo.name"
+                        class="grid size-9 place-items-center rounded-full text-ink-2 transition-[color,background-color,scale] duration-[150ms,150ms,380ms] ease-[ease,ease,var(--ease-spring)] focus-ring hover:bg-well-strong hover:text-ink active:scale-[.9] active:duration-100 motion-reduce:transition-none"
+                        @click="openLinkedSample(logo.id)"
+                      >
+                        <LogoMark
+                          :id="logo.id"
+                          :size="16"
+                          mono
+                        />
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+                <div class="mt-6 flex items-center justify-center gap-3 text-[12px] text-ink-3 pointer-coarse:hidden">
                   <span class="flex items-center gap-1.5"><kbd>⌘V</kbd> paste</span>
                   <span class="size-0.5 rounded-full bg-ink-3/50" />
                   <span class="flex items-center gap-1.5"><kbd>F</kbd> fit</span>

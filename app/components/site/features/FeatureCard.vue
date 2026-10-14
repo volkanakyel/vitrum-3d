@@ -31,7 +31,7 @@ const WASH = {
   >
     <!-- Radius 16 inside 22 with a 6 px gutter: the stage's corners run concentric with the card's. -->
     <div class="lightbox relative isolate grid h-[232px] place-items-center overflow-hidden rounded-[16px] bg-[radial-gradient(120%_90%_at_85%_0%,var(--wash)_0%,transparent_62%),radial-gradient(90%_80%_at_0%_100%,var(--wash-2)_0%,transparent_60%),linear-gradient(180deg,#f3f4f7,#eceef2)] shadow-[inset_0_0_0_1px_rgba(38,40,46,.05),inset_0_1px_0_#fff] max-fold:h-[220px]">
-      <span class="glass absolute top-2.5 left-2.5 z-10 rounded-full px-2 py-[5px] text-[10.5px] leading-none font-medium text-ink-2 [--glass-blur:8px]">
+      <span class="glass absolute top-2.5 left-2.5 z-10 rounded-full px-2 py-[5px] text-[12px] leading-none font-medium text-ink-2 [--glass-blur:8px]">
         {{ tag }}
       </span>
       <slot

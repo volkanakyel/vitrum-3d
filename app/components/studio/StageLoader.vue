@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AnimatePresence, motion } from 'motion-v'
+import { motion } from 'motion-v'
 
 export type ImportPhase = 'read' | 'trace' | 'build'
 
@@ -12,132 +12,145 @@ const steps: { id: ImportPhase; label: string }[] = [
 ]
 const stepIndex = computed(() => steps.findIndex((s) => s.id === props.phase))
 const label = computed(() => steps[stepIndex.value]?.label ?? '')
-
-// Progress ring: a rounded square drawn around the tile, one third per phase.
-const SIZE = 92
-const R = 27
-const perimeter = 4 * (SIZE - 2 * R) + 2 * Math.PI * R
-const progress = computed(() => (stepIndex.value + 1) / steps.length)
 </script>
 
 <!--
-  Frosted pane over the stage so the model builds behind a sheet of glass. Everything that moves
-  in here animates transform or opacity only, so it stays on the compositor and keeps running
-  while the main thread builds the geometry.
+  Frosted pane over the stage so the model builds behind a sheet of glass.
+
+  The geometry is built on the main thread, which can stall for a few hundred milliseconds at a
+  time. So nothing in here is driven by JavaScript while the loader is up: the entrance, the scan,
+  the label swap and the step bars are all CSS animations or transitions on transform and
+  opacity, which the compositor keeps running through a blocked main thread. motion-v only
+  handles the exit, which plays once the work is done.
 -->
 <template>
   <motion.div
-    class="pointer-events-auto absolute inset-0 z-20 grid place-items-center bg-white/62 backdrop-blur-[18px] backdrop-saturate-120"
-    :style="{ '--tile': `${SIZE - 10}px` }"
-    :initial="{ opacity: 0 }"
-    :animate="{ opacity: 1 }"
-    :exit="{ opacity: 0, transition: { duration: 0.35, ease: [0.23, 1, 0.32, 1] } }"
-    :transition="{ duration: 0.2 }"
+    class="loader pointer-events-auto absolute inset-0 z-20 grid place-items-center bg-white/60 backdrop-blur-[16px] backdrop-saturate-120"
+    :exit="{ opacity: 0, transition: { duration: 0.28, ease: [0.23, 1, 0.32, 1] } }"
     role="status"
     aria-live="polite"
     :aria-label="label"
   >
-    <motion.div
-      class="flex flex-col items-center"
-      :initial="{ opacity: 0, y: 10, scale: 0.97 }"
-      :animate="{ opacity: 1, y: 0, scale: 1 }"
-      :exit="{ opacity: 0, y: -8, scale: 0.98, transition: { duration: 0.25 } }"
-      :transition="{ type: 'spring', stiffness: 320, damping: 28, delay: 0.05 }"
-    >
-      <!-- Tile: the image sits on a glass slab; a scan line reads it while the ring fills. -->
-      <div
-        class="relative"
-        :style="{ width: `${SIZE}px`, height: `${SIZE}px` }"
-      >
-        <svg
-          class="absolute -inset-[5px] size-[calc(100%+10px)]"
-          :viewBox="`-5 -5 ${SIZE + 10} ${SIZE + 10}`"
-          aria-hidden="true"
+    <div class="loader-body flex flex-col items-center">
+      <!-- Tile: the logo sits on a glass slab while a band of light reads it, top to bottom. -->
+      <div class="tile relative size-[84px] overflow-hidden rounded-[24px] shadow-[inset_0_1px_0_#fff,inset_0_0_0_1px_rgba(38,40,46,.06),0_1px_2px_rgba(38,40,46,.06),0_20px_36px_-22px_rgba(38,40,46,.45)]">
+        <img
+          v-if="preview"
+          :src="preview"
+          alt=""
+          class="loader-art absolute inset-0 size-full object-contain p-[18px] mix-blend-multiply grayscale"
+          draggable="false"
+        />
+        <span
+          v-else
+          class="absolute inset-0 grid place-items-center text-ink-3"
         >
-          <rect
-            x="0"
-            y="0"
-            :width="SIZE"
-            :height="SIZE"
-            :rx="R"
-            fill="none"
-            stroke="var(--hairline-strong)"
-            stroke-width="1.5"
+          <Icon
+            name="image"
+            :size="22"
+            :stroke-width="1.5"
           />
-          <rect
-            class="transition-[stroke-dashoffset] duration-600 ease-out-quint"
-            x="0"
-            y="0"
-            :width="SIZE"
-            :height="SIZE"
-            :rx="R"
-            fill="none"
-            stroke="var(--lamp)"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            :stroke-dasharray="perimeter"
-            :stroke-dashoffset="perimeter * (1 - progress)"
-          />
-        </svg>
-        <div class="tile absolute inset-[5px] overflow-hidden rounded-[22px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(38,40,46,.05),0_18px_32px_-20px_rgba(3,7,18,.4)]">
-          <Transition
-            enter-active-class="transition-opacity duration-250 ease-out-quint"
-            leave-active-class="transition-opacity duration-250 ease-out-quint"
-            enter-from-class="opacity-0"
-            leave-to-class="opacity-0"
-          >
-            <img
-              v-if="preview"
-              :src="preview"
-              alt=""
-              class="absolute inset-0 size-full object-contain p-4 opacity-90 grayscale contrast-105"
-              draggable="false"
-            />
-            <span
-              v-else
-              class="absolute inset-0 grid place-items-center text-ink-3"
-            >
-              <Icon
-                name="image"
-                :size="22"
-                :stroke-width="1.5"
-              />
-            </span>
-          </Transition>
-          <!-- Scan line: bronze, with a soft glow ahead of it, sweeping the tile top to bottom. -->
-          <span
-            class="absolute inset-x-0 top-0 h-px animate-[loader-scan_1.4s_cubic-bezier(0.45,0,0.55,1)_infinite] bg-lamp shadow-[0_0_8px_1px_rgba(176,138,92,.45),0_-14px_18px_-6px_rgba(176,138,92,.25)] will-change-[transform,opacity] motion-reduce:animate-none motion-reduce:opacity-60 motion-reduce:[transform:translateY(calc(var(--tile)*0.5))]"
-            aria-hidden="true"
-          />
-        </div>
+        </span>
+        <span
+          class="loader-scan pointer-events-none absolute inset-x-0 top-0 h-1/2"
+          aria-hidden="true"
+        />
       </div>
 
-      <!-- Step readout: mono index, crossfading label. -->
-      <div class="mt-6 flex h-5 items-center gap-2.5">
-        <span class="index text-ink-3 tabular-nums">
-          {{ String(stepIndex + 1).padStart(2, '0') }}&thinsp;/&thinsp;{{ String(steps.length).padStart(2, '0') }}
-        </span>
-        <span class="relative h-5 w-[8.2em] overflow-hidden text-[13px] font-medium text-foreground">
-          <AnimatePresence mode="wait">
-            <motion.span
-              :key="phase"
-              class="absolute inset-0 flex items-center gap-1"
-              :initial="{ opacity: 0, y: 8 }"
-              :animate="{ opacity: 1, y: 0 }"
-              :exit="{ opacity: 0, y: -8 }"
-              :transition="{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }"
-            >
-              {{ label }}
-              <!-- Three ticking dots, one em wide so the label never shifts. -->
-              <span
-                class="inline-flex size-[1em] items-end gap-0.5 pb-[0.2em] *:block *:size-0.5 *:rounded-full *:bg-current *:opacity-0 motion-reduce:*:animate-none motion-reduce:*:opacity-100"
-                aria-hidden="true"
-              ><i class="animate-[dot-1_1.2s_steps(1,end)_infinite]" /><i class="animate-[dot-2_1.2s_steps(1,end)_infinite]" /><i class="animate-[dot-3_1.2s_steps(1,end)_infinite]" /></span>
-            </motion.span>
-          </AnimatePresence>
+      <!-- Label: every step is stacked in one cell and crossfades, so the width never jumps. -->
+      <div
+        class="mt-7 grid text-center text-[13px] font-medium text-foreground"
+        aria-hidden="true"
+      >
+        <span
+          v-for="(s, i) in steps"
+          :key="s.id"
+          class="loader-label col-start-1 row-start-1"
+          :data-state="i < stepIndex ? 'past' : i === stepIndex ? 'current' : 'next'"
+        >{{ s.label }}</span>
+      </div>
+      <span class="mt-1 max-w-[26ch] truncate text-[12px] text-ink-3">{{ name }}</span>
+
+      <!-- Step bars: past steps are full; the current one creeps forward on its own. -->
+      <div
+        class="mt-5 flex gap-1"
+        aria-hidden="true"
+      >
+        <span
+          v-for="(s, i) in steps"
+          :key="s.id"
+          class="h-[3px] w-7 overflow-hidden rounded-full bg-[rgba(38,40,46,.09)]"
+        >
+          <span
+            class="loader-bar block size-full origin-left rounded-full bg-lamp"
+            :data-state="i < stepIndex ? 'past' : i === stepIndex ? 'current' : 'next'"
+          />
         </span>
       </div>
-      <span class="mt-1.5 max-w-[26ch] truncate text-[11.5px] text-ink-3">{{ name }}</span>
-    </motion.div>
+    </div>
   </motion.div>
 </template>
+
+<style scoped>
+.loader {
+  animation: loader-fade 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.loader-body {
+  animation: loader-rise 520ms cubic-bezier(0.23, 1, 0.32, 1) 40ms both;
+}
+.loader-art {
+  animation: loader-fade 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  opacity: 0.88;
+}
+
+/* A soft band of azure light with a crisp leading edge, sweeping down and fading at the ends. */
+.loader-scan {
+  background: linear-gradient(to bottom, rgba(42, 114, 224, 0) 0%, rgba(42, 114, 224, 0.1) 92%, rgba(42, 114, 224, 0.55) 99%, rgba(42, 114, 224, 0) 100%);
+  animation: loader-scan 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  will-change: transform, opacity;
+}
+
+.loader-label {
+  transition: opacity 260ms cubic-bezier(0.23, 1, 0.32, 1), transform 360ms cubic-bezier(0.23, 1, 0.32, 1), filter 260ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.loader-label[data-state='past'] { opacity: 0; transform: translateY(-6px); filter: blur(2px); }
+.loader-label[data-state='next'] { opacity: 0; transform: translateY(6px); filter: blur(2px); }
+
+.loader-bar {
+  transform: scaleX(0);
+  will-change: transform;
+}
+.loader-bar[data-state='past'] {
+  transform: scaleX(1);
+  transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* Eases toward 85% over a little longer than a step takes, then snaps full when the step ends. */
+.loader-bar[data-state='current'] {
+  transform: scaleX(0.85);
+  transition: transform 700ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+@keyframes loader-fade {
+  from { opacity: 0; }
+}
+@keyframes loader-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+}
+@keyframes loader-scan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  15% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(200%); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader,
+  .loader-body,
+  .loader-art { animation: none; }
+  .loader-scan { animation: none; opacity: 0; }
+  .loader-label,
+  .loader-bar { transition: none; }
+  .loader-label[data-state='past'],
+  .loader-label[data-state='next'] { transform: none; filter: none; }
+}
+</style>

@@ -52,7 +52,7 @@ const { index: round } = useCycle(1_000_000, 4800, toRef(props, 'running'))
           />
         </svg>
         <strong class="text-[13px] font-semibold text-ink">{{ f.ext }}</strong>
-        <span class="text-[11.5px] whitespace-nowrap text-ink-3">{{ f.use }}</span>
+        <span class="text-[12px] whitespace-nowrap text-ink-3">{{ f.use }}</span>
       </div>
     </div>
   </div>

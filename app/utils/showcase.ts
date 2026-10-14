@@ -5,7 +5,7 @@ import { createStudioEnvironment } from './glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams } from './presets'
 import { buildPrintTexture } from './printTexture'
 import { DEFAULT_TRACE_OPTIONS, traceImage, type TraceResult } from './trace'
-import { drawSample, HERO_DECOR, HERO_FINISH, HERO_STORY, LOGO_SAMPLE_IDS, SAMPLES, type Sample } from './samples'
+import { drawSample, HERO_FINISH, HERO_SPOTS, HERO_STORY, LOGO_SAMPLE_IDS, SAMPLES, type Sample } from './samples'
 
 /**
  * The landing page's showroom. Every object is built from `SAMPLES` through the same trace →
@@ -58,6 +58,8 @@ export class Showcase {
   private storyDepth = 12
   private storyTrace: { trace: TraceResult; source: HTMLCanvasElement } | null = null
   private target = new THREE.Vector3()
+  /** Hero, narrow screens: canvas px from the top that the copy occupies; the marks stay below. */
+  private heroClear = 0
   /** Fires once per object as it lands, so the page can reveal its caption. */
   onPlaced: ((id: string) => void) | null = null
   onReady: (() => void) | null = null
@@ -88,22 +90,9 @@ export class Showcase {
     bg.width = bg.height = 1024
     const bctx = bg.getContext('2d')!
     if (opts.layout === 'hero') {
-      // The hero has no frame: its edges must already be the page (--shell), so the stage mask
-      // only has to dissolve grain. Depth comes from a wide, soft pool of shade under the
-      // objects that thins out to nothing, instead of a darkening sweep and vignette that the
-      // mask would cut into a grey rim.
+      // The hero fills the screen behind the copy, so its paper is the page itself (--shell):
+      // flat, with the same grain, and no pool or key that would draw an edge where it ends.
       bctx.fillStyle = '#eceef2'
-      bctx.fillRect(0, 0, 1024, 1024)
-      const pool = bctx.createRadialGradient(512, 600, 0, 512, 600, 470)
-      for (const [t, a] of [[0, 0.11], [0.3, 0.085], [0.55, 0.045], [0.78, 0.015], [1, 0]] as const) {
-        pool.addColorStop(t, `rgba(38,40,48,${a})`)
-      }
-      bctx.fillStyle = pool
-      bctx.fillRect(0, 0, 1024, 1024)
-      const key = bctx.createRadialGradient(360, 300, 0, 360, 300, 520)
-      key.addColorStop(0, 'rgba(255,255,255,0.6)')
-      key.addColorStop(1, 'rgba(255,255,255,0)')
-      bctx.fillStyle = key
       bctx.fillRect(0, 0, 1024, 1024)
     } else {
       const sweep = bctx.createLinearGradient(0, 0, 0, 1024)
@@ -123,15 +112,19 @@ export class Showcase {
       bctx.fillStyle = vignette
       bctx.fillRect(0, 0, 1024, 1024)
     }
-    const pixels = bctx.getImageData(0, 0, 1024, 1024)
-    const px = pixels.data
-    for (let i = 0; i < px.length; i += 4) {
-      const n = (Math.random() - 0.5) * 9
-      px[i] = px[i]! + n
-      px[i + 1] = px[i + 1]! + n
-      px[i + 2] = px[i + 2]! + n
+    // Film grain, except on the hero: stretched over a whole screen it turns to speckle, and the
+    // page's own grain already lies over it.
+    if (opts.layout !== 'hero') {
+      const pixels = bctx.getImageData(0, 0, 1024, 1024)
+      const px = pixels.data
+      for (let i = 0; i < px.length; i += 4) {
+        const n = (Math.random() - 0.5) * 9
+        px[i] = px[i]! + n
+        px[i + 1] = px[i + 1]! + n
+        px[i + 2] = px[i + 2]! + n
+      }
+      bctx.putImageData(pixels, 0, 0)
     }
-    bctx.putImageData(pixels, 0, 0)
     const bgTex = new THREE.CanvasTexture(bg)
     bgTex.colorSpace = THREE.SRGBColorSpace
     this.backdrop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: bgTex, toneMapped: false }))
@@ -187,12 +180,16 @@ export class Showcase {
   async load() {
     const idle = () => new Promise<void>(r => setTimeout(r, 0))
     if (this.opts.layout === 'hero') {
-      this.story = this.place(SAMPLES.find(s => s.id === HERO_STORY)!, new THREE.Vector3(-30, -20, 26), 176, 'story')
-      this.setPreset(this.opts.preset ?? HERO_FINISH)
-      for (const decor of HERO_DECOR) {
-        await idle()
+      for (const spot of HERO_SPOTS) {
         if (this.disposed) return
-        this.place(SAMPLES.find(s => s.id === decor.id)!, new THREE.Vector3(...decor.at), decor.size, decor.id, decor.preset)
+        const sample = SAMPLES.find(s => s.id === (spot.id === 'story' ? HERO_STORY : spot.id))!
+        const mesh = this.place(sample, new THREE.Vector3(0, 0, spot.z), spot.size, spot.id, spot.preset)
+        if (spot.id === 'story') {
+          this.story = mesh
+          this.setPreset(this.opts.preset ?? HERO_FINISH)
+        }
+        this.layoutHero()
+        await idle()
       }
       this.invalidate()
       this.onReady?.()
@@ -236,9 +233,9 @@ export class Showcase {
     const roundedIcon = ['camera', 'chat', 'spark', 'heart'].includes(sample.id)
     const isLogo = LOGO_SAMPLE_IDS.has(sample.id)
     const depth = sizeMm * (roundedIcon ? 0.16 : isLogo ? 0.14 : 0.2)
-    // The brand's thin circular counters and the star's tips need a smaller bevel than
-    // their broad faces suggest; keep the inset from crossing those narrow features.
-    const bevelLimit = sample.id === 'vitrum' ? sizeMm * 0.004 : isLogo || ['star', 'bolt'].includes(sample.id) ? sizeMm * 0.012 : sample.id === 'spark' ? sizeMm * 0.02 : sizeMm * 0.038
+    // The star's tips need a smaller bevel than its broad face suggests; keep the inset
+    // from crossing those narrow features.
+    const bevelLimit = isLogo || ['star', 'bolt'].includes(sample.id) ? sizeMm * 0.012 : sample.id === 'spark' ? sizeMm * 0.02 : sizeMm * 0.038
     const bevel = Math.min(bevelLimit, Math.max(0.6, (trace.strokeWidth * widthMm) / Math.max(1, trace.bbox.maxX - trace.bbox.minX) * (roundedIcon ? 0.44 : 0.3)))
     const built = buildExtrudeGeometry(trace, { widthMm, depthMm: depth, bevelMm: bevel, bevelSegments: 8, layerMm: 2, stack })
     if (!built) return null
@@ -362,6 +359,14 @@ export class Showcase {
     this.progress = Math.max(0, p)
   }
 
+  /** Hero: where the copy ends, in canvas px, so narrow layouts keep the marks under it. */
+  setHeroClear(px: number) {
+    if (Math.abs(px - this.heroClear) < 1) return
+    this.heroClear = px
+    if (this.opts.layout === 'hero') this.layoutHero()
+    this.invalidate()
+  }
+
   /** Pointer in canvas CSS px; `inside` false once it leaves the canvas. Objects turn toward it. */
   setPointer(x: number, y: number, inside = true) {
     this.pointer.set(x, y)
@@ -395,7 +400,37 @@ export class Showcase {
     this.camera.updateProjectionMatrix()
     const bh = 2 * Showcase.BACKDROP_DISTANCE * Math.tan((this.camera.fov * Math.PI) / 360) * 1.3
     this.backdrop.scale.set(bh * this.camera.aspect, bh, 1)
+    if (this.opts.layout === 'hero') this.layoutHero()
     this.invalidate()
+  }
+
+  /**
+   * Hero: one world unit is one CSS px (times `u`, which grows and shrinks the set with the
+   * screen), so each object's spot is a fraction of the canvas and its size stays in proportion.
+   * The camera backs off as the canvas grows instead of the objects spreading apart in depth.
+   */
+  private layoutHero() {
+    const w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1
+    const narrow = w / h < 1.15
+    const u = narrow ? Math.min(1, Math.max(0.55, w / 600)) : Math.min(1.3, Math.max(0.7, Math.min(w / 1440, h / 900)))
+    const halfFov = Math.tan((this.camera.fov * Math.PI) / 360)
+    this.camera.position.set(0, 0, h / 2 / halfFov / u)
+    this.camera.lookAt(0, 0, 0)
+    const hw = w / 2 / u, hh = h / 2 / u
+    // Narrow: the band between the copy and the finish bar, in canvas px.
+    const top = this.heroClear + 24, bottom = h - 104
+    for (const o of this.placed) {
+      const spot = HERO_SPOTS.find(s => s.id === o.id)
+      if (!spot) continue
+      // A short band keeps only the marks nearest the copy; the corner ones would crowd it.
+      const at = narrow ? (spot.narrow && (spot.narrow[1] < 0.8 || bottom - top >= 200) ? spot.narrow : null) : spot.wide
+      o.group.visible = !!at
+      if (!at) continue
+      const y = narrow ? (h / 2 - (top + at[1] * Math.max(0, bottom - top))) / u : at[1] * hh
+      o.home.set(at[0] * hw, y, spot.z)
+      o.group.position.x = o.home.x
+      o.group.position.z = o.home.z
+    }
   }
 
   private loop = (now: number) => {
@@ -443,11 +478,21 @@ export class Showcase {
       if (still) look.set(0, 0)
 
       if (layout === 'hero' || layout === 'specimen') {
-        g.position.y = o.home.y - 24 * (1 - e) + Math.sin(t * 0.65 + o.phase) * 4
+        g.position.y = o.home.y - 24 * (1 - e) + Math.sin(t * 0.65 + (layout === 'hero' ? Math.abs(o.home.x) * 0.004 : o.phase)) * 4
         // A slow sway so the object never sits still; the cursor turns it further.
-        g.rotation.y = Math.sin(t * 0.32 + o.phase) * 0.16 * (1 - gain * 0.6) + look.y * 0.35 + (o.id === 'chat' ? 0.35 : -0.38)
-        g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x * 0.35 + 0.2
-        g.rotation.z = o.id === 'story' ? -0.17 : o.id === 'chat' ? 0.15 : Math.sin(o.phase) * 0.3
+        if (layout === 'hero') {
+          // Mirrored: every mark turns the same amount toward the centre and stands upright, so the
+          // set reads as one arrangement; the centre mark keeps a slight turn to show its depth.
+          const side = Math.sign(Math.round(o.home.x))
+          const sway = Math.sin(t * 0.32 + (side < 0 ? 0 : Math.PI)) * 0.1 * (1 - gain * 0.6)
+          g.rotation.y = (side ? -side * 0.34 : -0.3) + sway + look.y * 0.35
+          g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x * 0.35 + 0.16
+          g.rotation.z = 0
+        } else {
+          g.rotation.y = Math.sin(t * 0.32 + o.phase) * 0.16 * (1 - gain * 0.6) + look.y * 0.35 + (o.id === 'chat' ? 0.35 : -0.38)
+          g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x * 0.35 + 0.2
+          g.rotation.z = o.id === 'story' ? -0.17 : o.id === 'chat' ? 0.15 : Math.sin(o.phase) * 0.3
+        }
       } else if (layout === 'story') {
         g.position.y = o.home.y - 40 * (1 - e) + Math.sin(t * 0.7 + o.phase) * 3
         // A third of a turn per scrolled beat, plus a slow idle sway and the cursor's pull.

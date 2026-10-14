@@ -224,7 +224,7 @@ const EASE = 'transition-[fill] duration-[220ms] ease-out motion-reduce:transiti
  * A/B marks. Both drawings scale with their box and shrink ~2× on the phone card, so the letters
  * are set larger there (in user units) to stay a readable ~7 px.
  */
-const LETTER = 'font-mono text-[8px] leading-none font-medium fill-ink-3'
+const LETTER = 'text-[8px] leading-none font-medium fill-ink-3'
 </script>
 
 <template>
@@ -306,14 +306,14 @@ const LETTER = 'font-mono text-[8px] leading-none font-medium fill-ink-3'
           x="-7"
           y="53.5"
           :class="LETTER"
-          class="max-fold:text-[10px]"
+          class="max-fold:text-[12px]"
           text-anchor="middle"
         >A</text>
         <text
           x="107"
           y="53.5"
           :class="LETTER"
-          class="max-fold:text-[10px]"
+          class="max-fold:text-[12px]"
           text-anchor="middle"
         >B</text>
       </svg>
@@ -388,7 +388,7 @@ const LETTER = 'font-mono text-[8px] leading-none font-medium fill-ink-3'
       </svg>
     </div>
 
-    <p class="flex w-full max-w-[640px] shrink-0 items-end justify-between gap-3 text-[12px] text-ink-2 max-2xs:text-[11px]">
+    <p class="flex w-full max-w-[640px] shrink-0 items-end justify-between gap-3 text-[12px] text-ink-2 max-2xs:text-[12px]">
       <SwapTransition lift>
         <span :key="mode.value">{{ mode.hint }}</span>
       </SwapTransition>

@@ -73,14 +73,14 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         v-for="(r, i) in ROWS"
         :key="r.label"
         class="flex h-[30px] items-center gap-3 rounded-[9px] px-2 text-[12px] transition-colors duration-200 ease-[ease] motion-reduce:transition-none"
-        :class="current.row === i ? 'bg-ink/5 text-ink [&_kbd]:text-lamp [&_kbd]:shadow-[0_0_0_1px_var(--lamp),0_1px_0_rgba(176,138,92,.4)]' : 'text-ink-2'"
+        :class="current.row === i ? 'bg-ink/5 text-ink [&_kbd]:text-lamp-ink [&_kbd]:shadow-[0_0_0_1px_var(--lamp),0_1px_0_rgba(42,114,224,.4)]' : 'text-ink-2'"
       >
         <span class="flex min-w-[54px] items-center gap-[3px]"><template
           v-for="k in r.keys"
           :key="k"
         ><span
           v-if="k === '–'"
-          class="text-[11px] text-ink-3"
+          class="text-[12px] text-ink-3"
         >–</span><kbd v-else>{{ k }}</kbd></template></span>
         {{ r.label }}
       </li>

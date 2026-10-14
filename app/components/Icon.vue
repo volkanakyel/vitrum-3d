@@ -2,7 +2,7 @@
 import {
   Aperture, ArrowDown, ArrowUp, ArrowUpRight, Box, Camera, Check, ChevronDown, Circle, Cuboid, Diamond, Download, Expand, Eye, Focus, Frame, Menu,
   Gem, Hexagon, Image, ImagePlus, Info, Layers, Lightbulb, Lock, Maximize2, Move3d, Orbit, Palette, Pipette,
-  RotateCcw, RotateCw, Ruler, Scan, Settings2, Shapes, SlidersHorizontal, Sparkles, Sun, Upload, X, Droplets, Blend, Mountain, Square, Share2, Pause, Play, Plus,
+  RotateCcw, RotateCw, Ruler, Scan, Settings2, Shapes, SlidersHorizontal, Sparkles, Sun, Upload, X, Droplets, Blend, Mountain, Square, Share2, Pause, Play, Plus, LoaderCircle,
 } from '@lucide/vue'
 
 // Single entry point for icons so the rest of the app never imports lucide directly.
@@ -13,7 +13,7 @@ const map = {
   info: Info, shapes: Shapes, palette: Palette, focus: Focus, move3d: Move3d, orbit: Orbit, lightbulb: Lightbulb,
   aperture: Aperture, eye: Eye, frame: Frame, diamond: Diamond, pipette: Pipette, settings: Settings2, circle: Circle,
   droplets: Droplets, blend: Blend, mountain: Mountain, square: Square,
-  'arrow-up-right': ArrowUpRight, 'arrow-up': ArrowUp, 'arrow-down': ArrowDown, share: Share2, pause: Pause, play: Play, plus: Plus, lock: Lock, menu: Menu,
+  'arrow-up-right': ArrowUpRight, 'arrow-up': ArrowUp, 'arrow-down': ArrowDown, share: Share2, pause: Pause, play: Play, plus: Plus, lock: Lock, menu: Menu, spinner: LoaderCircle,
 } as const
 
 export type IconName = keyof typeof map

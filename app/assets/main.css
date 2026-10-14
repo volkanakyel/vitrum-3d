@@ -5,65 +5,112 @@
 @custom-variant hover-none (@media (hover: none));
 
 /*
-  Vitrum — "Light table" (v3).
+  Vitrum — "Light table" (v4).
 
-  The app is a cool slate table; slabs (cards, panels, the stage window) are white panes lifted off
-  it with a glass rim, and the renders sit in grey lightboxes inside them. Controls that float over
-  a stage are dark islands (`.bench`): the finish picker, the view dock, the size readout, one
-  closing panel. `.bench` re-declares the dark tokens; `.lightbox` pins the light ones for
-  anything that must stay light inside a dark island.
+  The app is a cool graphite-on-mist table; slabs (cards, panels, the stage window) are white panes
+  lifted off it with a glass rim, and the renders sit in grey lightboxes inside them. Controls that
+  float over a stage are dark islands (`.bench`). `.bench` re-declares the dark tokens; `.lightbox`
+  pins the light ones for anything that must stay light inside a dark island.
 
   Actions are pills. Containers nest concentric: window 24 → pane 16 → tile 10.
-  Ice exists only for focus, drop and "live". Type is Geist, tight; IBM Plex Mono only for numbers.
+  Type is Geist only, tight; figures use its tabular numerals (no mono face).
   Motion: response only. Presses squash to .96 and release on a soft overshoot; selections slide.
 */
+
+/*
+  The palette. Two ramps and nothing else: every token below, and every colour in a component,
+  is one of these steps (or one of them at an alpha).
+
+  Graphite — a cool neutral, hue ~225°. 100 is the table, 0 the panes, 900 the ink.
+             Text steps are chosen for contrast: 600 (ink-2) ≥ 6.4:1 and 500 (ink-3) ≥ 4.5:1 on every
+             light surface, 200 included. Nothing lighter than 500 carries text.
+  Azure    — the one accent, a clear glass blue (hue ~216°, a step warmer than graphite so the two
+             sit together): what is live, selected or lit. Never a fill larger than a dot, a ring or a
+             small control. 500 carries white text (4.6:1); accent text on the table uses
+             `--lamp-ink` (600, 5.1:1). On the dark bench the accent steps up to 400 and its text
+             to 300.
+  Charcoal — dark fills (primary pills, the bench islands) use graphite-800/850, a step lighter
+             than the ink, so a dark button reads as a soft solid, not a hole in the page.
+
+  The renders and the WebGL stage are lit on graphite-100/150, so those two steps are fixed.
+*/
+:root {
+  --graphite-0: #ffffff;
+  --graphite-25: #f7f8fa;
+  --graphite-50: #f2f3f6;
+  --graphite-100: #eceef2;
+  --graphite-150: #e7e9ef;
+  --graphite-200: #dfe2e7;
+  --graphite-300: #c9ccd3;
+  --graphite-400: #9a9da5;
+  --graphite-500: #63666e;
+  --graphite-600: #4d5058;
+  --graphite-700: #41444c;
+  --graphite-800: #363940;
+  --graphite-850: #2e3138;
+  --graphite-900: #26282e;
+  --graphite-950: #23252b;
+
+  --azure-50: #eef4fe;
+  --azure-100: #dce9fd;
+  --azure-200: #bcd5fb;
+  --azure-300: #8ebcf8;
+  --azure-400: #5b9ef4;
+  --azure-500: #2a72e0;
+  --azure-600: #1d5fc8;
+  --azure-700: #1a4f9e;
+}
+
 .bench {
   /* shadcn tokens */
-  --background: #1d1f24;
-  --foreground: #f3f2ef;
+  --background: #2a2d34;
+  --foreground: #f3f4f6;
   /* `card` is a raised control on the bench (active pills, fields); `slab` is a panel. */
-  --card: #33353c;
-  --card-foreground: #f3f2ef;
-  --popover: #2a2c32;
-  --popover-foreground: #f3f2ef;
-  --primary: #f3f2ef;
-  --primary-foreground: #1d1f24;
-  --secondary: #2c2e34;
-  --secondary-foreground: #f3f2ef;
-  --muted: #2c2e34;
-  --muted-foreground: #9a9ba0;
-  --accent: #2c2e34;
-  --accent-foreground: #f3f2ef;
+  --card: #3d4048;
+  --card-foreground: #f3f4f6;
+  --popover: #31343b;
+  --popover-foreground: #f3f4f6;
+  --primary: #f3f4f6;
+  --primary-foreground: #2a2d34;
+  --secondary: #363940;
+  --secondary-foreground: #f3f4f6;
+  --muted: #363940;
+  --muted-foreground: #b0b2b8;
+  --accent: #363940;
+  --accent-foreground: #f3f4f6;
   --destructive: #ff6b6b;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.12);
-  --ring: #c9a676;
+  --ring: var(--azure-400);
   --radius: 0.625rem;
 
   /* brand */
-  --ink: #f3f2ef;
-  --ink-2: rgba(243, 242, 239, 0.62);
-  --ink-3: rgba(243, 242, 239, 0.4);
+  --ink: #f3f4f6;
+  /* ink-3 ≥ 4.9:1 even on a raised control (`--card`). */
+  --ink-2: rgba(243, 244, 246, 0.76);
+  --ink-3: rgba(243, 244, 246, 0.64);
   --ink-hover: #ffffff;
-  --surface: #2c2e34;
-  --shell: #1d1f24;
-  --slab: #25272d;
+  --surface: #363940;
+  --shell: #2a2d34;
+  --slab: #31343b;
+  --stage: #363940;
   --well: rgba(255, 255, 255, 0.045);
   --well-strong: rgba(255, 255, 255, 0.085);
-  --lamp: #c9a676;
-  --lamp-soft: rgba(201, 166, 118, 0.14);
-  --lamp-glow: rgba(201, 166, 118, 0.22);
+  --lamp: var(--azure-400);
+  --lamp-soft: rgba(91, 158, 244, 0.16);
+  --lamp-ink: var(--azure-300);
+  --lamp-glow: rgba(91, 158, 244, 0.28);
   --hairline: rgba(255, 255, 255, 0.07);
   --hairline-strong: rgba(255, 255, 255, 0.12);
 
-  --sidebar: #1d1f24;
-  --sidebar-foreground: #f3f2ef;
-  --sidebar-primary: #f3f2ef;
-  --sidebar-primary-foreground: #1d1f24;
-  --sidebar-accent: #2c2e34;
-  --sidebar-accent-foreground: #f3f2ef;
+  --sidebar: #2a2d34;
+  --sidebar-foreground: #f3f4f6;
+  --sidebar-primary: #f3f4f6;
+  --sidebar-primary-foreground: #2a2d34;
+  --sidebar-accent: #363940;
+  --sidebar-accent-foreground: #f3f4f6;
   --sidebar-border: rgba(255, 255, 255, 0.07);
-  --sidebar-ring: #c9a676;
+  --sidebar-ring: var(--azure-400);
 
   /* elevation
      raise  = a control sitting on a slab: hairline, top highlight, a short contact shadow
@@ -98,59 +145,63 @@
 /* The default (light) values. `.lightbox` repeats them for light content inside a dark island. */
 :root,
 .lightbox {
-  --background: #eceef2;
-  --foreground: #26282e;
+  --background: var(--graphite-100);
+  --foreground: var(--graphite-900);
   --card: #ffffff;
   --card-foreground: #26282e;
   --popover: #ffffff;
   --popover-foreground: #26282e;
-  --primary: #26282e;
+  --primary: var(--graphite-800);
   --primary-foreground: #ffffff;
   --secondary: #e3e6eb;
   --secondary-foreground: #26282e;
   --muted: #e3e6eb;
-  --muted-foreground: #64676f;
+  --muted-foreground: var(--graphite-500);
   --accent: #e3e6eb;
   --accent-foreground: #26282e;
   --destructive: #d24444;
-  --border: #dfe2e7;
-  --input: #d5d8de;
-  --ring: #a67c48;
+  --border: var(--graphite-200);
+  --input: var(--graphite-300);
+  --ring: var(--azure-500);
   --radius: 0.625rem;
 
-  --ink: #26282e;
-  --ink-2: rgba(38, 40, 46, 0.62);
-  --ink-3: rgba(38, 40, 46, 0.42);
-  --ink-hover: #3a3c43;
-  --surface: #ffffff;
-  --shell: #eceef2;
-  --slab: #ffffff;
+  /* Text greys are solid steps, not alphas, so they read the same on the table and on a pane. */
+  --ink: var(--graphite-900);
+  --ink-2: var(--graphite-600);
+  --ink-3: var(--graphite-500);
+  --ink-hover: var(--graphite-700);
+  --surface: var(--graphite-0);
+  --shell: var(--graphite-100);
+  --slab: var(--graphite-0);
+  /* The lightbox a render sits in. */
+  --stage: var(--graphite-150);
   --well: rgba(38, 40, 46, 0.045);
   --well-strong: rgba(38, 40, 46, 0.08);
-  --lamp: #a67c48;
-  --lamp-soft: #f2ede6;
-  --lamp-glow: rgba(166, 124, 72, 0.16);
+  --lamp: var(--azure-500);
+  --lamp-soft: var(--azure-50);
+  --lamp-ink: var(--azure-600);
+  --lamp-glow: rgba(42, 114, 224, 0.18);
   --hairline: rgba(38, 40, 46, 0.08);
   --hairline-strong: rgba(38, 40, 46, 0.14);
 
-  /* the sidebar sits directly on the shell */
-  --sidebar: #eceef2;
+  /* The studio's sidebar and window frame: a step lighter than the landing's table. */
+  --sidebar: var(--graphite-50);
   --sidebar-foreground: #26282e;
-  --sidebar-primary: #26282e;
+  --sidebar-primary: var(--graphite-800);
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #e3e6eb;
   --sidebar-accent-foreground: #26282e;
   --sidebar-border: rgba(38, 40, 46, 0.08);
-  --sidebar-ring: #a67c48;
+  --sidebar-ring: var(--azure-500);
 
   --shadow-raise:
-    0 0 0 1px rgba(38, 40, 46, 0.08),
-    0 1px 2px -1px rgba(38, 40, 46, 0.12),
-    0 2px 4px rgba(38, 40, 46, 0.04),
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.8);
+    0 0 0 1px rgba(38, 40, 46, 0.07),
+    0 1px 1px rgba(38, 40, 46, 0.05),
+    0 2px 5px -2px rgba(38, 40, 46, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
   --shadow-raise-dark:
-    0 0 0 1px rgba(38, 40, 46, 0.9),
-    0 1px 2px rgba(38, 40, 46, 0.24),
+    0 0 0 1px rgba(46, 49, 56, 0.9),
+    0 1px 2px rgba(38, 40, 46, 0.2),
     0 8px 16px -8px rgba(38, 40, 46, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.16);
   --shadow-float:
@@ -161,12 +212,13 @@
   --shadow-pane:
     inset 1.5px 1.5px 1px rgba(255, 255, 255, 0.9),
     inset -1px -1px 1px rgba(255, 255, 255, 0.5),
-    0 0 0 0.5px rgba(3, 7, 18, 0.1),
-    0 2px 24px rgba(3, 7, 18, 0.05),
-    0 24px 48px -24px rgba(3, 7, 18, 0.18);
+    0 0 0 0.5px rgba(38, 40, 46, 0.1),
+    0 2px 24px rgba(38, 40, 46, 0.05),
+    0 24px 48px -24px rgba(38, 40, 46, 0.18);
   --shadow-sm: 0 1px 2px rgba(38, 40, 46, 0.05);
   --shadow: 0 6px 24px rgba(38, 40, 46, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --well-inset: inset 0 1px 1px rgba(38, 40, 46, 0.04);
+  /* A recess: a hairline edge, a soft top shade and a 1px white catch on the lower lip. */
+  --well-inset: inset 0 0 0 0.5px rgba(38, 40, 46, 0.06), inset 0 1px 2px rgba(38, 40, 46, 0.05), 0 1px 0 rgba(255, 255, 255, 0.7);
   color-scheme: light;
 }
 .lightbox,
@@ -258,15 +310,6 @@
   from { opacity: 0; transform: translateY(12px); }
 }
 /* Import loader: a scan line across the tile (`--tile` is set on the loader) and a ticking "...". */
-@keyframes loader-scan {
-  0% { transform: translateY(calc(var(--tile) * 0.08)); opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { transform: translateY(calc(var(--tile) * 0.92)); opacity: 0; }
-}
-@keyframes dot-1 { 0% { opacity: 0; } 25% { opacity: 1; } }
-@keyframes dot-2 { 0% { opacity: 0; } 50% { opacity: 1; } }
-@keyframes dot-3 { 0% { opacity: 0; } 75% { opacity: 1; } }
 @keyframes key-press {
   0% { opacity: 0; transform: translateY(-10px); }
   38% { opacity: 1; transform: translateY(0); }
@@ -280,7 +323,7 @@
 
 @theme inline {
   --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-display: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -309,6 +352,7 @@
   --color-ink-3: var(--ink-3);
   --color-lamp: var(--lamp);
   --color-lamp-soft: var(--lamp-soft);
+  --color-lamp-ink: var(--lamp-ink);
   --color-hairline: var(--hairline);
   --color-hairline-strong: var(--hairline-strong);
   --color-sidebar: var(--sidebar);
@@ -342,6 +386,7 @@
   --color-lamp-glow: var(--lamp-glow);
   --color-ink-hover: var(--ink-hover);
   --color-slab: var(--slab);
+  --color-stage: var(--stage);
   --ease-spring: var(--ease-spring);
   --ease-pop: var(--ease-pop);
 }
@@ -364,10 +409,10 @@
   background: var(--well);
   box-shadow: var(--well-inset);
 }
-/* Keyboard focus: a graphite ring (the bronze accent is too quiet to mark focus). Widen the gap with `[--ring-offset:4px]`. */
+/* Keyboard focus: an azure ring (≥3:1 on every surface, light and bench). Widen the gap with `[--ring-offset:4px]`. */
 @utility focus-ring {
   &:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--ink) 80%, transparent);
+    outline: 2px solid var(--ring);
     outline-offset: var(--ring-offset, 2px);
   }
 }
@@ -382,7 +427,7 @@
 }
 /* Porcelain tile behind a mark (studio empty state, import loader). */
 @utility tile {
-  background: linear-gradient(160deg, #ffffff 0%, #eef2f8 100%);
+  background: linear-gradient(160deg, var(--graphite-0) 0%, var(--graphite-50) 100%);
 }
 /* Empty source slot: a recessed well with a dashed hairline drawn inside it. */
 @utility dashed-well {
@@ -404,25 +449,37 @@
 /* Landing type scale. Geist, tight; body features (tnum) are inherited, unlike `.font-display`. */
 @utility heading-hero {
   font-family: var(--font-display);
-  font-size: clamp(34px, 4.4vw, 60px);
+  font-size: clamp(40px, 5.4vw, 76px);
   font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.055em;
+  line-height: 0.98;
+  letter-spacing: -0.058em;
 }
 @utility heading-section {
   font-family: var(--font-display);
-  font-size: clamp(28px, 3vw, 40px);
+  font-size: clamp(30px, 3.5vw, 50px);
   font-weight: 500;
-  line-height: 1.05;
-  letter-spacing: -0.045em;
+  line-height: 1.02;
+  letter-spacing: -0.05em;
   text-wrap: balance;
 }
-/* Mono index used for section numbers and small labels. */
+/*
+  Landing text scale (the studio keeps its denser 12–13px UI scale):
+  14 meta and legal · 15 labels, links, captions · 16–17 body · 18 lead · headings above.
+*/
+@utility text-lead {
+  font-size: 18px;
+  line-height: 1.6;
+  letter-spacing: -0.014em;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+/* Small figures and labels (readouts, counts): Geist with tabular figures, no mono face. */
 @utility index {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  font-feature-settings: 'zero', 'tnum';
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  font-feature-settings: 'tnum';
 }
 
 @layer base {
@@ -433,8 +490,8 @@
     font-feature-settings: 'cv11', 'ss01', 'tnum';
     font-optical-sizing: auto;
     font-size: 13px;
-    line-height: 1.45;
-    letter-spacing: -0.01em;
+    line-height: 1.5;
+    letter-spacing: -0.005em;
   }
   html:has(.studio-root) { overflow: hidden; }
   button { cursor: pointer; }
@@ -444,7 +501,7 @@
   ::selection { background: var(--lamp-glow); }
   /* Key caps: white, hairline, a 1px ledge underneath. */
   kbd {
-    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[5px] bg-card px-1 text-[10.5px] font-medium text-muted-foreground;
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-card px-1 text-[11.5px] font-medium text-muted-foreground;
     box-shadow: 0 0 0 1px var(--hairline), 0 1px 0 rgba(38, 40, 46, 0.1);
     font-family: inherit;
     letter-spacing: 0;
@@ -537,7 +594,7 @@
 /*
   Liquid glass. The same optics the studio renders, in CSS: a frosted body, a rim that catches the
   light (bright top-left, soft bottom-right), a faint fringe on the inner edge (white on the lit
-  side, a trace of the bronze accent on the far side) and a specular sheen that trails the pointer (`v-glass` sets
+  side, a trace of the azure accent on the far side) and a specular sheen that trails the pointer (`v-glass` sets
   --glass-x/--glass-y; they are registered so the sheen eases after the pointer instead of snapping).
 
   Colours come from the scope: light glass on the table, smoked glass inside `.bench`.
@@ -554,6 +611,12 @@
   inherits: true;
   initial-value: -40%;
 }
+/* Hover depth for pills (`SiteButton`): 0 at rest, 1 on hover; eased by a transition. */
+@property --lift {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
 /* Scope defaults live in a layer so a utility on the element (e.g. [--glass-tint:…]) can override them. */
 @layer base {
   :root,
@@ -567,8 +630,8 @@
     --glass-drop: 0 1px 2px rgba(38, 40, 46, 0.06), 0 12px 32px -14px rgba(38, 40, 46, 0.28);
   }
   .bench {
-    --glass-tint: rgba(37, 39, 45, 0.84);
-    --glass-tint-top: rgba(60, 62, 70, 0.82);
+    --glass-tint: rgba(46, 49, 56, 0.84);
+    --glass-tint-top: rgba(70, 73, 82, 0.82);
     --glass-rim: rgba(255, 255, 255, 0.34);
     --glass-rim-low: rgba(255, 255, 255, 0.08);
     --glass-edge: rgba(0, 0, 0, 0.35);
@@ -584,7 +647,7 @@
   box-shadow:
     inset 0 0 0 1px var(--glass-edge),
     inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.55),
-    inset -1.5px -1.5px 1px -1px rgba(166, 124, 72, 0.2),
+    inset -1.5px -1.5px 1px -1px rgba(42, 114, 224, 0.16),
     var(--glass-drop);
 
   /* specular sheen, trailing the pointer */
@@ -624,9 +687,38 @@
 
 /* The sliding "selected" pill of a segmented control (studio tabs, finishes, modes, views): a white
    glass lozenge behind the active option. Sits under its label; the parent sets the radius. */
+/*
+  Segmented control (shadcn ToggleGroup in the studio). The track is a recess cut into the slab:
+  a cool fill, a hairline inner edge, a soft shade under its top lip and a 1px white catch on its
+  bottom lip. The thumb is a solid white key sitting in it: a gradient so the top reads lit, a
+  0.5px edge, a bright inner top line, a faint inner bottom line, then a tight contact shadow and
+  a wider soft one. Hairline dividers sit between idle options (see SegmentedControl).
+*/
+@utility segment-track {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--graphite-150) 78%, transparent), color-mix(in srgb, var(--graphite-100) 70%, transparent));
+  box-shadow:
+    inset 0 0 0 1px rgba(38, 40, 46, 0.055),
+    inset 0 1px 2px rgba(38, 40, 46, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.85);
+}
+@utility segment-thumb {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+  box-shadow:
+    0 0 0 0.5px rgba(38, 40, 46, 0.16),
+    inset 0 1px 0 #ffffff,
+    inset 0 -1px 0 rgba(38, 40, 46, 0.035),
+    0 1px 1.5px rgba(38, 40, 46, 0.1),
+    0 2px 6px -1px rgba(38, 40, 46, 0.1),
+    0 6px 14px -8px rgba(38, 40, 46, 0.18);
+}
 @utility glass-pill {
   @apply glass absolute inset-0 -z-10 rounded-full;
   --glass-tint-top: #fff;
-  --glass-tint: #f7f8fa;
-  --glass-drop: 0 1px 2px rgba(38, 40, 46, 0.12), 0 2px 6px -2px rgba(38, 40, 46, 0.12);
+  --glass-tint: #fafbfc;
+  /* Hairline, tight contact shadow, then a wide soft fall-off: the pill sits on the well, it does not float. */
+  --glass-drop: 0 0 0 0.5px rgba(38, 40, 46, 0.1), 0 1px 1px rgba(38, 40, 46, 0.06), 0 2px 4px -1px rgba(38, 40, 46, 0.08), 0 6px 12px -6px rgba(38, 40, 46, 0.14);
 }

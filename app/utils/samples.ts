@@ -13,6 +13,17 @@ export interface Sample {
   preset: string
   /** Draws the source onto a square canvas of `size` px. Must be called on the client. */
   draw: (ctx: CanvasRenderingContext2D, size: number) => void
+  /** How the studio first shows the built object, when it has a pose of its own. */
+  pose?: SamplePose
+}
+
+/**
+ * A display-only pose: the object turned `spinDeg` in its own plane and the Angle view looking
+ * along `view`. The exported geometry stays upright.
+ */
+export interface SamplePose {
+  spinDeg: number
+  view: [number, number, number]
 }
 
 /** A 100×100 SVG path drawn to fill the canvas with `pad` px of page around it. */
@@ -108,29 +119,18 @@ function interfaceIcon(kind: 'camera' | 'chat') {
   }
 }
 
-/** The Vitrum mark, scaled from its 1046×1024 box into the 100×100 frame. */
-const BRAND = [
-  'm7.55,852.64h0c0-94.89,76.93-171.82,171.82-171.82h164.27v-160.43h0c0-94.89-76.93-171.82-171.82-171.82h0C76.93,348.58,0,425.51,0,520.4v328.53c0,69.21,40.94,128.82,99.9,156.04-54.88-28.69-92.35-86.11-92.35-152.33Z',
-  'm507.9,680.83H179.37c-94.89,0-171.82,76.93-171.82,171.82h0c0,66.21,37.48,123.64,92.35,152.33,23.77,12.43,50.79,19.49,79.47,19.49h328.53c94.89,0,171.82-76.93,171.82-171.82h0c0-94.89-76.93-171.82-171.82-171.82Zm2.96,319.81c-81.73,0-147.99-66.26-147.99-147.99s66.26-147.99,147.99-147.99,147.99,66.26,147.99,147.99-66.26,147.99-147.99,147.99Z',
-  'm1031.27,168.06h0c2.07,94.87-73.15,173.46-168.02,175.53l-164.23,3.59,3.51,160.39h0c2.07,94.87,80.66,170.1,175.53,168.02h0c94.87-2.07,170.1-80.66,168.02-175.53l-3.75-171.78-3.42-156.68c-1.51-69.19-43.74-127.89-103.29-153.82,55.49,27.48,94.21,84.08,95.66,150.27Z',
-  'm534.8,350.77l164.23-3.59,164.23-3.59c94.87-2.07,170.1-80.66,168.02-175.53h0c-1.45-66.2-40.17-122.79-95.66-150.27C911.58,5.89,884.41-.59,855.74.04l-328.45,7.18c-94.87,2.07-170.1,80.66-168.02,175.53h0c2.07,94.87,80.66,170.1,175.53,168.02Zm-9.95-319.67c81.71-1.79,149.4,63.01,151.19,144.72,1.79,81.71-63.01,149.4-144.72,151.19-81.71,1.79-149.4-63.01-151.19-144.72s63.01-149.4,144.72-151.19Z',
-]
+/**
+ * The Vitrum glyph: a squircle with a round counter, in the 100×100 frame. The brand mark
+ * (`BrandMark.vue`) is this same glyph built as a glass tile and drawn from `VITRUM_POSE`, so
+ * "Try the mark" opens on the logo's own angle.
+ */
+export const VITRUM_GLYPH = 'M30 0H70A30 30 0 0 1 100 30V70A30 30 0 0 1 70 100H30A30 30 0 0 1 0 70V30A30 30 0 0 1 30 0ZM50 30A20 20 0 1 0 50 70A20 20 0 1 0 50 30Z'
 
-function brand(ctx: CanvasRenderingContext2D, size: number) {
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, size, size)
-  const pad = size * 0.12
-  const k = (size - pad * 2) / 1046
-  ctx.save()
-  ctx.translate(pad, pad + (1046 - 1024) * k * 0.5)
-  ctx.scale(k, k)
-  ctx.fillStyle = '#0d0e12'
-  for (const d of BRAND) ctx.fill(new Path2D(d))
-  ctx.restore()
-}
+/** Turned 30° in its plane, seen from 45° below: the camera the brand mark is drawn with. */
+export const VITRUM_POSE: SamplePose = { spinDeg: 30, view: [0, -Math.SQRT1_2, Math.SQRT1_2] }
 
 export const SAMPLES: Sample[] = [
-  { id: 'vitrum', label: 'Vitrum mark', preset: 'clear', draw: brand },
+  { id: 'vitrum', label: 'Vitrum mark', preset: 'clear', draw: mark(VITRUM_GLYPH, { evenodd: true }), pose: VITRUM_POSE },
   { id: 'camera', label: 'Camera', preset: 'frosted', draw: interfaceIcon('camera') },
   { id: 'chat', label: 'Conversation', preset: 'milk', draw: interfaceIcon('chat') },
   { id: 'spark', label: 'Sparkle', preset: 'silver', draw: mark('M47 10 Q50 0 53 10 C58 32 68 42 90 47 Q100 50 90 53 C68 58 58 68 53 90 Q50 100 47 90 C42 68 32 58 10 53 Q0 50 10 47 C32 42 42 32 47 10 Z') },
@@ -162,12 +162,31 @@ export const SAMPLES: Sample[] = [
 export const HERO_STORY = 'github'
 /** The hero's opening finish; the landing stays monochrome so the shapes, not the colours, lead. */
 export const HERO_FINISH = 'chrome'
-/** Marks floating around the hero story, in black and chrome to match it. */
-export const HERO_DECOR = [
-  { id: 'spotify', preset: 'black', at: [104, 100, -5], size: 92 },
-  { id: 'figma', preset: 'black', at: [-122, 104, 5], size: 84 },
-  { id: 'framer', preset: 'chrome', at: [118, -104, 20], size: 80 },
-] as const
+/**
+ * Where the hero's objects sit, in screen space, so they frame the copy on any screen: x and y are
+ * fractions of the half-width and half-height from the centre (up is +), size is px on a
+ * 1440 × 900 screen. Wide screens hold the copy between them. Narrow ones gather the marks in the
+ * band between the copy and the finish bar: there y is 0 at the band's top and 1 at its bottom
+ * (`null` leaves one out). `story` is the centre object whose finish the page switches.
+ */
+export interface HeroSpot {
+  id: string
+  preset?: string
+  size: number
+  z: number
+  wide: readonly [number, number]
+  narrow: readonly [number, number] | null
+}
+// One arc under and around the copy, mirrored left to right: an outer pair at headline height, an
+// inner pair at the buttons, the switchable GitHub mark at the bottom centre. Each pair shares a
+// size and depth; black and chrome alternate across the diagonal so neither side reads heavier.
+export const HERO_SPOTS: readonly HeroSpot[] = [
+  { id: 'story', size: 160, z: 24, wide: [0, -0.56], narrow: [0, 0.6] },
+  { id: 'figma', preset: 'black', size: 100, z: 0, wide: [-0.68, 0.2], narrow: [-0.64, 0.22] },
+  { id: 'framer', preset: 'chrome', size: 100, z: 0, wide: [0.68, 0.2], narrow: [0.64, 0.22] },
+  { id: 'apple', preset: 'chrome', size: 112, z: 10, wide: [-0.5, -0.38], narrow: [-0.66, 0.88] },
+  { id: 'spotify', preset: 'black', size: 112, z: 10, wide: [0.5, -0.38], narrow: [0.66, 0.88] },
+]
 
 /** Brand marks. Their fine details (tails, stripes, bars) need a small bevel to survive. */
 export const LOGO_SAMPLE_IDS = new Set(LOGOS.map(l => l.id))

@@ -73,6 +73,24 @@ function holdTabPress(e: MouseEvent) {
   e.preventDefault()
 }
 const tab = ref<'shape' | 'material' | 'scene'>('shape')
+const tabIndex = computed(() => panelTabs.findIndex(t => t.value === tab.value))
+const panelBody = ref<HTMLElement | null>(null)
+/**
+ * Sections rise in when they appear inside a tab (Layers, when Stack is picked), but not when a
+ * whole tab mounts: a new tab's page is one sheet that fades in, nothing moves. Off while a tab
+ * swaps, back on two frames later. Read once by each SectionGroup at mount.
+ */
+const sectionAppear = ref(false)
+provide('sectionAppear', sectionAppear)
+const afterPaint = () => requestAnimationFrame(() => requestAnimationFrame(() => (sectionAppear.value = true)))
+onMounted(afterPaint)
+watch(tab, () => {
+  sectionAppear.value = false
+  afterPaint()
+  // Every tab opens at its top, not at wherever the last one was scrolled to.
+  const viewport = panelBody.value?.closest<HTMLElement>('[data-slot=scroll-area-viewport]')
+  if (viewport) viewport.scrollTop = 0
+}, { flush: 'sync' })
 
 const svgPath = computed(() => (props.trace ? toSvgPath(props.trace) : ''))
 const viewBox = computed(() => {
@@ -139,9 +157,9 @@ const metalSwatches = [
   '#c0392b',
 ]
 const bgSwatches = [
-  '#e6e9ef',
+  '#eef0f4',
   '#ffffff',
-  '#eceef2',
+  '#e6e9ef',
   '#e6e9f0',
   '#dfe6f5',
   '#f4f4f2',
@@ -151,9 +169,10 @@ const bgSwatches = [
   '#2b2f3a',
 ]
 
-// Tab triggers stay flat; the shared motion pill below carries the active state.
+// Tab triggers stay flat; the shared motion shape below carries the active state. On desktop that
+// shape is a folder tab joined to the settings slab; on the phone sheet it is a pill in a well.
 const tabTrigger =
-  'relative gap-1.5 rounded-full border-0 text-[12px] text-muted-foreground transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none'
+  'group/tab relative gap-1.5 rounded-full border-0 text-[13px] text-muted-foreground transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none md:h-full md:rounded-none'
 </script>
 
 <template>
@@ -165,7 +184,7 @@ const tabTrigger =
       v-model="tab"
       class="flex min-h-0 flex-1 flex-col gap-0"
     >
-      <SidebarHeader class="gap-5 px-4 pt-0 pb-5 max-md:gap-3 max-md:pb-3.5">
+      <SidebarHeader class="gap-5 px-4 pt-0 pb-5 max-md:gap-3 max-md:pb-3.5 md:pb-0">
         <!-- Brand -->
         <div class="-mb-1 flex h-12 items-center justify-between max-md:hidden">
           <NuxtLink
@@ -176,7 +195,7 @@ const tabTrigger =
             <AppIcon :size="28" />
             <span class="flex items-baseline gap-2">
               <span class="text-[14px] font-semibold tracking-[-0.02em] text-foreground">Vitrum</span>
-              <span class="index text-ink-3">v0.2</span>
+              <span class="text-[12.5px] text-ink-3 tabular-nums">v0.2</span>
             </span>
           </NuxtLink>
           <div class="flex items-center gap-2">
@@ -214,7 +233,7 @@ const tabTrigger =
             <template v-if="hasSource">
               <motion.span
                 :key="fileName"
-                class="lightbox flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-tile bg-[linear-gradient(160deg,#ffffff,#eef2f8)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]"
+                class="lightbox flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-tile tile shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]"
                 :initial="{ scale: 0.7, opacity: 0, rotate: -6 }"
                 :animate="{ scale: 1, opacity: 1, rotate: 0 }"
                 :transition="{ type: 'spring', stiffness: 380, damping: 24 }"
@@ -240,7 +259,7 @@ const tabTrigger =
                 </div>
                 <div
                   v-if="trace"
-                  class="mt-0.5 truncate text-[11.5px] text-muted-foreground tabular-nums"
+                  class="mt-0.5 truncate text-[13px] text-muted-foreground tabular-nums"
                   :title="`Traced from ${modeLabel[trace.resolvedMode]}`"
                 >
                   {{ trace.polygons.length }} shape{{ trace.polygons.length === 1 ? '' : 's' }} ·
@@ -276,7 +295,7 @@ const tabTrigger =
               </span>
               <div class="min-w-0 flex-1">
                 <div class="text-[13px] font-medium">Choose an image</div>
-                <div class="mt-0.5 text-[11.5px] text-ink-2">
+                <div class="mt-0.5 text-[13px] text-ink-2">
                   PNG, JPG, WebP, SVG · drop or paste
                 </div>
               </div>
@@ -292,7 +311,7 @@ const tabTrigger =
             <motion.p
               v-if="error"
               key="err"
-              class="mt-2 flex items-center gap-1.5 px-1 text-[12px] text-destructive"
+              class="mt-2 flex items-center gap-1.5 px-1 text-[13px] text-destructive"
               :initial="{ opacity: 0, y: -4 }"
               :animate="{ opacity: 1, y: 0 }"
               :exit="{ opacity: 0 }"
@@ -314,7 +333,7 @@ const tabTrigger =
           <label
             data-sheet-grip
             class="relative grid size-11 shrink-0 cursor-pointer touch-none place-items-center overflow-hidden rounded-[14px] transition-[scale] duration-[380ms] ease-spring active:scale-[.92] active:duration-100 motion-reduce:transition-none"
-            :class="hasSource ? 'lightbox bg-[linear-gradient(160deg,#ffffff,#eef2f8)] shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]' : 'bg-card text-muted-foreground shadow-raise'"
+            :class="hasSource ? 'lightbox tile shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]' : 'bg-card text-muted-foreground shadow-raise'"
             :aria-label="hasSource ? `Replace ${fileName}` : 'Choose an image'"
           >
             <input
@@ -361,7 +380,7 @@ const tabTrigger =
         <TabsList
           data-sheet-grip
           data-sheet-peek
-          class="grid h-9 w-full grid-cols-3 rounded-full well p-[3px] max-md:touch-none"
+          class="relative z-10 grid h-9 w-full grid-cols-3 max-md:touch-none max-md:isolate max-md:rounded-full max-md:segment-track max-md:p-[3px] md:-mx-2 md:-mb-px md:h-10 md:w-[calc(100%+1rem)] md:rounded-none md:bg-transparent md:p-0"
           @mousedown.capture="holdTabPress"
         >
           <TabsTrigger
@@ -372,39 +391,53 @@ const tabTrigger =
             @click="selectTab(t.value)"
           >
             <motion.span
-              v-if="tab === t.value"
+              v-if="tab === t.value && isMobile"
               layout-id="panel-tab-pill"
-              class="glass-pill"
-              :transition="{ type: 'spring', stiffness: 500, damping: 40 }"
+              class="segment-thumb"
+              :transition="{ type: 'spring', duration: 0.32, bounce: 0 }"
             />
             <motion.span
-              class="relative flex items-center gap-1.5"
-              :while-press="{ scale: 0.96 }"
-            >
+              v-else-if="tab === t.value"
+              layout-id="panel-tab-folder"
+              class="folder-tab"
+              :data-edge="tabIndex === 0 ? 'start' : tabIndex === panelTabs.length - 1 ? 'end' : undefined"
+              :transition="{ type: 'spring', duration: 0.32, bounce: 0 }"
+            />
+            <!-- The label never moves: only the tab shape glides to it. -->
+            <span class="relative flex items-center gap-1.5">
               <Icon
                 :name="t.icon"
                 :size="13"
+                class="transition-colors duration-150 group-data-[state=active]/tab:text-lamp-ink"
               />
               {{ t.label }}
-            </motion.span>
+            </span>
           </TabsTrigger>
         </TabsList>
       </SidebarHeader>
 
-      <SidebarSeparator class="mx-4 bg-hairline data-[orientation=horizontal]:w-auto" />
+      <SidebarSeparator class="mx-4 bg-hairline data-[orientation=horizontal]:w-auto md:hidden" />
 
-      <SidebarContent class="gap-0">
-        <!-- Content fades under the header and footer edges; the scrollbar is a hairline that only
-             appears while scrolling and lives in the gutter, never over the controls. -->
+      <!-- The settings slab: the active tab above is cut from the same sheet, so the panel reads as
+           that tab's page. Its top corner squares off under an end tab so the two meet flush. -->
+      <SidebarContent
+        class="settings-slab gap-0"
+        :data-edge="tabIndex === 0 ? 'start' : tabIndex === panelTabs.length - 1 ? 'end' : undefined"
+      >
+        <!-- Content fades under the slab's top and bottom edges; no scrollbar: the fade says there
+             is more, and wheel, trackpad, touch and keyboard all still scroll. -->
         <ScrollArea
           type="hover"
           :scroll-hide-delay="400"
-          class="min-h-0 flex-1 **:data-[slot=scroll-area-scrollbar]:w-2 **:data-[slot=scroll-area-scrollbar]:border-0 **:data-[slot=scroll-area-scrollbar]:p-0 **:data-[slot=scroll-area-scrollbar]:py-3 **:data-[slot=scroll-area-scrollbar]:pr-[3px] **:data-[slot=scroll-area-thumb]:rounded-full **:data-[slot=scroll-area-thumb]:bg-foreground/20 **:data-[slot=scroll-area-viewport]:[mask-image:linear-gradient(to_bottom,transparent,#000_24px,#000_calc(100%-24px),transparent)]"
+          class="min-h-0 flex-1 **:data-[slot=scroll-area-scrollbar]:hidden **:data-[slot=scroll-area-viewport]:[mask-image:linear-gradient(to_bottom,transparent,#000_24px,#000_calc(100%-24px),transparent)]"
         >
-          <div class="px-4 pt-5 pb-6">
+          <div
+            ref="panelBody"
+            class="px-4 pt-5 pb-6 md:px-5 md:pt-5"
+          >
             <TabsContent
               value="shape"
-              class="mt-0 flex flex-col divide-y divide-hairline"
+              class="panel-in mt-0 flex flex-col divide-y divide-hairline"
             >
               <AnimatePresence :initial="false">
               <SectionGroup
@@ -418,7 +451,7 @@ const tabTrigger =
                   :options="geometries"
                   size="md"
                 />
-                <p class="text-[11.5px] leading-relaxed text-ink-3">
+                <p class="text-[13px] leading-relaxed text-ink-3">
                   <template v-if="isRelief">
                     Every pixel becomes a vertex: photos, paintings and shaded artwork keep their
                     detail and their colours.
@@ -475,7 +508,7 @@ const tabTrigger =
                   <span
                     v-for="(l, i) in trace.layers"
                     :key="i"
-                    class="flex h-6 items-center gap-1.5 rounded-full bg-card pr-2.5 pl-1.5 text-[11px] text-ink-2 shadow-raise tabular-nums"
+                    class="flex h-6 items-center gap-1.5 rounded-full bg-card pr-2.5 pl-1.5 text-[12.5px] text-ink-2 shadow-raise tabular-nums"
                   >
                     <span
                       class="size-3 rounded-full shadow-[inset_0_0_0_1px_var(--hairline-strong)]"
@@ -503,31 +536,11 @@ const tabTrigger =
                   :step="0.01"
                   :default-value="R.roundness"
                 />
-                <SliderField
-                  v-model="reliefOpts.detail"
-                  label="Surface detail"
-                  hint="How much the picture's shading dents the surface"
-                  :min="0"
-                  :max="1"
-                  :step="0.01"
-                  :default-value="R.detail"
-                />
-                <SliderField
-                  v-model="reliefOpts.smooth"
-                  label="Smoothing"
-                  :min="0"
-                  :max="8"
-                  :step="0.1"
-                  unit="px"
-                  :decimals="1"
-                  :default-value="R.smooth"
-                />
-                <div class="flex flex-col gap-1.5">
-                  <Label class="h-5 text-[12.5px] font-normal text-ink-2">Grid detail</Label>
+                <div class="flex flex-col gap-2.5">
+                  <Label class="h-5 text-[13.5px] font-normal text-ink-2">Grid detail</Label>
                   <SegmentedControl
                     v-model="reliefOpts.resolution"
                     :options="reliefResolutions"
-                    mono
                   />
                 </div>
               </SectionGroup>
@@ -540,8 +553,8 @@ const tabTrigger =
                 resettable
                 @reset="Object.assign(reliefOpts, { ...R, cutout: reliefOpts.cutout }); glass.reliefMm = D.reliefMm"
               >
-                <div class="flex flex-col gap-1.5">
-                  <Label class="h-5 text-[12.5px] font-normal text-ink-2">Height from</Label>
+                <div class="flex flex-col gap-2.5">
+                  <Label class="h-5 text-[13.5px] font-normal text-ink-2">Height from</Label>
                   <SegmentedControl
                     v-model="reliefOpts.source"
                     :options="heightSources"
@@ -559,30 +572,6 @@ const tabTrigger =
                   :default-value="D.reliefMm"
                 />
                 <AnimatePresence :initial="false">
-                  <Reveal
-                    v-if="reliefOpts.source !== 'flat'"
-                    key="shaped"
-                  >
-                    <SliderField
-                      v-model="reliefOpts.smooth"
-                      label="Smoothing"
-                      :min="0"
-                      :max="8"
-                      :step="0.1"
-                      unit="px"
-                      :decimals="1"
-                      :default-value="R.smooth"
-                    />
-                    <SliderField
-                      v-model="reliefOpts.contrast"
-                      label="Contrast"
-                      hint="Below 1 lifts the mid-tones, above 1 pushes them down"
-                      :min="0.3"
-                      :max="3"
-                      :step="0.01"
-                      :default-value="R.contrast"
-                    />
-                  </Reveal>
                   <Reveal
                     v-if="reliefOpts.source === 'layers'"
                     key="layers"
@@ -604,7 +593,7 @@ const tabTrigger =
                     <div class="flex h-6 items-center justify-between pointer-coarse:h-9">
                       <Label
                         for="relief-invert"
-                        class="text-[12.5px] font-normal text-ink-2"
+                        class="text-[13.5px] font-normal text-ink-2"
                       >
                         Dark rises
                       </Label>
@@ -619,7 +608,7 @@ const tabTrigger =
                 <div class="flex h-6 items-center justify-between pointer-coarse:h-9">
                   <Label
                     for="relief-cutout"
-                    class="text-[12.5px] font-normal text-ink-2"
+                    class="text-[13.5px] font-normal text-ink-2"
                   >
                     Cut to outline
                   </Label>
@@ -630,12 +619,11 @@ const tabTrigger =
                     @update:model-value="(v) => (reliefOpts.cutout = v)"
                   />
                 </div>
-                <div class="flex flex-col gap-1.5">
-                  <Label class="h-5 text-[12.5px] font-normal text-ink-2">Grid detail</Label>
+                <div class="flex flex-col gap-2.5">
+                  <Label class="h-5 text-[13.5px] font-normal text-ink-2">Grid detail</Label>
                   <SegmentedControl
                     v-model="reliefOpts.resolution"
                     :options="reliefResolutions"
-                    mono
                   />
                 </div>
               </SectionGroup>
@@ -649,8 +637,8 @@ const tabTrigger =
                 resettable
                 @reset="Object.assign(traceOpts, { ...T, stack: traceOpts.stack })"
               >
-                <div class="flex flex-col gap-1.5">
-                  <Label class="h-5 text-[12.5px] font-normal text-ink-2">Find the shape by</Label>
+                <div class="flex flex-col gap-2.5">
+                  <Label class="h-5 text-[13.5px] font-normal text-ink-2">Find the shape by</Label>
                   <SegmentedControl
                     v-model="traceOpts.mode"
                     :options="modes"
@@ -676,20 +664,10 @@ const tabTrigger =
                   :decimals="1"
                   :default-value="T.simplify"
                 />
-                <SliderField
-                  v-model="traceOpts.minRegion"
-                  label="Ignore specks"
-                  hint="Drops pieces smaller than this share of the artwork"
-                  :min="0"
-                  :max="0.05"
-                  :step="0.001"
-                  :decimals="3"
-                  :default-value="T.minRegion"
-                />
                 <div class="flex h-6 items-center justify-between pointer-coarse:h-9">
                   <Label
                     for="fill-holes"
-                    class="text-[12.5px] font-normal text-ink-2"
+                    class="text-[13.5px] font-normal text-ink-2"
                   >
                     Fill holes
                   </Label>
@@ -699,12 +677,11 @@ const tabTrigger =
                     @update:model-value="(v) => (traceOpts.fillHoles = v)"
                   />
                 </div>
-                <div class="flex flex-col gap-1.5">
-                  <Label class="h-5 text-[12.5px] font-normal text-ink-2">Trace detail</Label>
+                <div class="flex flex-col gap-2.5">
+                  <Label class="h-5 text-[13.5px] font-normal text-ink-2">Trace detail</Label>
                   <SegmentedControl
                     v-model="traceOpts.resolution"
                     :options="resolutions"
-                    mono
                   />
                 </div>
               </SectionGroup>
@@ -756,16 +733,6 @@ const tabTrigger =
                       :decimals="1"
                       :default-value="D.bevelMm"
                     />
-                    <SliderField
-                      v-model="glass.bevelSegments"
-                      label="Edge smoothness"
-                      hint="Segments in each rounded edge; more is smoother and heavier"
-                      :min="1"
-                      :max="14"
-                      :step="1"
-                      :decimals="0"
-                      :default-value="D.bevelSegments"
-                    />
                   </Reveal>
                 </AnimatePresence>
               </SectionGroup>
@@ -774,7 +741,7 @@ const tabTrigger =
 
             <TabsContent
               value="material"
-              class="mt-0 flex flex-col divide-y divide-hairline"
+              class="panel-in mt-0 flex flex-col divide-y divide-hairline"
             >
               <!-- The phone sheet's finish row covers this. -->
               <SectionGroup
@@ -799,42 +766,6 @@ const tabTrigger =
                 >
                 <template v-if="isPrint">
                   <SliderField
-                    v-model="glass.flatten"
-                    label="Flatten lighting"
-                    hint="Divides the picture's own shading out of the colour, so the studio lights the volume instead of re-lighting a painted shadow"
-                    :min="0"
-                    :max="1"
-                    :step="0.01"
-                    :default-value="0.55"
-                  />
-                  <SliderField
-                    v-model="glass.grain"
-                    label="Grain"
-                    hint="The picture's fine texture (weave, brush, pores) as a normal and roughness map, so it catches the light at any grid detail"
-                    :min="0"
-                    :max="1"
-                    :step="0.01"
-                    :default-value="0.5"
-                  />
-                  <SliderField
-                    v-model="glass.soften"
-                    label="Soften"
-                    hint="Blurs the picture on the surface so photo noise and stretched pixels melt into a flat colour"
-                    :min="0"
-                    :max="1"
-                    :step="0.01"
-                    :default-value="0"
-                  />
-                  <SliderField
-                    v-model="glass.weave"
-                    label="Weave"
-                    hint="A fine woven bump at a fixed real-world size, uniform over the whole surface"
-                    :min="0"
-                    :max="1"
-                    :step="0.01"
-                    :default-value="0"
-                  />
-                  <SliderField
                     v-model="glass.roughness"
                     label="Roughness"
                     :min="0"
@@ -851,15 +782,7 @@ const tabTrigger =
                     :step="0.01"
                     :default-value="0.15"
                   />
-                  <SliderField
-                    v-model="glass.clearcoat"
-                    label="Lacquer"
-                    :min="0"
-                    :max="1"
-                    :step="0.01"
-                    :default-value="0"
-                  />
-                  <p class="text-[11.5px] leading-relaxed text-ink-3">
+                  <p class="text-[13px] leading-relaxed text-ink-3">
                     <template v-if="isRelief && !reliefOpts.cutout">
                       The picture is sampled at its native resolution and laid over the relief,
                       every colour kept.
@@ -881,16 +804,6 @@ const tabTrigger =
                     :default-value="D.ior"
                   />
                   <SliderField
-                    v-model="glass.dispersion"
-                    label="Dispersion"
-                    hint="Splits the refraction into colours at the edges, like a prism"
-                    :min="0"
-                    :max="0.3"
-                    :step="0.005"
-                    :decimals="3"
-                    :default-value="D.dispersion"
-                  />
-                  <SliderField
                     v-model="glass.clarity"
                     label="Clarity"
                     hint="How much light passes through; lower reads as milky glass"
@@ -907,15 +820,6 @@ const tabTrigger =
                     :max="0.6"
                     :step="0.01"
                     :default-value="D.roughness"
-                  />
-                  <SliderField
-                    v-model="glass.blur"
-                    label="Blur"
-                    hint="Softens what shows through the glass"
-                    :min="0"
-                    :max="1"
-                    :step="0.01"
-                    :default-value="D.blur"
                   />
                 </template>
                 <template v-else>
@@ -940,14 +844,6 @@ const tabTrigger =
                     :step="0.01"
                     :default-value="0.22"
                   />
-                  <SliderField
-                    v-model="glass.clearcoat"
-                    label="Lacquer"
-                    :min="0"
-                    :max="1"
-                    :step="0.01"
-                    :default-value="0"
-                  />
                 </template>
                 </Reveal>
                 </AnimatePresence>
@@ -957,19 +853,10 @@ const tabTrigger =
                 v-if="isGlass"
                 key="edges"
                 :index="isMobile ? 1 : 2"
-                title="Edges & tint"
+                title="Rim & tint"
                 resettable
                 @reset="pick('tir', 'edgeChroma', 'clearcoat', 'tint', 'attenuationMm')"
               >
-                <SliderField
-                  v-model="glass.tir"
-                  label="Edge darkening"
-                  hint="Rims mirror the room instead of showing through, as thick glass does"
-                  :min="0"
-                  :max="1"
-                  :step="0.01"
-                  :default-value="D.tir"
-                />
                 <SliderField
                   v-model="glass.edgeChroma"
                   label="Rainbow rim"
@@ -978,14 +865,6 @@ const tabTrigger =
                   :max="1"
                   :step="0.01"
                   :default-value="D.edgeChroma"
-                />
-                <SliderField
-                  v-model="glass.clearcoat"
-                  label="Polish"
-                  :min="0"
-                  :max="1"
-                  :step="0.01"
-                  :default-value="D.clearcoat"
                 />
                 <ColorField
                   v-model="glass.tint"
@@ -1008,7 +887,7 @@ const tabTrigger =
 
             <TabsContent
               value="scene"
-              class="mt-0 flex flex-col divide-y divide-hairline"
+              class="panel-in mt-0 flex flex-col divide-y divide-hairline"
             >
               <SectionGroup
                 :index="0"
@@ -1022,7 +901,7 @@ const tabTrigger =
                 >
                   <Label
                     for="stage-floor"
-                    class="text-[12.5px] font-normal text-ink-2"
+                    class="text-[13.5px] font-normal text-ink-2"
                   >
                     Stand on a floor
                   </Label>
@@ -1032,7 +911,7 @@ const tabTrigger =
                     @update:model-value="(v) => (glass.floor = v)"
                   />
                 </div>
-                <p class="text-[11.5px] leading-relaxed text-ink-3">
+                <p class="text-[13px] leading-relaxed text-ink-3">
                   <template v-if="glass.floor">
                     A product set: a film tone curve, a white key casting a soft shadow on the
                     floor, a warm fill and a rim from behind, over a sky and ground ambient. The
@@ -1069,13 +948,24 @@ const tabTrigger =
                 :index="1"
                 title="Light & camera"
                 resettable
-                @reset="pick('envIntensity', 'exposure', 'fov')"
+                @reset="pick('lightAngle', 'envIntensity', 'exposure', 'fov')"
               >
+                <SliderField
+                  v-model="glass.lightAngle"
+                  label="Light angle"
+                  hint="Walks the studio's lights around the object: the reflections and highlights move with them"
+                  :min="-180"
+                  :max="180"
+                  :step="1"
+                  :decimals="0"
+                  unit="°"
+                  :default-value="D.lightAngle"
+                />
                 <SliderField
                   v-model="glass.envIntensity"
                   label="Studio light"
                   hint="Brightness of the softboxes the surface reflects"
-                  :min="0"
+                  :min="0.4"
                   :max="3"
                   :step="0.05"
                   :default-value="D.envIntensity"
@@ -1108,7 +998,7 @@ const tabTrigger =
                 <div class="flex h-6 items-center justify-between pointer-coarse:h-9">
                   <Label
                     for="auto-rotate"
-                    class="text-[12.5px] font-normal text-ink-2"
+                    class="text-[13.5px] font-normal text-ink-2"
                   >
                     Auto rotate
                   </Label>
@@ -1141,13 +1031,11 @@ const tabTrigger =
       </SidebarContent>
     </Tabs>
 
-    <SidebarSeparator class="mx-4 bg-hairline data-[orientation=horizontal]:w-auto max-md:hidden" />
-
     <SidebarFooter class="flex-row items-center justify-between px-4 py-3 max-md:hidden">
       <Button
         variant="ghost"
         size="sm"
-        class="-ml-2 h-7 px-2 text-[12px] text-muted-foreground hover:text-foreground"
+        class="-ml-2 h-7 px-2 text-[13px] text-muted-foreground hover:text-foreground"
         @click="emit('sample')"
       >
         <Icon
@@ -1158,12 +1046,83 @@ const tabTrigger =
       </Button>
       <button
         type="button"
-        class="-mr-1 flex h-7 items-center gap-1.5 rounded-full pr-1 pl-2 text-[11px] text-ink-3 transition-colors duration-150 hover:bg-well hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none pointer-coarse:hidden"
+        class="-mr-1 flex h-7 items-center gap-1.5 rounded-full pr-1 pl-2 text-[13px] text-ink-3 transition-colors duration-150 hover:bg-well hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none pointer-coarse:hidden"
         @click="toggleSidebar"
       >
         Hide panel
-        <kbd class="text-[10px]">⌘B</kbd>
+        <kbd class="text-[12px]">⌘B</kbd>
       </button>
     </SidebarFooter>
   </Sidebar>
 </template>
+
+<style scoped>
+/*
+  Folder tab + slab (desktop). The active tab is a card-coloured shape that runs 1px into the slab
+  below and covers the slab's top hairline there, so the two read as one sheet. Its bottom corners
+  flare out with concave fillets (radial gradients that draw the same hairline on their curve).
+  Under the first or last tab the fillet on the outer side is dropped and the slab's corner squares.
+*/
+@media (min-width: 768px) {
+  .settings-slab {
+    margin: 0 0.5rem;
+    border-radius: 16px;
+    background: var(--card);
+    /* Glass sheet: hairline rim, a 1px white catch along the top edge, a short contact shadow
+       and a long, faint fall-off so the slab lifts off the sidebar without a visible border. */
+    box-shadow:
+      0 0 0 1px var(--hairline),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 1px 2px rgba(38, 40, 46, 0.04),
+      0 4px 12px -6px rgba(38, 40, 46, 0.08),
+      0 24px 48px -28px rgba(38, 40, 46, 0.22);
+    transition: border-radius 180ms var(--ease-out-quint);
+  }
+  .settings-slab[data-edge='start'] { border-top-left-radius: 0; }
+  .settings-slab[data-edge='end'] { border-top-right-radius: 0; }
+}
+.folder-tab {
+  --r: 12px;
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--r) var(--r) 0 0;
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--hairline), inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 -4px 12px -6px rgba(38, 40, 46, 0.1);
+  /* No shadow or hairline along the bottom: that edge is the slab. */
+  clip-path: inset(-20px -20px 0 -20px);
+}
+.folder-tab::before,
+.folder-tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: var(--r);
+  height: var(--r);
+}
+.folder-tab::before {
+  left: calc(var(--r) * -1);
+  background: radial-gradient(circle at 0 0, transparent calc(var(--r) - 0.5px), var(--hairline) calc(var(--r) - 0.5px), var(--hairline) calc(var(--r) + 0.5px), var(--card) calc(var(--r) + 0.5px));
+}
+.folder-tab::after {
+  right: calc(var(--r) * -1);
+  background: radial-gradient(circle at 100% 0, transparent calc(var(--r) - 0.5px), var(--hairline) calc(var(--r) - 0.5px), var(--hairline) calc(var(--r) + 0.5px), var(--card) calc(var(--r) + 0.5px));
+}
+.folder-tab[data-edge='start']::before,
+.folder-tab[data-edge='end']::after {
+  display: none;
+}
+
+/* The new tab's settings fade in where they stand; the old ones leave instantly. */
+.panel-in {
+  animation: panel-in 180ms ease-out both;
+}
+/* Opacity only: the page swaps in place while the tab shape glides, so nothing jostles. */
+@keyframes panel-in {
+  from { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel-in { animation: none; }
+  .settings-slab { transition: none; }
+}
+</style>

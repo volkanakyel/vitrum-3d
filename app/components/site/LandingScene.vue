@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { useEventListener } from '@vueuse/core'
 import type { Showcase } from '~/utils/showcase'
 
-const props = withDefaults(defineProps<{ preset: string; paused?: boolean }>(), { paused: false })
+const props = withDefaults(defineProps<{ preset: string; paused?: boolean; clear?: number }>(), { paused: false, clear: 0 })
 const emit = defineEmits<{ ready: []; unavailable: [] }>()
 const canvas = ref<HTMLCanvasElement | null>(null)
 const ready = ref(false)
@@ -11,14 +12,24 @@ let cleanup = () => {}
 
 watch(() => props.preset, value => scene?.setPreset(value))
 watch(() => props.paused, value => scene?.setPaused(value))
+watch(() => props.clear, value => scene?.setHeroClear(value))
 
+// The objects follow the cursor anywhere over the hero, not only over the canvas: from the
+// headline above, they already turn up toward it. Below the stage they ease back to idle.
+const REACH_ABOVE = 640
 function onPointer(event: PointerEvent) {
   if (!canvas.value || event.pointerType === 'touch') return
   const rect = canvas.value.getBoundingClientRect()
-  scene?.setPointer(event.clientX - rect.left, event.clientY - rect.top)
+  const inside = event.clientY > rect.top - REACH_ABOVE && event.clientY < rect.bottom + 40
+  // Clamped to a little above the canvas so a cursor up on the headline tilts the objects, not flips them.
+  const y = Math.max(-rect.height * 0.3, event.clientY - rect.top)
+  scene?.setPointer(event.clientX - rect.left, y, inside)
 }
 
 function onPointerLeave() { scene?.setPointer(0, 0, false) }
+
+useEventListener(window, 'pointermove', onPointer, { passive: true })
+useEventListener(document, 'pointerleave', onPointerLeave)
 
 onMounted(async () => {
   try {
@@ -26,6 +37,7 @@ onMounted(async () => {
     if (disposed || !canvas.value) return
     scene = new Showcase(canvas.value, { layout: 'hero', narrow: false, preset: props.preset })
     scene.setPaused(props.paused)
+    scene.setHeroClear(props.clear)
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
     const onMotion = () => scene?.setReducedMotion(motion.matches)
     let intersecting = true
@@ -78,24 +90,11 @@ onBeforeUnmount(() => {
     class="absolute inset-0 overflow-hidden"
     :data-ready="ready"
   >
-    <!-- The poster is a square render from the same camera. The camera's field of view is
-         vertical, so the poster fills the stage height and sits centred, with its side edges
-         feathered into the backdrop: when the canvas fades in, nothing jumps. -->
-    <img
-      class="absolute top-0 left-1/2 block aspect-square h-full w-auto max-w-none -translate-x-1/2 [mask-image:linear-gradient(to_right,transparent,#000_14%,#000_86%,transparent)]"
-      src="/images/hero.webp"
-      width="1000"
-      height="1000"
-      alt="GitHub, Spotify, Figma and Framer logos rendered as glass and metal 3D icons"
-      fetchpriority="high"
-    >
     <canvas
       ref="canvas"
       class="absolute inset-0 block size-full object-cover opacity-0 transition-opacity duration-450 ease-[ease] motion-reduce:transition-none"
       :class="{ 'opacity-100': ready }"
       aria-hidden="true"
-      @pointermove="onPointer"
-      @pointerleave="onPointerLeave"
     />
   </div>
 </template>

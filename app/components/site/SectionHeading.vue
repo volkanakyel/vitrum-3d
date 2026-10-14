@@ -4,14 +4,14 @@ defineProps<{ id: string; title: string; text: string }>()
 </script>
 
 <template>
-  <div class="mb-16 grid grid-cols-[minmax(0,1fr)_minmax(0,380px)] items-baseline-last gap-x-16 gap-y-4 max-tab:mb-10 max-tab:grid-cols-1">
+  <div class="mb-14 grid grid-cols-[minmax(0,1fr)_minmax(0,420px)] items-baseline-last gap-x-20 gap-y-5 max-desk:gap-x-12 max-tab:mb-10 max-tab:grid-cols-1">
     <h2
       :id="id"
-      class="heading-section"
+      class="heading-section max-w-[16ch]"
     >
       {{ title }}
     </h2>
-    <p class="text-[15px] leading-[1.55] text-pretty text-ink-2">
+    <p class="text-lead pb-[0.2em]">
       {{ text }}
     </p>
   </div>

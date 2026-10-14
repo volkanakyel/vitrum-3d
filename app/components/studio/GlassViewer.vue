@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useEventListener, useResizeObserver } from '@vueuse/core'
 import { GlassStudio, type GlassParams, type ModelDimensions } from '~/utils/glassScene'
+import type { SamplePose } from '~/utils/samples'
 import type { ReliefData } from '~/utils/relief'
 import type { TraceResult } from '~/utils/trace'
 
@@ -48,6 +49,7 @@ defineExpose({
   /** Recentre and shrink the model for a sheet covering the bottom of the stage. */
   setFocus: (shift: number, scale: number) => studio?.setFocus(shift, scale),
   setView: (v: 'angle' | 'front' | 'side' | 'top') => studio?.setView(v),
+  setPose: (pose: SamplePose | null) => studio?.setPose(pose),
   exportGLB: async (name = 'vitrum') => { if (studio) download(await studio.exportGLB(), `${name}.glb`) },
   exportSTL: (name = 'vitrum') => { if (studio) download(studio.exportSTL(), `${name}.stl`) },
   screenshot: async (name = 'vitrum') => { if (studio) download(await studio.screenshot(), `${name}.png`) },

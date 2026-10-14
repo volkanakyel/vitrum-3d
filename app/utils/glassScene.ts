@@ -13,6 +13,7 @@ import { buildReliefGeometry, reliefScale, type ReliefData } from './relief'
 import { buildSurfaceCanvases, softenCanvas } from './surface'
 import type { ReliefMask } from './relief'
 import type { Crop } from './trace'
+import type { SamplePose } from './samples'
 
 /**
  * A dark studio with a few bright softboxes. High contrast is what makes glass read as glass:
@@ -151,6 +152,10 @@ export class GlassStudio {
   /** Procedural weave bump shared by both Color materials: strength and cells per millimetre. */
   private weaveUniforms = { weaveStrength: { value: 0 }, weaveFreq: { value: 1 } }
   private view: ViewName = 'angle'
+  /** A sample's own pose: a display-only spin in the object's plane and its Angle view. */
+  private pose: { spin: number; dir: THREE.Vector3 } | null = null
+  /** The next fit snaps to the named view even though the camera is already placed. */
+  private snapNext = false
   /** How long the last geometry rebuild took; decides whether size changes ease or snap. */
   private lastRebuildMs = 0
   private static readonly GEOMETRY_KEYS = ['widthMm', 'depthMm', 'bevelMm', 'reliefMm', 'layerMm'] as const
@@ -522,6 +527,8 @@ export class GlassStudio {
     ;(this.scene.background as THREE.Color).set(p.background)
     this.paintBackdrop()
     this.renderer.toneMappingExposure = p.exposure
+    this.applyEnvironmentLight()
+    if (p.lightAngle !== this.aimedAngle) this.aimLights()
     this.controls.autoRotate = p.autoRotate
     this.controls.autoRotateSpeed = p.rotateSpeed
     if (p.fov !== this.camera.fov) {
@@ -623,9 +630,24 @@ export class GlassStudio {
     this.key.intensity = 2.2
     this.rim.color.set(product ? 0xffffff : 0xdfe9ff)
     this.rim.intensity = product ? 0.5 : 1.4
-    this.rim.position.copy(rig.rimDir)
-    this.key.position.copy(rig.keyDir).multiplyScalar(this.keyDistance).add(this.modelCentre)
+    this.aimLights()
   }
+
+  /**
+   * Point the lights from the rig, turned about the vertical by `lightAngle`. The environment the
+   * surfaces reflect turns with them (see `apply`), so the softboxes, the hard key and its shadow
+   * all move together, the way walking a light around a real set does.
+   */
+  private aimedAngle = NaN
+  private aimLights() {
+    const rig = this.params.floor ? GlassStudio.RIGS.floor : GlassStudio.RIGS.wall
+    const a = THREE.MathUtils.degToRad(this.params.lightAngle)
+    this.aimedAngle = this.params.lightAngle
+    this.key.position.copy(rig.keyDir).applyAxisAngle(GlassStudio.UP, a).multiplyScalar(this.keyDistance).add(this.modelCentre)
+    this.rim.position.copy(rig.rimDir).applyAxisAngle(GlassStudio.UP, a)
+    this.fill.position.copy(GlassStudio.RIGS.floor.fillDir).applyAxisAngle(GlassStudio.UP, a)
+  }
+  private static readonly UP = new THREE.Vector3(0, 1, 0)
 
   /** How far out along its direction the key light sits; set per model in `placeFloor`. */
   private keyDistance = 1
@@ -640,7 +662,18 @@ export class GlassStudio {
     if (product && !bare && !this.envRoom) this.envRoom = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture
     const env = bare ? null : product ? this.envRoom : this.envStudio
     if (this.scene.environment !== env) this.scene.environment = env
-    this.scene.environmentIntensity = product ? 0.35 : 1
+    this.applyEnvironmentLight()
+  }
+
+  /**
+   * Studio light. three ignores a material's `envMapIntensity` when the map comes from
+   * `scene.environment`, so the slider drives the scene's intensity, scaled so the default (2.2)
+   * gives the stage's tuned base.
+   */
+  private applyEnvironmentLight() {
+    const base = this.stage === 'floor' ? 0.35 : 1
+    this.scene.environmentIntensity = base * (this.params.envIntensity / DEFAULT_GLASS_PARAMS.envIntensity)
+    this.scene.environmentRotation.y = THREE.MathUtils.degToRad(this.params.lightAngle)
   }
 
   /**
@@ -710,8 +743,7 @@ export class GlassStudio {
     box.getCenter(this.modelCentre)
     if (this.key.target.parent !== this.scene) this.scene.add(this.key.target)
     this.key.target.position.copy(this.modelCentre)
-    const rig = this.params.floor ? GlassStudio.RIGS.floor : GlassStudio.RIGS.wall
-    this.key.position.copy(rig.keyDir).multiplyScalar(this.keyDistance).add(this.modelCentre)
+    this.aimLights()
     const cam = this.key.shadow.camera
     cam.left = cam.bottom = -r * 1.7
     cam.right = cam.top = r * 1.7
@@ -965,7 +997,9 @@ export class GlassStudio {
     if (!mesh) return null
     const geo = mesh.geometry
     if (!geo.boundingBox) geo.computeBoundingBox()
-    return geo.boundingBox
+    if (!mesh.rotation.z) return geo.boundingBox
+    // A posed mesh is spun about the origin: fit and floor its turned bounds.
+    return geo.boundingBox!.clone().applyMatrix4(new THREE.Matrix4().makeRotationZ(mesh.rotation.z))
   }
 
   getDimensions(): ModelDimensions | null {
@@ -1003,6 +1037,7 @@ export class GlassStudio {
     const merged = built.geometry
     const { bw, bh, scale, cx, cy } = built.frame
     this.mesh = new THREE.Mesh(merged, this.materialFor(p.finish))
+    this.mesh.rotation.z = this.pose?.spin ?? 0
     this.mesh.name = active === 'stack' ? 'stack' : 'glass-logo'
     this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: p.bevelMm, bevelSegments: p.bevelSegments, reliefMm: NaN, layerMm: p.layerMm, geometry: active, relief: null }
     this.scene.add(this.mesh)
@@ -1037,6 +1072,7 @@ export class GlassStudio {
     geo.translate(-centre.x, -centre.y, -centre.z)
     geo.computeBoundingBox()
     this.mesh = new THREE.Mesh(geo, this.materialFor(p.finish))
+    this.mesh.rotation.z = this.pose?.spin ?? 0
     this.mesh.name = r.mirror ? 'inflate' : 'relief'
     this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: NaN, bevelSegments: NaN, reliefMm: p.reliefMm, layerMm: NaN, geometry: r.mirror ? 'inflate' : 'relief', relief: r }
     this.scene.add(this.mesh)
@@ -1102,6 +1138,19 @@ export class GlassStudio {
   }
 
   /**
+   * Show the next object in a sample's pose (or none). Set before its trace lands: the spin is
+   * a transform on the shown mesh only, so exports keep the upright geometry.
+   */
+  setPose(pose: SamplePose | null) {
+    const spin = pose ? THREE.MathUtils.degToRad(pose.spinDeg) : 0
+    this.pose = pose ? { spin, dir: new THREE.Vector3(...pose.view).normalize() } : null
+    if (this.mesh) this.mesh.rotation.z = spin
+    this.shadowPlane.rotation.z = spin
+    this.view = 'angle'
+    this.snapNext = true
+  }
+
+  /**
    * On a wall a logo is shot almost square on; on a floor an object gets the reference product
    * shot's camera (`1.15, 0.72, 2.05` at a target `0.45` up an `0.8` m chair): three-quarter,
    * a little above, from whichever side the photo was taken on, so the faces it painted best face
@@ -1109,12 +1158,12 @@ export class GlassStudio {
    */
   private viewDir(): THREE.Vector3 {
     const dirs = {
-      angle: this.params.floor ? [1.15, 0.27, 2.05] : [-0.32, 0.14, 1],
+      angle: this.params.floor ? [1.15, 0.27, 2.05] : this.pose ? this.pose.dir.toArray() : [-0.32, 0.14, 1],
       front: [0, this.params.floor ? 0.08 : 0, 1],
       side: [1, 0.08, 0.25],
       top: [0, 1, 0.001],
     } as const
-    const d = dirs[this.view]
+    const d: readonly number[] = dirs[this.view]
     return new THREE.Vector3(d[0], d[1], d[2]).normalize()
   }
 
@@ -1135,7 +1184,8 @@ export class GlassStudio {
     const eye = this.camera.position.clone().sub(this.controls.target)
     // No camera yet (the studio starts at the target): place it, do not glide.
     const placed = eye.lengthSq() >= 1
-    const dir = !named && placed ? eye.normalize() : this.viewDir()
+    const dir = !named && !this.snapNext && placed ? eye.normalize() : this.viewDir()
+    this.snapNext = false
     const goal = target.clone().add(dir.multiplyScalar(dist))
     this.zoomGoal = 0
     if (!placed) this.camera.position.copy(goal)

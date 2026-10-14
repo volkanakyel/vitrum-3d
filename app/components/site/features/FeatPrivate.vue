@@ -54,7 +54,7 @@ const spotify = logoById('spotify')
           />
         </svg>
         <!-- Padlock badge, ringed in the stage colour so it reads as cut into the tile's corner. -->
-        <span class="absolute -right-[9px] -bottom-[9px] grid size-[26px] place-items-center rounded-full bg-ink shadow-[0_0_0_3px_#eff1f4,0_6px_12px_-6px_rgba(38,40,46,.5)] motion-safe:scale-60 motion-safe:opacity-0 motion-safe:group-data-play:animate-[to-rest_360ms_900ms_var(--ease-pop)_forwards]">
+        <span class="absolute -right-[9px] -bottom-[9px] grid size-[26px] place-items-center rounded-full bg-primary shadow-[0_0_0_3px_#eff1f4,0_6px_12px_-6px_rgba(38,40,46,.5)] motion-safe:scale-60 motion-safe:opacity-0 motion-safe:group-data-play:animate-[to-rest_360ms_900ms_var(--ease-pop)_forwards]">
           <svg
             class="size-[14px] overflow-visible"
             viewBox="0 0 14 14"
@@ -81,7 +81,7 @@ const spotify = logoById('spotify')
 
     <p class="flex h-7 items-center gap-2 rounded-full bg-white/85 pr-3 pl-2.5 text-[12px] text-ink shadow-raise motion-safe:translate-y-1 motion-safe:opacity-0 motion-safe:group-data-play:animate-[to-rest_320ms_1260ms_var(--ease-out-quint)_forwards]">
       <LiveDot :on="seen" />
-      <span><span class="font-mono tabular-nums">0</span> bytes uploaded</span>
+      <span><span class="font-medium tabular-nums">0</span> bytes uploaded</span>
     </p>
   </div>
 </template>

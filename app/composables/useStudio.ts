@@ -3,7 +3,7 @@ import type { ImportPhase } from '~/components/studio/StageLoader.vue'
 import type { ModelDimensions, ViewName } from '~/utils/glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams, type Geometry } from '~/utils/presets'
 import { DEFAULT_RELIEF_OPTIONS, reliefAspect, type ReliefData, type ReliefOptions } from '~/utils/relief'
-import { LOGO_SAMPLE_IDS, SAMPLES, sampleFile } from '~/utils/samples'
+import { LOGO_SAMPLE_IDS, SAMPLES, sampleFile, type SamplePose } from '~/utils/samples'
 import { DEFAULT_TRACE_OPTIONS, loadImage, type TraceOptions, type TraceResult } from '~/utils/trace'
 import { Tracer } from '~/utils/tracer'
 
@@ -16,7 +16,7 @@ const OPEN_COUNTERS = new Set(['camera', 'chat', 'spark', 'heart'])
 function linkedSampleShape(id: string): Pick<GlassParams, 'geometry' | 'widthMm' | 'depthMm' | 'bevelMm'> {
   const geometry: Geometry = id === 'play' ? 'stack' : 'extrude'
   if (LOGO_SAMPLE_IDS.has(id)) return { geometry, widthMm: 100, depthMm: 14, bevelMm: 1 }
-  const bevelMm = id === 'vitrum' ? 0.4 : id === 'star' || id === 'bolt' ? 1.2 : id === 'spark' ? 2 : 3.8
+  const bevelMm = id === 'star' || id === 'bolt' ? 1.2 : id === 'spark' ? 2 : 3.8
   return { geometry, widthMm: 100, depthMm: OPEN_COUNTERS.has(id) ? 16 : 20, bevelMm }
 }
 
@@ -30,6 +30,7 @@ export interface ViewerHandle {
   frame: () => void
   setFocus: (shift: number, scale: number) => void
   setView: (v: ViewName) => void
+  setPose: (pose: SamplePose | null) => void
   snap: (p: Partial<GlassParams>, applyNow?: boolean) => void
 }
 
@@ -86,7 +87,9 @@ export function useStudio() {
     c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
     return c.toDataURL('image/png')
   }
-  const nextFrame = () => new Promise<void>(r => requestAnimationFrame(() => r()))
+  // Two frames: the first rAF fires before paint, so heavy work started there would block the
+  // very frame that shows the new phase.
+  const nextFrame = () => new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())))
   const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
   /** Drop everything the last import built: the trace, the relief. */
@@ -96,7 +99,7 @@ export function useStudio() {
     dims.value = null
   }
 
-  async function useFile(file: File) {
+  async function useFile(file: File, pose: SamplePose | null = null) {
     error.value = ''
     if (!file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.svg')) {
       error.value = 'Use a PNG, JPG, WebP or SVG.'
@@ -106,6 +109,9 @@ export function useStudio() {
     importing.value = { phase: 'read', preview: '', name: file.name }
     busy.value = true
     reset()
+    // Before the trace lands, so the first frame already uses the pose's angle.
+    view.value = 'angle'
+    viewer.value?.setPose(pose)
     try {
       const img = await loadImage(file)
       importing.value.preview = thumbnail(img)
@@ -121,6 +127,7 @@ export function useStudio() {
       if (glass.geometry === 'stack') { clearTimeout(traceTimer); await runTrace({ fitBevel: true }) }
       await sleep(Math.max(0, hold - (performance.now() - traced)))
       importing.value.phase = 'build'
+      await nextFrame()
       if (glass.geometry === 'inflate' || glass.geometry === 'relief') await runRelief()
       await sleep(Math.max(0, IMPORT_MIN_MS - (performance.now() - started)))
     } catch (e) {
@@ -265,7 +272,7 @@ export function useStudio() {
   /** Open a built-in sample mark (drawn in code, never downloaded). */
   async function loadSample(id = 'vitrum'): Promise<void> {
     const sample = SAMPLES.find(s => s.id === id) ?? SAMPLES[0]!
-    await useFile(await sampleFile(sample))
+    await useFile(await sampleFile(sample), sample.pose ?? null)
   }
 
   /**

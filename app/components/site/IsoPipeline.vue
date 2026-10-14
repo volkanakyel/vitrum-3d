@@ -3,7 +3,7 @@ import { motion } from 'motion-v'
 
 /**
  * The pipeline as an exploded isometric drawing: four plates, one per stage, from the flat file at
- * the top to the finished icon at the bottom. Fine grey linework; the stage that is on glows bronze.
+ * the top to the finished icon at the bottom. Fine grey linework; the stage that is on glows azure.
  * Steps advance on their own while the figure is on screen and stop for a while after someone
  * points at one.
  */
@@ -147,11 +147,11 @@ const glass = `iso-glass-${uid}`
     class="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-2 rounded-window bg-slab p-2 shadow-pane max-desk:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] max-tab:grid-cols-1"
   >
     <div
-      class="lightbox iso relative grid place-items-center overflow-hidden rounded-pane bg-[radial-gradient(90%_70%_at_50%_0%,#ffffff_0%,transparent_70%),linear-gradient(180deg,#f3f4f7,#eceef2)] px-6 py-8 shadow-[inset_0_0_0_1px_rgba(38,40,46,.05),inset_0_1px_0_#fff] max-tab:px-3 max-tab:py-5"
+      class="lightbox iso relative grid place-items-center overflow-hidden rounded-pane bg-[radial-gradient(90%_70%_at_50%_0%,var(--graphite-0)_0%,transparent_70%),linear-gradient(180deg,var(--graphite-50),var(--graphite-100))] px-8 py-10 shadow-[inset_0_0_0_1px_var(--hairline),inset_0_1px_0_var(--graphite-0)] max-tab:px-3 max-tab:py-6"
       :data-running="running"
     >
       <svg
-        class="block h-auto w-full max-w-[460px]"
+        class="block h-auto max-h-[max(300px,calc(100svh-400px))] w-full max-w-[460px] max-tab:max-h-none"
         viewBox="0 0 400 500"
         aria-hidden="true"
       >
@@ -174,11 +174,11 @@ const glass = `iso-glass-${uid}`
           >
             <stop
               offset="0"
-              stop-color="#fbfaf8"
+              stop-color="var(--graphite-25)"
             />
             <stop
               offset="1"
-              stop-color="#e9e0d3"
+              stop-color="var(--azure-100)"
             />
           </linearGradient>
         </defs>
@@ -215,7 +215,7 @@ const glass = `iso-glass-${uid}`
             />
           </g>
 
-          <!-- Linework once in grey, once again blurred in bronze as the glow. -->
+          <!-- Linework once in grey, once again blurred in azure as the glow. -->
           <g
             v-for="pass in ['glow', 'line']"
             :key="pass"
@@ -262,7 +262,7 @@ const glass = `iso-glass-${uid}`
               :key="`side-${k}`"
               class="iso-face"
               :points="f.points"
-              :style="{ fill: `color-mix(in srgb, #e6dccd ${Math.round(30 + f.shade * 65)}%, #a99173)` }"
+              :style="{ fill: `color-mix(in srgb, var(--azure-100) ${Math.round(30 + f.shade * 65)}%, var(--azure-300))` }"
             />
             <polygon
               v-for="(p, k) in FINISH.tops"
@@ -319,14 +319,14 @@ const glass = `iso-glass-${uid}`
       </svg>
     </div>
 
-    <ol class="flex flex-col justify-center gap-1 px-6 py-8 max-desk:px-3 max-tab:px-1 max-tab:pt-2 max-tab:pb-1">
+    <ol class="flex flex-col justify-center gap-1 px-10 py-6 max-desk:px-4 [@media(max-height:780px)]:py-3 max-tab:px-1 max-tab:pt-2 max-tab:pb-1">
       <li
         v-for="(step, i) in STEPS"
         :key="step.title"
       >
         <button
           type="button"
-          class="relative flex w-full items-start gap-4 rounded-[18px] p-4 text-left transition-[scale] duration-[380ms] ease-spring focus-ring [--ring-offset:2px] active:scale-[.985] active:duration-100 motion-reduce:transition-none"
+          class="relative flex w-full items-start gap-4 rounded-[18px] px-5 py-[14px] text-left [@media(max-height:780px)]:py-2.5 transition-[scale] duration-[380ms] ease-spring focus-ring [--ring-offset:2px] active:scale-[.985] active:duration-100 motion-reduce:transition-none"
           :aria-pressed="active === i"
           @click="pick(i)"
           @focus="pick(i)"
@@ -341,26 +341,26 @@ const glass = `iso-glass-${uid}`
           />
           <!-- The number doubles as the timer: while the steps advance on their own, a hairline arc
                closes around it, and the next step lights when the ring is full. -->
-          <span class="relative grid size-6 shrink-0 place-items-center">
+          <span class="relative grid size-7 shrink-0 place-items-center">
             <svg
               v-if="active === i"
-              class="pointer-events-none absolute -inset-[5px] size-[34px] -rotate-90"
-              viewBox="0 0 34 34"
+              class="pointer-events-none absolute -inset-[5px] size-[38px] -rotate-90"
+              viewBox="0 0 38 38"
               aria-hidden="true"
             >
               <circle
-                cx="17"
-                cy="17"
-                r="16"
+                cx="19"
+                cy="19"
+                r="18"
                 class="fill-none stroke-(--lamp)/20"
                 stroke-width="1.25"
               />
               <circle
                 v-if="running && !picked"
                 :key="active"
-                cx="17"
-                cy="17"
-                r="16"
+                cx="19"
+                cy="19"
+                r="18"
                 pathLength="1"
                 class="fill-none stroke-(--lamp) [stroke-dasharray:1] [stroke-linecap:round] animate-[iso-ring_var(--interval)_linear_both]"
                 stroke-width="1.25"
@@ -368,13 +368,13 @@ const glass = `iso-glass-${uid}`
               />
             </svg>
             <span
-              class="grid size-6 place-items-center rounded-full text-[11.5px] font-medium tabular-nums transition-[background-color,color,box-shadow] duration-300"
+              class="grid size-7 place-items-center rounded-full text-[14px] font-medium tabular-nums transition-[background-color,color,box-shadow] duration-300"
               :class="active === i ? 'bg-(--lamp) text-white' : 'text-ink-3 shadow-[0_0_0_1px_var(--hairline-strong)]'"
             >{{ i + 1 }}</span>
           </span>
           <span class="relative flex min-w-0 flex-col gap-1">
-            <span class="font-(family-name:--font-display) text-[15px] leading-[1.3] font-medium tracking-[-0.02em] text-ink">{{ step.title }}</span>
-            <span class="max-w-[42ch] text-[13px] leading-[1.55] text-pretty text-ink-2">{{ step.text }}</span>
+            <span class="font-(family-name:--font-display) text-[18px] leading-[1.3] font-medium tracking-[-0.02em] text-ink">{{ step.title }}</span>
+            <span class="max-w-[40ch] text-[16px] leading-[1.55] text-pretty text-ink-2">{{ step.text }}</span>
           </span>
         </button>
       </li>
@@ -384,8 +384,8 @@ const glass = `iso-glass-${uid}`
 
 <style scoped>
 .iso {
-  --line-off: rgba(38, 40, 46, 0.22);
-  --line-done: rgba(38, 40, 46, 0.46);
+  --line-off: var(--graphite-300);
+  --line-done: var(--graphite-500);
 }
 .iso-layer {
   --line: var(--line-off);
@@ -418,12 +418,12 @@ const glass = `iso-glass-${uid}`
   fill: rgba(255, 255, 255, 0.62);
   transition: fill 360ms ease;
 }
-.iso-plate-side { fill: rgba(222, 226, 234, 0.7); }
+.iso-plate-side { fill: color-mix(in srgb, var(--graphite-200) 70%, transparent); }
 .iso-layer[data-state='on'] .iso-plate-top { fill: color-mix(in srgb, var(--lamp) 7%, rgba(255, 255, 255, 0.8)); }
 
 .iso-flat { fill: var(--ink); opacity: 0.8; }
 .iso-face {
-  stroke: rgba(90, 72, 48, 0.32);
+  stroke: color-mix(in srgb, var(--azure-700) 32%, transparent);
   stroke-width: 0.7;
   stroke-linejoin: round;
 }
@@ -455,10 +455,10 @@ const glass = `iso-glass-${uid}`
   transition: fill 360ms ease, stroke 360ms ease;
 }
 .iso-marker text {
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 500;
   text-anchor: middle;
-  fill: rgba(38, 40, 46, 0.55);
+  fill: var(--graphite-500);
   font-feature-settings: 'tnum';
   transition: fill 360ms ease;
 }
@@ -467,7 +467,7 @@ const glass = `iso-glass-${uid}`
 
 .iso-guide path {
   fill: none;
-  stroke: rgba(38, 40, 46, 0.18);
+  stroke: var(--graphite-300);
   stroke-width: 0.8;
   stroke-dasharray: 1.5 3;
   transition: stroke 360ms ease;

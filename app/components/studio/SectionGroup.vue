@@ -3,33 +3,31 @@ import { motion } from 'motion-v'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-const props = withDefaults(
+withDefaults(
   defineProps<{ title: string; hint?: string; resettable?: boolean; index?: number }>(),
   { index: 0 },
 )
 const emit = defineEmits<{ reset: [] }>()
-// Two-digit mono index: a plate number, the quiet detail that makes the panel feel engineered.
-const number = computed(() => String(props.index + 1).padStart(2, '0'))
+// Rise in only when appearing inside an open tab; a tab mounting its page shows sections as they are.
+const appear = inject<Ref<boolean>>('sectionAppear', ref(true)).value
 </script>
 
 <template>
-  <!-- Enters with a short rise; leaves with a quick fade. `layout` lets neighbours slide into
-       the gap a leaving section opens instead of jumping. -->
+  <!-- Enters with a short rise; leaves with a quick fade. `layout="position"` lets neighbours
+       slide into a gap instead of jumping, without ever scaling a section: a full layout animation
+       would stretch the controls while a description changes height. -->
   <motion.section
-    layout
-    class="group/section flex flex-col gap-5 py-6 first:pt-1 last:pb-2"
-    :initial="{ opacity: 0, y: 10 }"
+    layout="position"
+    class="group/section flex flex-col gap-6 py-7 first:pt-1 last:pb-3"
+    :initial="appear ? { opacity: 0, y: 8 } : false"
     :animate="{ opacity: 1, y: 0 }"
     :exit="{ opacity: 0, transition: { duration: 0.12, ease: 'easeOut' } }"
-    :transition="{ type: 'spring', stiffness: 380, damping: 32, delay: index * 0.05 }"
+    :transition="{ type: 'spring', duration: 0.35, bounce: 0 }"
   >
-    <header class="flex h-6 items-center justify-between">
-      <span class="flex items-baseline gap-2">
-        <span class="index text-ink-3">{{ number }}</span>
-        <span class="text-[12px] font-medium tracking-[-0.005em] text-foreground">
-          {{ title }}
-        </span>
-      </span>
+    <header class="-mb-1 flex h-6 items-center justify-between">
+      <h3 class="text-[14px] font-medium tracking-[-0.01em] text-foreground">
+        {{ title }}
+      </h3>
       <div class="flex items-center gap-1.5">
         <Tooltip v-if="resettable">
           <TooltipTrigger as-child>
@@ -37,7 +35,7 @@ const number = computed(() => String(props.index + 1).padStart(2, '0'))
               variant="ghost"
               size="icon-xs"
               :class="[
-                'text-muted-foreground/70 opacity-0 transition-opacity group-hover/section:opacity-100 focus-visible:opacity-100',
+                'text-muted-foreground opacity-0 transition-opacity group-hover/section:opacity-100 focus-visible:opacity-100',
                 hint ? '' : '-mr-1.5',
               ]"
               aria-label="Reset section"
@@ -53,7 +51,7 @@ const number = computed(() => String(props.index + 1).padStart(2, '0'))
         </Tooltip>
         <span
           v-if="hint"
-          class="text-[11px] text-ink-3 tabular-nums"
+          class="text-[13px] text-ink-3 tabular-nums"
         >
           {{ hint }}
         </span>

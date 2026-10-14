@@ -25,7 +25,6 @@ export default defineNuxtConfig({
     defaults: { subsets: ['latin'], styles: ['normal'] },
     families: [
       { name: 'Geist', provider: 'google', weights: ['300 700'], preload: true },
-      { name: 'IBM Plex Mono', provider: 'google', weights: [400, 500] },
     ],
   },
   shadcn: { prefix: '', componentDir: './app/components/ui' },

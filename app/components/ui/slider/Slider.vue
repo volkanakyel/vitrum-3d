@@ -10,10 +10,12 @@ const props = defineProps<SliderRootProps & {
   trackClass?: HTMLAttributes["class"]
   rangeClass?: HTMLAttributes["class"]
   thumbClass?: HTMLAttributes["class"]
+  /** Accessible name for the thumb(s); the slider role lives on the thumb, not the root. */
+  thumbLabel?: string
 }>()
 const emits = defineEmits<SliderRootEmits>()
 
-const delegatedProps = reactiveOmit(props, "class", "trackClass", "rangeClass", "thumbClass")
+const delegatedProps = reactiveOmit(props, "class", "trackClass", "rangeClass", "thumbClass", "thumbLabel")
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits)
 </script>
@@ -42,6 +44,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
       v-for="(_, key) in modelValue"
       :key="key"
       data-slot="slider-thumb"
+      :aria-label="thumbLabel"
       :class="cn('bg-white border-primary ring-ring/50 block size-4 shrink-0 rounded-full border shadow-sm transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50', thumbClass)"
     />
   </SliderRoot>

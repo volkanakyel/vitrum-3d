@@ -15,6 +15,12 @@ const active = ref('')
 const hovered = ref('')
 const sections = ref<HTMLElement[]>([])
 const lit = computed(() => hovered.value || active.value)
+const header = ref<HTMLElement | null>(null)
+const reduced = useReducedMotion()
+/* Springs collapse to an instant change when the visitor asks for less motion. */
+const pillTransition = computed(() => (reduced.value ? { duration: 0 } : { type: 'spring' as const, stiffness: 520, damping: 40 }))
+const menuTransition = computed(() => (reduced.value ? { duration: 0 } : { type: 'spring' as const, stiffness: 420, damping: 38 }))
+const menuExit = computed(() => (reduced.value ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' as const }))
 
 function onScroll() {
   scrolled.value = window.scrollY > 24
@@ -30,6 +36,14 @@ function onEscape() {
 }
 
 useEventListener('scroll', onScroll, { passive: true })
+// The menu is a disclosure, not a dialog: it closes when the pointer goes elsewhere or the layout
+// grows past the phone breakpoint (where the menu no longer exists).
+useEventListener('pointerdown', (e: PointerEvent) => {
+  if (menuOpen.value && !header.value?.contains(e.target as Node)) closeMenu()
+})
+useEventListener('resize', () => {
+  if (menuOpen.value && window.innerWidth > 800) closeMenu()
+}, { passive: true })
 useIntersectionObserver(
   sections,
   (entries) => {
@@ -48,6 +62,7 @@ const focus = 'focus-ring [--ring-offset:4px]'
 <template>
   <!-- Sits flat on the bench at the top; once the page moves it becomes a frosted slab. -->
   <header
+    ref="header"
     class="frame-nav fixed inset-x-0 top-[max(12px,env(safe-area-inset-top))] z-40 rounded-[22px] transition-[background-color,box-shadow,backdrop-filter] duration-300 ease-[ease] motion-reduce:transition-none max-tab:rounded-[20px]"
     :class="
       scrolled || menuOpen
@@ -58,7 +73,7 @@ const focus = 'focus-ring [--ring-offset:4px]'
     @keydown.esc="onEscape"
   >
     <a
-      class="absolute -top-[90px] left-5 rounded-[8px] bg-ink p-3 text-shell focus:top-2.5 focus:z-50"
+      class="absolute -top-[90px] left-3 flex h-10 items-center rounded-full bg-primary px-4 text-[15px] font-medium text-primary-foreground shadow-raise-dark focus:top-2.5 focus:z-50"
       :class="focus"
       href="#main-content"
     >
@@ -90,7 +105,7 @@ const focus = 'focus-ring [--ring-offset:4px]'
           v-for="link in links"
           :key="link.id"
           :href="`#${link.id}`"
-          class="relative flex min-h-[34px] items-center rounded-full px-3.5 text-[13px] transition-colors duration-150 ease-[ease] motion-reduce:transition-none"
+          class="relative flex min-h-[38px] items-center rounded-full px-4 text-[15px] transition-colors duration-150 ease-[ease] motion-reduce:transition-none"
           :class="[focus, lit === link.id ? 'text-ink' : 'text-ink-2']"
           :aria-current="active === link.id ? 'location' : undefined"
           @pointerenter="hovered = link.id"
@@ -101,7 +116,7 @@ const focus = 'focus-ring [--ring-offset:4px]'
             v-if="lit === link.id"
             layout-id="nav-pill"
             class="absolute inset-0 rounded-full bg-well-strong"
-            :transition="{ type: 'spring', stiffness: 520, damping: 40 }"
+            :transition="pillTransition"
             aria-hidden="true"
           />
           <span class="relative">{{ link.label }}</span>
@@ -109,28 +124,23 @@ const focus = 'focus-ring [--ring-offset:4px]'
       </div>
 
       <div class="flex items-center gap-2 justify-self-end">
-        <span
-          class="mr-1 flex items-center gap-2 text-[12px] text-ink-3 max-desk:hidden"
-        >
-          <LiveDot on />
-          Runs on your device
-        </span>
         <SiteButton
           to="/studio"
           size="md"
           icon="arrow-up-right"
           tile
-          class="max-3xs:gap-[9px] max-3xs:pl-3 max-3xs:text-[11px]"
+          class="max-3xs:gap-[9px] max-3xs:pl-3 max-3xs:text-[14px]"
         >
           Open studio
         </SiteButton>
         <button
           ref="menuToggle"
-          class="hidden size-10 items-center justify-center rounded-full bg-surface text-ink shadow-raise transition-[scale] duration-300 ease-spring active:scale-[.94] active:duration-100 max-tab:flex"
+          type="button"
+          class="hidden size-11 items-center justify-center rounded-full bg-surface text-ink shadow-raise transition-[scale] duration-300 ease-spring active:scale-[.94] active:duration-100 max-tab:flex"
           :class="focus"
           :aria-expanded="menuOpen"
           aria-controls="mobile-navigation"
-          :aria-label="menuOpen ? 'Close menu' : 'Open menu'"
+          aria-label="Menu"
           @click="menuOpen = !menuOpen"
         >
           <Icon
@@ -140,38 +150,42 @@ const focus = 'focus-ring [--ring-offset:4px]'
         </button>
       </div>
     </nav>
-    <AnimatePresence>
-      <motion.div
-        v-if="menuOpen"
-        id="mobile-navigation"
-        key="menu"
-        class="hidden overflow-hidden max-tab:block"
-        :initial="{ opacity: 0, height: 0 }"
-        :animate="{ opacity: 1, height: 'auto' }"
-        :exit="{ opacity: 0, height: 0, transition: { duration: 0.18, ease: 'easeOut' } }"
-        :transition="{ type: 'spring', stiffness: 420, damping: 38 }"
-      >
-        <div class="grid border-t border-hairline px-[18px] pt-[9px] pb-[17px]">
-          <a
-            v-for="link in links"
-            :key="link.id"
-            :href="`#${link.id}`"
-            class="flex justify-between py-[15px] text-[15px] text-ink"
-            :class="focus"
-            @click="closeMenu"
-          >
-            {{ link.label }}
-            <Icon
-              name="arrow-up-right"
-              :size="16"
-              class="text-ink-3"
-            />
-          </a>
-          <p class="flex items-center gap-2 pt-2.5 text-[12px] text-ink-3">
-            <LiveDot on /> Free, and it runs on your device.
-          </p>
-        </div>
-      </motion.div>
-    </AnimatePresence>
+    <!-- Always in the DOM so the toggle's aria-controls points at something; the list mounts on open. -->
+    <div
+      id="mobile-navigation"
+      class="hidden max-tab:block"
+    >
+      <AnimatePresence>
+        <motion.nav
+          v-if="menuOpen"
+          key="menu"
+          class="overflow-hidden"
+          aria-label="Menu"
+          :initial="{ opacity: 0, height: 0 }"
+          :animate="{ opacity: 1, height: 'auto' }"
+          :exit="{ opacity: 0, height: 0, transition: menuExit }"
+          :transition="menuTransition"
+        >
+          <div class="grid border-t border-hairline px-[18px] pt-[9px] pb-[17px]">
+            <a
+              v-for="link in links"
+              :key="link.id"
+              :href="`#${link.id}`"
+              class="flex min-h-12 items-center justify-between rounded-[10px] text-[17px] text-ink"
+              :class="focus"
+              :aria-current="active === link.id ? 'location' : undefined"
+              @click="closeMenu"
+            >
+              {{ link.label }}
+              <Icon
+                name="arrow-up-right"
+                :size="16"
+                class="text-ink-3"
+              />
+            </a>
+          </div>
+        </motion.nav>
+      </AnimatePresence>
+    </div>
   </header>
 </template>

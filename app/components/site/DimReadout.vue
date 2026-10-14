@@ -7,7 +7,7 @@ defineProps<{ values: readonly (readonly [label: string, value: string])[] }>()
 </script>
 
 <template>
-  <div class="index flex h-[30px] items-center rounded-full px-2 text-[11.5px] text-ink shadow-raise *:flex *:items-baseline *:gap-[5px] *:px-[7px] [&>*+*]:border-l [&>*+*]:border-hairline">
+  <div class="index flex h-[30px] items-center rounded-full px-2 text-[12px] text-ink shadow-raise *:flex *:items-baseline *:gap-[5px] *:px-[7px] [&>*+*]:border-l [&>*+*]:border-hairline">
     <span
       v-for="[label, value] in values"
       :key="label"

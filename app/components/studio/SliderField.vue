@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Input } from '@/components/ui/input'
 import { AnimatePresence, motion } from 'motion-v'
 import { Slider } from '@/components/ui/slider'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -89,7 +90,9 @@ function set(v: number) {
 function focus(e: FocusEvent) {
   editing.value = true
   draft.value = fmt(props.modelValue)
-  nextTick(() => (e.target as HTMLInputElement).select())
+  // The span is swapped for the field on this tick; select the field's text once it exists.
+  const label = (e.target as HTMLElement).closest('label')
+  nextTick(() => label?.querySelector('input')?.select())
 }
 function commit(e: Event) {
   editing.value = false
@@ -113,23 +116,24 @@ function onKey(e: KeyboardEvent) {
 
 // Hairline track, filled range, small ringed thumb that grows on hover / press and pops on a snap.
 const thumb = [
-  'size-3.5 rounded-full border-0 bg-card transition-[scale,box-shadow] duration-[250ms,150ms] ease-[var(--ease-spring),ease] motion-reduce:transition-none pointer-coarse:size-4',
-  'shadow-[0_0_0_1px_var(--hairline-strong),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
-  'hover:scale-115 hover:ring-0 hover:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_var(--well),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
-  'focus-visible:scale-115 focus-visible:ring-0 focus-visible:shadow-[0_0_0_1px_var(--hairline-strong),0_0_0_5px_var(--lamp-glow),0_1px_2px_rgba(17,18,20,.16),inset_0_1px_0_#fff]',
+  'size-4 rounded-full border-0 bg-card transition-[scale,box-shadow] duration-[250ms,150ms] ease-[var(--ease-spring),ease] motion-reduce:transition-none pointer-coarse:size-5',
+  // A white bead: hairline edge, a tight contact shadow and a soft fall-off below it.
+  'shadow-[0_0_0_0.5px_rgba(38,40,46,.2),0_1px_2px_rgba(38,40,46,.16),0_3px_8px_-2px_rgba(38,40,46,.16),inset_0_-1px_0_rgba(38,40,46,.04)]',
+  'hover:scale-110 hover:ring-0 hover:shadow-[0_0_0_0.5px_rgba(38,40,46,.2),0_0_0_5px_var(--well),0_1px_2px_rgba(38,40,46,.16),0_4px_10px_-2px_rgba(38,40,46,.2)]',
+  'focus-visible:scale-110 focus-visible:ring-0 focus-visible:shadow-[0_0_0_0.5px_rgba(38,40,46,.2),0_0_0_5px_var(--lamp-glow),0_1px_2px_rgba(38,40,46,.16),0_4px_10px_-2px_rgba(38,40,46,.2)]',
   'active:scale-95',
 ]
 </script>
 
 <template>
-  <div class="group/slider flex flex-col gap-1">
+  <div class="group/slider flex flex-col gap-2">
     <div class="flex h-5 items-center justify-between">
-      <span class="flex items-center gap-1.5 text-[12.5px] text-ink-2">
+      <span class="flex items-center gap-1.5 text-[13.5px] text-ink-2">
         {{ label }}
         <Tooltip v-if="hint">
           <TooltipTrigger as-child>
             <span
-              class="flex cursor-help text-muted-foreground/45 transition-colors hover:text-foreground"
+              class="flex cursor-help text-muted-foreground transition-colors hover:text-foreground"
               tabindex="0"
             >
               <Icon
@@ -149,7 +153,7 @@ const thumb = [
           <motion.button
             v-if="changed"
             key="reset"
-            class="flex text-muted-foreground/60 transition-colors hover:text-foreground"
+            class="flex text-muted-foreground transition-colors hover:text-foreground"
             :initial="{ opacity: 0, scale: 0.6 }"
             :animate="{ opacity: 1, scale: 1 }"
             :exit="{ opacity: 0, scale: 0.6 }"
@@ -164,29 +168,29 @@ const thumb = [
         </AnimatePresence>
       </span>
 
-      <!-- Inline value: plain mono text at rest, becomes a field on focus. -->
+      <!-- Inline value: plain figures at rest; focus turns it into a small raised field. -->
       <label
-        class="-mr-1.5 flex h-5 items-center gap-1 rounded-full px-1.5 transition-[background-color,box-shadow]"
+        class="-mr-1.5 flex h-6 items-center gap-1 rounded-[8px] px-1.5 transition-[background-color,box-shadow] duration-150"
         :class="
           editing
-            ? 'bg-card shadow-[0_0_0_1px_var(--ring)]'
-            : 'hover:bg-well focus-within:bg-card focus-within:shadow-[0_0_0_1px_var(--ring)]'
+            ? 'bg-card shadow-raise'
+            : 'hover:bg-well focus-within:bg-card focus-within:shadow-raise'
         "
       >
-        <input
+        <Input
           v-if="editing"
-          class="w-11 bg-transparent text-right font-mono text-[11.5px] tabular-nums outline-none"
-          :value="draft"
+          :model-value="draft"
+          @update:model-value="draft = String($event)"
+          class="h-5 w-12 rounded-none border-0 bg-transparent p-0 text-right text-[13px] font-medium tabular-nums shadow-none focus-visible:ring-0 md:text-[13px]"
           inputmode="decimal"
           autofocus
-          @input="draft = ($event.target as HTMLInputElement).value"
           @blur="commit"
           @keydown.enter="($event.target as HTMLInputElement).blur()"
           @keydown.esc="editing = false"
         />
         <span
           v-else
-          class="min-w-8 cursor-text text-right font-mono text-[11.5px] tabular-nums outline-none select-none"
+          class="min-w-8 cursor-text text-right text-[13px] font-medium tabular-nums outline-none select-none"
           :class="changed ? 'text-foreground' : 'text-ink-2'"
           tabindex="0"
           @focus="focus"
@@ -197,7 +201,8 @@ const thumb = [
         </span>
         <span
           v-if="unit"
-          class="text-[10px] text-muted-foreground"
+          class="text-[12.5px] text-muted-foreground"
+          :class="{ '-ml-1': unit === '°' }"
         >
           {{ unit }}
         </span>
@@ -229,8 +234,9 @@ const thumb = [
         :max="max"
         :step="step"
         class="group/track h-4 pointer-coarse:h-8"
-        track-class="h-[3px] rounded-full bg-well-strong group-hover/track:bg-[color-mix(in_srgb,var(--ink)_16%,transparent)] data-[orientation=horizontal]:h-[3px]"
-        range-class="bg-foreground"
+        track-class="h-1 rounded-full bg-well-strong shadow-[inset_0_1px_1px_rgba(38,40,46,.08)] transition-colors duration-150 group-hover/track:bg-[color-mix(in_srgb,var(--ink)_14%,transparent)] data-[orientation=horizontal]:h-1"
+        range-class="rounded-full bg-lamp shadow-[inset_0_1px_0_rgba(255,255,255,.22)]"
+        :thumb-label="label"
         :thumb-class="[thumb, snapping && 'scale-125! duration-90']"
       />
       <!-- snap pulse -->
@@ -238,7 +244,7 @@ const thumb = [
         <motion.span
           v-if="snapping"
           :key="pulse"
-          class="pointer-events-none absolute top-1/2 z-20 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-foreground/50"
+          class="pointer-events-none absolute top-1/2 z-20 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-lamp/60"
           :style="{ left: `${pct}%` }"
           :initial="{ scale: 1, opacity: 0.7 }"
           :animate="{ scale: 2.6, opacity: 0 }"
@@ -251,7 +257,7 @@ const thumb = [
         <motion.div
           v-if="dragging"
           key="tip"
-          class="pointer-events-none absolute -top-6 -translate-x-1/2 rounded-full bg-foreground px-2 py-0.5 font-mono text-[10.5px] text-background shadow-raise-dark"
+          class="pointer-events-none absolute -top-6 -translate-x-1/2 rounded-full bg-primary px-2 py-0.5 text-[12px] font-medium text-primary-foreground tabular-nums shadow-raise-dark"
           :style="{ left: `${pct}%` }"
           :initial="{ opacity: 0, y: 4, scale: 0.9 }"
           :animate="{ opacity: 1, y: 0, scale: 1 }"

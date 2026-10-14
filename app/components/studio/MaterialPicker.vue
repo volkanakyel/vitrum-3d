@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { AnimatePresence, LayoutGroup, motion } from 'motion-v'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import type { SegmentOption } from './SegmentedControl.vue'
 import { MATERIAL_PRESETS, type Finish, type GlassParams, type MaterialPreset } from '~/utils/presets'
 
 const props = defineProps<{ glass: GlassParams }>()
@@ -12,6 +14,11 @@ watch(() => props.glass.finish, f => (tab.value = f))
 const presets = computed(() => MATERIAL_PRESETS.filter(p => p.group === tab.value))
 const active = computed(() => activePresetId(props.glass))
 const apply = (p: MaterialPreset) => applyPreset(props.glass, p)
+const finishes: SegmentOption<Finish>[] = (['glass', 'metal', 'print'] as const).map(f => ({ value: f, label: finishLabel[f], icon: finishIcon[f] }))
+function pickPreset(id: unknown) {
+  const p = presets.value.find(m => m.id === id)
+  if (p) apply(p)
+}
 function switchTab(f: Finish) {
   tab.value = f
   const first = { glass: 'clear', metal: 'chrome', print: 'natural' }[f]
@@ -23,38 +30,46 @@ function switchTab(f: Finish) {
 <template>
   <LayoutGroup>
     <div class="flex flex-col gap-3">
-      <div class="relative grid grid-cols-3 rounded-full well p-[3px]">
-        <button
-          v-for="f in (['glass', 'metal', 'print'] as const)" :key="f"
-          class="relative z-10 flex h-7 items-center justify-center gap-1.5 rounded-full text-[12px] font-medium transition-colors"
-          :class="tab === f ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
-          @click="switchTab(f)"
-        >
-          <motion.span v-if="tab === f" layout-id="finish-pill" class="glass-pill" :transition="{ type: 'spring', stiffness: 500, damping: 40 }" />
-          <Icon :name="finishIcon[f]" :size="13" />
-          {{ finishLabel[f] }}
-        </button>
-      </div>
+      <SegmentedControl
+        :model-value="tab"
+        :options="finishes"
+        size="md"
+        @update:model-value="switchTab"
+      />
 
-      <AnimatePresence mode="wait">
+      <!-- Switching Glass / Metal / Color crossfades the grid in place; mounting the tab shows it as is. -->
+      <AnimatePresence
+        mode="wait"
+        :initial="false"
+      >
         <motion.div
-          :key="tab" class="grid grid-cols-4 gap-1.5"
-          :initial="{ opacity: 0, y: 6 }" :animate="{ opacity: 1, y: 0 }" :exit="{ opacity: 0, y: -4, transition: { duration: 0.1, ease: 'easeOut' } }"
-          :transition="{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }"
+          :key="tab"
+          :initial="{ opacity: 0 }" :animate="{ opacity: 1 }" :exit="{ opacity: 0, transition: { duration: 0.08, ease: 'easeOut' } }"
+          :transition="{ duration: 0.16, ease: 'easeOut' }"
         >
-          <motion.button
-            v-for="(p, i) in presets" :key="p.id"
-            class="group relative flex flex-col items-center gap-1.5 rounded-xl px-1 pt-2.5 pb-2"
-            :class="active === p.id ? '' : 'hover:bg-well'"
-            :initial="{ opacity: 0, scale: 0.9 }" :animate="{ opacity: 1, scale: 1 }"
-            :transition="{ type: 'spring', stiffness: 420, damping: 30, delay: i * 0.02 }"
-            :while-hover="{ y: -1 }" :while-press="{ scale: 0.94 }" :title="p.label"
-            @click="apply(p)"
+          <!-- One shadcn toggle group: arrow keys move between finishes, the choice is announced. -->
+          <ToggleGroup
+            type="single"
+            :model-value="active ?? undefined"
+            :aria-label="`${finishLabel[tab]} finishes`"
+            class="-mx-1.5 grid w-[calc(100%+0.75rem)] grid-cols-4 gap-0.5"
+            @update:model-value="pickPreset"
           >
-            <motion.span v-if="active === p.id" layout-id="material-ring" class="absolute inset-0 rounded-xl bg-card shadow-[0_0_0_1px_var(--hairline-strong),0_1px_2px_rgba(17,18,20,0.08),0_4px_10px_-6px_rgba(17,18,20,0.2)]" :transition="{ type: 'spring', stiffness: 520, damping: 38 }" />
-            <span class="relative size-8 rounded-full transition-transform group-hover:scale-105" :style="presetSphere(p)" />
-            <span class="relative max-w-full truncate text-[11px] leading-none" :class="active === p.id ? 'text-foreground' : 'text-muted-foreground'">{{ p.label }}</span>
-          </motion.button>
+            <ToggleGroupItem
+              v-for="p in presets" :key="p.id"
+              :value="p.id"
+              :title="p.label"
+              class="group relative flex h-auto min-w-0 flex-col items-center gap-1.5 rounded-xl px-0 pt-2.5 pb-2 hover:bg-well data-[state=on]:bg-transparent"
+              as-child
+            >
+              <motion.button
+              >
+                <motion.span v-if="active === p.id" layout-id="material-ring" class="absolute inset-0 rounded-xl bg-card shadow-raise" :transition="{ type: 'spring', duration: 0.3, bounce: 0 }" />
+                <span class="relative size-8 rounded-full shadow-[0_1px_2px_rgba(38,40,46,.18),0_4px_8px_-4px_rgba(38,40,46,.3)] transition-transform duration-200 ease-out group-hover:scale-105" :style="presetSphere(p)" />
+                <span class="relative max-w-full truncate text-[12px] leading-none tracking-[-0.02em]" :class="active === p.id ? 'font-medium text-foreground' : 'text-muted-foreground'">{{ p.label }}</span>
+              </motion.button>
+            </ToggleGroupItem>
+          </ToggleGroup>
         </motion.div>
       </AnimatePresence>
     </div>
