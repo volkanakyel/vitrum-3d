@@ -12,6 +12,7 @@ const steps: { id: ImportPhase; label: string }[] = [
 ]
 const stepIndex = computed(() => steps.findIndex((s) => s.id === props.phase))
 const label = computed(() => steps[stepIndex.value]?.label ?? '')
+const stateOf = (i: number) => (i < stepIndex.value ? 'past' : i === stepIndex.value ? 'current' : 'next')
 </script>
 
 <!--
@@ -21,24 +22,25 @@ const label = computed(() => steps[stepIndex.value]?.label ?? '')
   time. So nothing in here is driven by JavaScript while the loader is up: the entrance, the scan,
   the label swap and the step bars are all CSS animations or transitions on transform and
   opacity, which the compositor keeps running through a blocked main thread. motion-v only
-  handles the exit, which plays once the work is done.
+  handles the exit, which plays once the work is done. Reduced motion keeps the fades and drops
+  the movement.
 -->
 <template>
   <motion.div
-    class="loader pointer-events-auto absolute inset-0 z-20 grid place-items-center bg-white/60 backdrop-blur-[16px] backdrop-saturate-120"
-    :exit="{ opacity: 0, transition: { duration: 0.28, ease: [0.23, 1, 0.32, 1] } }"
+    class="pointer-events-auto absolute inset-0 z-20 grid place-items-center bg-white/60 backdrop-blur-[16px] backdrop-saturate-120 animate-[fade-in_200ms_var(--ease-out)_both]"
+    :exit="{ opacity: 0, transition: { duration: 0.28, ease: EASE_OUT } }"
     role="status"
     aria-live="polite"
     :aria-label="label"
   >
-    <div class="loader-body flex flex-col items-center">
+    <div class="flex flex-col items-center transition-[opacity,translate,scale] delay-40 duration-520 ease-out starting:opacity-0 motion-safe:starting:translate-y-2 motion-safe:starting:scale-97">
       <!-- Tile: the logo sits on a glass slab while a band of light reads it, top to bottom. -->
-      <div class="tile relative size-[84px] overflow-hidden rounded-[24px] shadow-[inset_0_1px_0_#fff,inset_0_0_0_1px_rgba(38,40,46,.06),0_1px_2px_rgba(38,40,46,.06),0_20px_36px_-22px_rgba(38,40,46,.45)]">
+      <div class="tile relative size-[84px] overflow-hidden rounded-window shadow-[inset_0_1px_0_#fff,inset_0_0_0_1px_rgba(38,40,46,.06),0_1px_2px_rgba(38,40,46,.06),0_20px_36px_-22px_rgba(38,40,46,.45)]">
         <img
           v-if="preview"
           :src="preview"
           alt=""
-          class="loader-art absolute inset-0 size-full object-contain p-[18px] mix-blend-multiply grayscale"
+          class="absolute inset-0 size-full object-contain p-[18px] opacity-88 mix-blend-multiply grayscale transition-opacity duration-320 ease-out starting:opacity-0"
           draggable="false"
         />
         <span
@@ -52,7 +54,7 @@ const label = computed(() => steps[stepIndex.value]?.label ?? '')
           />
         </span>
         <span
-          class="loader-scan pointer-events-none absolute inset-x-0 top-0 h-1/2"
+          class="loader-scan pointer-events-none absolute inset-x-0 top-0 h-1/2 motion-reduce:hidden"
           aria-hidden="true"
         />
       </div>
@@ -65,13 +67,14 @@ const label = computed(() => steps[stepIndex.value]?.label ?? '')
         <span
           v-for="(s, i) in steps"
           :key="s.id"
-          class="loader-label col-start-1 row-start-1"
-          :data-state="i < stepIndex ? 'past' : i === stepIndex ? 'current' : 'next'"
+          class="col-start-1 row-start-1 transition-[opacity,translate,filter] duration-[260ms,360ms,260ms] ease-out data-[state=next]:opacity-0 data-[state=past]:opacity-0 motion-safe:data-[state=next]:translate-y-1.5 motion-safe:data-[state=next]:blur-[2px] motion-safe:data-[state=past]:-translate-y-1.5 motion-safe:data-[state=past]:blur-[2px]"
+          :data-state="stateOf(i)"
         >{{ s.label }}</span>
       </div>
       <span class="mt-1 max-w-[26ch] truncate text-[12px] text-ink-3">{{ name }}</span>
 
-      <!-- Step bars: past steps are full; the current one creeps forward on its own. -->
+      <!-- Step bars: past steps fill in 220ms; the current one creeps toward 85% over a little longer
+           than a step takes (an ease-out-cubic, gentler than --ease-out), then fills when it ends. -->
       <div
         class="mt-5 flex gap-1"
         aria-hidden="true"
@@ -82,8 +85,8 @@ const label = computed(() => steps[stepIndex.value]?.label ?? '')
           class="h-[3px] w-7 overflow-hidden rounded-full bg-[rgba(38,40,46,.09)]"
         >
           <span
-            class="loader-bar block size-full origin-left rounded-full bg-lamp"
-            :data-state="i < stepIndex ? 'past' : i === stepIndex ? 'current' : 'next'"
+            class="block size-full origin-left scale-x-0 rounded-full bg-lamp transition-[scale] duration-0 motion-reduce:transition-none data-[state=current]:scale-x-85 data-[state=current]:duration-700 data-[state=current]:ease-[cubic-bezier(0.215,0.61,0.355,1)] data-[state=past]:scale-x-100 data-[state=past]:duration-220 data-[state=past]:ease-out"
+            :data-state="stateOf(i)"
           />
         </span>
       </div>
@@ -92,65 +95,15 @@ const label = computed(() => steps[stepIndex.value]?.label ?? '')
 </template>
 
 <style scoped>
-.loader {
-  animation: loader-fade 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
-}
-.loader-body {
-  animation: loader-rise 520ms cubic-bezier(0.23, 1, 0.32, 1) 40ms both;
-}
-.loader-art {
-  animation: loader-fade 320ms cubic-bezier(0.23, 1, 0.32, 1) both;
-  opacity: 0.88;
-}
-
 /* A soft band of azure light with a crisp leading edge, sweeping down and fading at the ends. */
 .loader-scan {
   background: linear-gradient(to bottom, rgba(42, 114, 224, 0) 0%, rgba(42, 114, 224, 0.1) 92%, rgba(42, 114, 224, 0.55) 99%, rgba(42, 114, 224, 0) 100%);
   animation: loader-scan 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
   will-change: transform, opacity;
 }
-
-.loader-label {
-  transition: opacity 260ms cubic-bezier(0.23, 1, 0.32, 1), transform 360ms cubic-bezier(0.23, 1, 0.32, 1), filter 260ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-.loader-label[data-state='past'] { opacity: 0; transform: translateY(-6px); filter: blur(2px); }
-.loader-label[data-state='next'] { opacity: 0; transform: translateY(6px); filter: blur(2px); }
-
-.loader-bar {
-  transform: scaleX(0);
-  will-change: transform;
-}
-.loader-bar[data-state='past'] {
-  transform: scaleX(1);
-  transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-/* Eases toward 85% over a little longer than a step takes, then snaps full when the step ends. */
-.loader-bar[data-state='current'] {
-  transform: scaleX(0.85);
-  transition: transform 700ms cubic-bezier(0.215, 0.61, 0.355, 1);
-}
-
-@keyframes loader-fade {
-  from { opacity: 0; }
-}
-@keyframes loader-rise {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
-}
 @keyframes loader-scan {
   0% { transform: translateY(-100%); opacity: 0; }
-  15% { opacity: 1; }
-  80% { opacity: 1; }
+  15%, 80% { opacity: 1; }
   100% { transform: translateY(200%); opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loader,
-  .loader-body,
-  .loader-art { animation: none; }
-  .loader-scan { animation: none; opacity: 0; }
-  .loader-label,
-  .loader-bar { transition: none; }
-  .loader-label[data-state='past'],
-  .loader-label[data-state='next'] { transform: none; filter: none; }
 }
 </style>

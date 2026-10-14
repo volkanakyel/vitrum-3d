@@ -8,15 +8,15 @@ import { MATERIAL_PRESETS, type GlassParams, type MaterialPreset } from '~/utils
  * hairline; the ring slides to the pick and the row scrolls the pick to its middle.
  */
 const props = defineProps<{ glass: GlassParams }>()
-const strip = ref<HTMLElement | null>(null)
+const stripEl = useTemplateRef<HTMLElement>('strip')
 const reduced = useReducedMotion()
 
 const active = computed(() => activePresetId(props.glass))
 const apply = (p: MaterialPreset) => applyPreset(props.glass, p)
 
 function centre(id: string | null, smooth: boolean) {
-  const el = id ? strip.value?.querySelector<HTMLElement>(`[data-id="${id}"]`) : null
-  const row = strip.value
+  const el = id ? stripEl.value?.querySelector<HTMLElement>(`[data-id="${id}"]`) : null
+  const row = stripEl.value
   if (!el || !row) return
   row.scrollTo({ left: el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2, behavior: smooth && !reduced.value ? 'smooth' : 'auto' })
 }

@@ -3,10 +3,7 @@ import { motion } from 'motion-v'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-withDefaults(
-  defineProps<{ title: string; hint?: string; resettable?: boolean; index?: number }>(),
-  { index: 0 },
-)
+defineProps<{ title: string; hint?: string; resettable?: boolean }>()
 const emit = defineEmits<{ reset: [] }>()
 // Rise in only when appearing inside an open tab; a tab mounting its page shows sections as they are.
 const appear = inject<Ref<boolean>>('sectionAppear', ref(true)).value
@@ -35,7 +32,8 @@ const appear = inject<Ref<boolean>>('sectionAppear', ref(true)).value
               variant="ghost"
               size="icon-xs"
               :class="[
-                'text-muted-foreground opacity-0 transition-opacity group-hover/section:opacity-100 focus-visible:opacity-100',
+                // Revealed on hover with a mouse; always shown on touch, where there is no hover to reveal it.
+                'text-muted-foreground opacity-0 group-hover/section:opacity-100 focus-visible:opacity-100 hover-none:opacity-100 pointer-coarse:opacity-100',
                 hint ? '' : '-mr-1.5',
               ]"
               aria-label="Reset section"

@@ -1,4 +1,5 @@
 import { useEventListener } from '@vueuse/core'
+import type { InjectionKey } from 'vue'
 import type { ImportPhase } from '~/components/studio/StageLoader.vue'
 import type { ModelDimensions, ViewName } from '~/utils/glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams, type Geometry } from '~/utils/presets'
@@ -35,6 +36,20 @@ export interface ViewerHandle {
 }
 
 const IMPORT_MIN_MS = 1400
+/** What every file picker in the studio takes. */
+export const IMAGE_ACCEPT = 'image/*,.svg'
+/** How the trace found the outline, in words. */
+export const TRACE_MODE_LABEL: Record<TraceResult['resolvedMode'], string> = {
+  dark: 'dark pixels',
+  light: 'light pixels',
+  alpha: 'alpha',
+  color: 'colour distance',
+}
+/** "1 shape", "3 shapes". */
+export function shapeCountLabel(t: TraceResult | null): string {
+  const n = t?.polygons.length ?? 0
+  return `${n} shape${n === 1 ? '' : 's'}`
+}
 
 export function useStudio() {
   const image = shallowRef<HTMLImageElement | null>(null)
@@ -54,6 +69,11 @@ export function useStudio() {
   const toast = ref('')
   const view = ref<ViewName>('angle')
   const viewer = ref<ViewerHandle | null>(null)
+  /**
+   * The last input was a key. Whatever changes next is a shortcut's (or arrow key's) result and
+   * lands without motion: a pill gliding after a keypress only makes the key feel slow.
+   */
+  const keyed = ref(false)
 
   let traceTimer: ReturnType<typeof setTimeout> | undefined
   let reliefTimer: ReturnType<typeof setTimeout> | undefined
@@ -325,8 +345,18 @@ export function useStudio() {
     if (e.key === 'r') glass.autoRotate = !glass.autoRotate
   }
 
+  /** Sections of the glass back to their defaults (a panel section's reset). */
+  function resetGlass<K extends keyof GlassParams>(...keys: K[]) {
+    const out: Partial<GlassParams> = {}
+    for (const k of keys) out[k] = DEFAULT_GLASS_PARAMS[k]
+    Object.assign(glass, out)
+  }
+
   useEventListener('paste', onPaste)
   useEventListener('keydown', onKey)
+  // Capture, so the flag is set before any component reacts to the same key or pointer.
+  useEventListener('keydown', () => (keyed.value = true), { capture: true })
+  useEventListener('pointerdown', () => (keyed.value = false), { capture: true })
   onBeforeUnmount(() => {
     clearTimeout(traceTimer)
     clearTimeout(reliefTimer)
@@ -350,7 +380,21 @@ export function useStudio() {
 
   return {
     image, fileName, trace, traceOpts, reliefOpts, relief, glass, dims, busy, importing, error,
-    dragging, exporting, toast, view, viewer, heightMm, subject, ready,
+    dragging, exporting, toast, view, viewer, heightMm, subject, ready, keyed,
     setView, useFile, clearImage, onDrop, onPick, loadSample, openLinkedSample, doExport, setHeight, notify,
+    resetGlass,
   }
+}
+
+export type Studio = ReturnType<typeof useStudio>
+const STUDIO: InjectionKey<Studio> = Symbol('studio')
+
+/** Hands the page's studio to every panel below it, so the sections need no props threaded through. */
+export function provideStudio(studio: Studio) {
+  provide(STUDIO, studio)
+}
+export function useStudioContext(): Studio {
+  const studio = inject(STUDIO)
+  if (!studio) throw new Error('useStudioContext() needs provideStudio() in a parent component')
+  return studio
 }

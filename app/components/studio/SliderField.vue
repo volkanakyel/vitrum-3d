@@ -20,6 +20,7 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ 'update:modelValue': [number] }>()
 
+
 const arr = computed({
   get: () => [props.modelValue],
   set: (v: number[] | undefined) => {
@@ -29,10 +30,13 @@ const arr = computed({
 const changed = computed(
   () => props.defaultValue !== undefined && Math.abs(props.defaultValue - props.modelValue) > 1e-9,
 )
-const fmt = (v: number) =>
-  v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: props.decimals })
+// One formatter per `decimals`, not one per call: the spring below formats every frame. No grouping,
+// so a typed-over draft never reads "1,000" back as 1.
+const nf = computed(() => new Intl.NumberFormat('en-US', { maximumFractionDigits: props.decimals, useGrouping: false }))
+const fmt = (v: number) => nf.value.format(v)
 
 // Displayed number springs toward the real value so typed jumps and preset changes roll over.
+// While dragging, the exact value shows instead: the figure must track the thumb, not trail it.
 const shown = useSpringText(() => props.modelValue, fmt, { stiffness: 420, damping: 38 })
 
 const pct = computed(() => ((props.modelValue - props.min) / (props.max - props.min)) * 100)
@@ -115,6 +119,8 @@ function onKey(e: KeyboardEvent) {
 }
 
 // Hairline track, filled range, small ringed thumb that grows on hover / press and pops on a snap.
+// Only scale and shadow transition: reka positions the thumb with `left`, which stays untransitioned
+// so the thumb tracks the pointer 1:1 while dragging.
 const thumb = [
   'size-4 rounded-full border-0 bg-card transition-[scale,box-shadow] duration-[250ms,150ms] ease-[var(--ease-spring),ease] motion-reduce:transition-none pointer-coarse:size-5',
   // A white bead: hairline edge, a tight contact shadow and a soft fall-off below it.
@@ -150,14 +156,18 @@ const thumb = [
           </TooltipContent>
         </Tooltip>
         <AnimatePresence>
+          <!-- Press squash on the CSS `scale` property; motion owns `transform` and `opacity`. -->
           <motion.button
             v-if="changed"
             key="reset"
-            class="flex text-muted-foreground transition-colors hover:text-foreground"
-            :initial="{ opacity: 0, scale: 0.6 }"
-            :animate="{ opacity: 1, scale: 1 }"
-            :exit="{ opacity: 0, scale: 0.6 }"
+            type="button"
+            class="flex text-muted-foreground transition-[color,scale] duration-150 ease-out hover:text-foreground active:scale-[.85]"
+            :initial="{ opacity: 0, transform: 'scale(0.9)' }"
+            :animate="{ opacity: 1, transform: 'scale(1)' }"
+            :exit="{ opacity: 0, transform: 'scale(0.9)', transition: { duration: 0.1, ease: EASE_OUT } }"
+            :transition="{ duration: 0.15, ease: EASE_OUT }"
             title="Reset to default"
+            aria-label="Reset to default"
             @click="set(defaultValue!)"
           >
             <Icon
@@ -197,7 +207,7 @@ const thumb = [
           @wheel="onWheel"
           @keydown="onKey"
         >
-          {{ shown }}
+          {{ dragging ? fmt(modelValue) : shown }}
         </span>
         <span
           v-if="unit"
@@ -234,7 +244,7 @@ const thumb = [
         :max="max"
         :step="step"
         class="group/track h-4 pointer-coarse:h-8"
-        track-class="h-1 rounded-full bg-well-strong shadow-[inset_0_1px_1px_rgba(38,40,46,.08)] transition-colors duration-150 group-hover/track:bg-[color-mix(in_srgb,var(--ink)_14%,transparent)] data-[orientation=horizontal]:h-1"
+        track-class="rounded-full bg-well-strong shadow-[inset_0_1px_1px_rgba(38,40,46,.08)] transition-colors duration-150 group-hover/track:bg-[color-mix(in_srgb,var(--ink)_14%,transparent)] data-[orientation=horizontal]:h-1"
         range-class="rounded-full bg-lamp shadow-[inset_0_1px_0_rgba(255,255,255,.22)]"
         :thumb-label="label"
         :thumb-class="[thumb, snapping && 'scale-125! duration-90']"
@@ -246,10 +256,10 @@ const thumb = [
           :key="pulse"
           class="pointer-events-none absolute top-1/2 z-20 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-lamp/60"
           :style="{ left: `${pct}%` }"
-          :initial="{ scale: 1, opacity: 0.7 }"
-          :animate="{ scale: 2.6, opacity: 0 }"
+          :initial="{ transform: 'scale(1)', opacity: 0.7 }"
+          :animate="{ transform: 'scale(2.6)', opacity: 0 }"
           :exit="{ opacity: 0 }"
-          :transition="{ duration: 0.38, ease: [0.23, 1, 0.32, 1] }"
+          :transition="{ duration: 0.38, ease: EASE_OUT }"
         />
       </AnimatePresence>
       <!-- drag tooltip -->
@@ -259,10 +269,10 @@ const thumb = [
           key="tip"
           class="pointer-events-none absolute -top-6 -translate-x-1/2 rounded-full bg-primary px-2 py-0.5 text-[12px] font-medium text-primary-foreground tabular-nums shadow-raise-dark"
           :style="{ left: `${pct}%` }"
-          :initial="{ opacity: 0, y: 4, scale: 0.9 }"
-          :animate="{ opacity: 1, y: 0, scale: 1 }"
-          :exit="{ opacity: 0, y: 4, scale: 0.9 }"
-          :transition="{ duration: 0.15 }"
+          :initial="{ opacity: 0, transform: 'translateY(4px) scale(0.9)' }"
+          :animate="{ opacity: 1, transform: 'translateY(0px) scale(1)' }"
+          :exit="{ opacity: 0, transform: 'translateY(4px) scale(0.9)', transition: { duration: 0.1, ease: EASE_OUT } }"
+          :transition="{ duration: 0.15, ease: EASE_OUT }"
         >
           {{ fmt(modelValue) }}{{ unit ? ` ${unit}` : '' }}
         </motion.div>

@@ -11,10 +11,11 @@ definePageMeta({ layout: 'studio', key: 'studio' })
 
 const studio = useStudio()
 const {
-  image, fileName, trace, traceOpts, reliefOpts, relief, glass, dims, busy, importing, error,
-  dragging, exporting, toast, view, viewer, heightMm, subject, ready,
-  setView, clearImage, onDrop, onPick, loadSample, openLinkedSample, doExport, setHeight,
+  image, fileName, trace, relief, glass, dims, importing,
+  dragging, exporting, toast, view, viewer, subject, ready, keyed,
+  setView, onDrop, onPick, loadSample, openLinkedSample, doExport,
 } = studio
+provideStudio(studio)
 
 useHead({ title: 'Icon studio · Vitrum' })
 
@@ -28,24 +29,27 @@ const hudTText = useSpringText(() => dims.value?.triangles ?? 0, v => Math.round
 // sheet is for reading, not looking), the view dock rides the sheet's top edge, and the stage dims
 // a touch as the sheet climbs to full.
 const { height: sheetH, peek: sheetPeek, half: sheetHalf, full: sheetFull, inset: sheetInset, snap: sheetSnap } = useStudioSheet()
-const stageEl = ref<HTMLElement | null>(null)
+const stageEl = useTemplateRef<HTMLElement>('stageEl')
 const { height: stageH } = useElementSize(stageEl)
 /** The view dock plus its gap above the sheet, and the dimensions readout at the top. */
 const DOCK_ROOM = 58
 const HUD_ROOM = 36
+/** The stage pane stops this far above the screen's bottom edge on the phone. */
+const STAGE_GAP = 6
+/** How dark the stage gets with the sheet at full. */
+const STAGE_DIM_MAX = 0.14
 function focusStage(h: number) {
   if (!h || !stageH.value) return viewer.value?.setFocus(0, 1)
-  // Stage px hidden below the model's room at sheet height x (the stage ends 6 px above the screen).
-  const cover = (x: number) => Math.min(x, sheetHalf.value) + sheetInset.value - 6 + DOCK_ROOM
+  // Stage px hidden below the model's room at sheet height x.
+  const cover = (x: number) => Math.min(x, sheetHalf.value) + sheetInset.value - STAGE_GAP + DOCK_ROOM
   const scale = (stageH.value - cover(h) - HUD_ROOM) / (stageH.value - cover(sheetPeek.value) - HUD_ROOM)
   viewer.value?.setFocus((cover(h) - HUD_ROOM) / 2, Math.min(1, Math.max(0.6, scale)))
 }
-const stopFocus = sheetH.on('change', focusStage)
-onBeforeUnmount(stopFocus)
+onScopeDispose(sheetH.on('change', focusStage))
 watch(stageH, () => focusStage(sheetH.get()))
 const dockY = useTransform(sheetH, h => (h ? -(h + sheetInset.value + 4) : 0))
 const dockFade = useTransform(sheetH, h => (h ? Math.min(1, Math.max(0, 1 - (h - sheetHalf.value - 24) / 72)) : 1))
-const stageDim = useTransform(sheetH, h => (h > sheetHalf.value ? Math.min(1, (h - sheetHalf.value) / Math.max(1, sheetFull.value - sheetHalf.value)) * 0.14 : 0))
+const stageDim = useTransform(sheetH, h => (h > sheetHalf.value ? Math.min(1, (h - sheetHalf.value) / Math.max(1, sheetFull.value - sheetHalf.value)) * STAGE_DIM_MAX : 0))
 
 const route = useRoute()
 onMounted(() => {
@@ -58,27 +62,14 @@ onMounted(() => {
 
 <template>
   <SidebarProvider
-    class="h-svh min-h-0"
+    class="h-dvh min-h-0"
     style="--sidebar-width: 352px"
     @dragover.prevent="dragging = true"
     @dragleave.prevent="dragging = false"
     @drop.prevent="onDrop"
   >
     <TooltipProvider :delay-duration="300">
-      <ControlPanel
-        :trace="trace"
-        :trace-opts="traceOpts"
-        :relief-opts="reliefOpts"
-        :glass="glass"
-        :height-mm="heightMm"
-        :file-name="fileName"
-        :busy="busy"
-        :error="error"
-        @pick="onPick"
-        @sample="loadSample()"
-        @clear="clearImage"
-        @set-height="setHeight"
-      />
+      <ControlPanel />
 
       <!-- The stage window: a slab with a dark header over a lightbox, the same anatomy as the landing hero. -->
       <SidebarInset class="min-h-0 min-w-0 overflow-hidden bg-slab [view-transition-name:stage]">
@@ -129,7 +120,7 @@ onMounted(() => {
             @dimensions="dims = $event"
           />
           <motion.div
-            class="pointer-events-none absolute inset-0 bg-[#26282e] md:hidden"
+            class="pointer-events-none absolute inset-0 bg-(--graphite-900) md:hidden"
             :style="{ opacity: stageDim }"
             aria-hidden="true"
           />
@@ -162,7 +153,7 @@ onMounted(() => {
                 <button
                   v-for="v in ['angle', 'front', 'side', 'top'] as const"
                   :key="v"
-                  class="relative h-7 rounded-full px-3 text-[12px] font-medium capitalize transition-colors disabled:opacity-40 pointer-coarse:h-9 max-sm:px-2.5"
+                  class="relative h-7 rounded-full px-3 text-[12px] font-medium capitalize press disabled:opacity-40 pointer-coarse:h-9 max-sm:px-2.5"
                   :class="view === v ? 'text-shell' : 'text-muted-foreground hover:text-foreground'"
                   :disabled="!ready"
                   @click="setView(v)"
@@ -171,7 +162,7 @@ onMounted(() => {
                     v-if="view === v"
                     layout-id="view-pill"
                     class="lightbox glass-pill [--glass-tint:#eef0f4] [--glass-drop:0_1px_2px_rgba(0,0,0,.35)]"
-                    :transition="{ type: 'spring', stiffness: 500, damping: 40 }"
+                    :transition="keyed ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }"
                   />
                   <span class="relative">{{ v }}</span>
                 </button>
@@ -220,7 +211,7 @@ onMounted(() => {
                   <kbd class="ml-1">R</kbd>
                 </TooltipContent>
               </Tooltip>
-  </motion.div>
+            </motion.div>
           </motion.div>
 
           <!-- Quick finishes on the stage's right edge (desktop; the phone sheet has its own strip). -->
@@ -272,23 +263,23 @@ onMounted(() => {
             <motion.div
               v-if="!subject && !importing"
               key="empty"
-              class="empty-state pointer-events-none absolute inset-0 grid place-items-center overflow-hidden p-6"
+              class="pointer-events-none absolute inset-0 grid place-items-center overflow-hidden p-6"
               :style="sheetPeek ? { paddingBottom: `${sheetPeek + sheetInset + 12}px` } : undefined"
               :initial="{ opacity: 0, y: 12 }"
               :animate="{ opacity: 1, y: 0 }"
               :exit="{ opacity: 0, scale: 0.985, transition: { duration: 0.2, ease: 'easeOut' } }"
-              :transition="{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }"
+              :transition="{ duration: 0.5, ease: EASE_OUT }"
             >
               <span
                 class="absolute inset-0 bg-[radial-gradient(rgba(38,40,46,0.13)_0.9px,transparent_1px)] bg-size-[22px_22px] bg-center [mask-image:radial-gradient(ellipse_58%_54%_at_50%_46%,#000_0%,rgba(0,0,0,0.35)_45%,transparent_80%)]"
                 aria-hidden="true"
               />
               <span
-                class="absolute top-1/2 left-1/2 size-[640px] -translate-x-1/2 -translate-y-[62%] animate-breathe rounded-full bg-[radial-gradient(closest-side,rgba(42,114,224,0.2),rgba(42,114,224,0.06)_55%,rgba(42,114,224,0)_75%)] motion-reduce:animate-none"
+                class="absolute top-1/2 left-1/2 size-[640px] -translate-x-1/2 -translate-y-[62%] animate-breathe rounded-full bg-[radial-gradient(closest-side,rgba(42,114,224,0.2),rgba(42,114,224,0.06)_55%,rgba(42,114,224,0)_75%)]"
                 aria-hidden="true"
               />
               <span
-                class="absolute top-1/2 left-1/2 size-[260px] -translate-x-1/2 -translate-y-[112%] animate-breathe-halo rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.9),rgba(255,255,255,0)_72%)] blur-[6px] motion-reduce:animate-none"
+                class="absolute top-1/2 left-1/2 size-[260px] -translate-x-1/2 -translate-y-[112%] animate-breathe-halo rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.9),rgba(255,255,255,0)_72%)] blur-[6px]"
                 aria-hidden="true"
               />
               <div
@@ -297,7 +288,7 @@ onMounted(() => {
               >
                 <span class="tile relative mx-auto mb-7 flex size-[88px] items-center justify-center overflow-hidden rounded-[26px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(38,40,46,0.05),inset_0_0_0_1px_rgba(255,255,255,0.6),0_0_0_1px_var(--hairline),0_20px_36px_-22px_rgba(3,7,18,0.4)]">
                   <span
-                    class="absolute inset-0 animate-sweep rounded-[inherit] bg-[linear-gradient(115deg,transparent_30%,rgba(255,255,255,0)_42%,rgba(255,255,255,0.9)_50%,rgba(255,255,255,0)_58%,transparent_70%)] [transform:translateX(-120%)] motion-reduce:animate-none"
+                    class="absolute inset-0 animate-sweep rounded-[inherit] bg-[linear-gradient(115deg,transparent_30%,rgba(255,255,255,0)_42%,rgba(255,255,255,0.9)_50%,rgba(255,255,255,0)_58%,transparent_70%)] [transform:translateX(-120%)]"
                     aria-hidden="true"
                   />
                   <BrandMark
@@ -325,7 +316,7 @@ onMounted(() => {
                     Choose image
                     <input
                       type="file"
-                      accept="image/*,.svg"
+                      :accept="IMAGE_ACCEPT"
                       hidden
                       @change="onPick"
                     />
@@ -356,7 +347,7 @@ onMounted(() => {
                         type="button"
                         :aria-label="`Open the ${logo.name} logo`"
                         :title="logo.name"
-                        class="grid size-9 place-items-center rounded-full text-ink-2 transition-[color,background-color,scale] duration-[150ms,150ms,380ms] ease-[ease,ease,var(--ease-spring)] focus-ring hover:bg-well-strong hover:text-ink active:scale-[.9] active:duration-100 motion-reduce:transition-none"
+                        class="grid size-9 place-items-center rounded-full text-ink-2 press [--press:.9] focus-ring hover:bg-well-strong hover:text-ink"
                         @click="openLinkedSample(logo.id)"
                       >
                         <LogoMark

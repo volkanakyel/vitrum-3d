@@ -57,11 +57,15 @@ function pickSwatch(v: unknown) {
 }
 
 // --- pointer handling on the saturation/value square and hue strip ------------
+// The markers follow the pointer 1:1 (no transition on their position); pointer capture keeps the
+// drag alive outside the square, and a second finger can't hijack it.
 function drag(e: PointerEvent, onMove: (x: number, y: number) => void) {
+  if (!e.isPrimary) return
   const el = e.currentTarget as HTMLElement
   el.setPointerCapture(e.pointerId)
   const rect = el.getBoundingClientRect()
   const update = (ev: PointerEvent) => {
+    if (ev.pointerId !== e.pointerId) return
     const x = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width))
     const y = Math.min(1, Math.max(0, (ev.clientY - rect.top) / rect.height))
     onMove(x, y)
@@ -71,9 +75,11 @@ function drag(e: PointerEvent, onMove: (x: number, y: number) => void) {
   const stop = () => {
     el.removeEventListener('pointermove', update)
     el.removeEventListener('pointerup', stop)
+    el.removeEventListener('pointercancel', stop)
   }
   el.addEventListener('pointermove', update)
   el.addEventListener('pointerup', stop)
+  el.addEventListener('pointercancel', stop)
 }
 const onSquare = (e: PointerEvent) => drag(e, (x, y) => { hsv.value = [hsv.value[0], x, 1 - y] })
 const onHue = (e: PointerEvent) => drag(e, x => { hsv.value = [x * 359.99, hsv.value[1], hsv.value[2]] })
@@ -87,13 +93,13 @@ const onHue = (e: PointerEvent) => drag(e, x => { hsv.value = [x * 359.99, hsv.v
         <button
           type="button"
           :aria-label="`${label}: ${modelValue}`"
-          class="group -mr-1.5 flex h-6 items-center gap-2 rounded-[8px] pr-2 pl-1 transition-[background-color,box-shadow] duration-150 hover:bg-well focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none data-[state=open]:bg-card data-[state=open]:shadow-raise"
+          class="group -mr-1.5 flex h-6 items-center gap-2 rounded-[8px] pr-2 pl-1 transition-[background-color,box-shadow] duration-150 ease-[ease] hover:bg-well focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none data-[state=open]:bg-card data-[state=open]:shadow-raise"
         >
           <span
             class="size-4 rounded-[5px] shadow-[inset_0_0_0_1px_rgba(38,40,46,0.12),inset_0_1px_0_rgba(255,255,255,0.35),0_1px_1px_rgba(38,40,46,0.08)]"
             :style="{ background: modelValue }"
           />
-          <span class="text-[13px] font-medium text-ink-2 uppercase tabular-nums group-hover:text-foreground">{{ modelValue.replace('#', '') }}</span>
+          <span class="text-[13px] font-medium text-ink-2 uppercase tabular-nums transition-colors duration-150 ease-[ease] group-hover:text-foreground">{{ modelValue.replace('#', '') }}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" :side-offset="6" class="w-56 rounded-2xl p-3">
@@ -145,7 +151,7 @@ const onHue = (e: PointerEvent) => drag(e, x => { hsv.value = [x * 359.99, hsv.v
             v-for="c in palette" :key="c"
             :value="c"
             :aria-label="c"
-            class="aspect-square h-auto min-w-0 rounded-full p-0 shadow-[inset_0_0_0_1px_rgba(38,40,46,0.1)] transition-[scale,box-shadow] duration-150 hover:scale-110 data-[state=on]:shadow-[inset_0_0_0_1px_rgba(38,40,46,0.1),0_0_0_2px_var(--card),0_0_0_3.5px_var(--lamp)]"
+            class="aspect-square h-auto min-w-0 rounded-full p-0 shadow-[inset_0_0_0_1px_rgba(38,40,46,0.1)] transition-[scale,box-shadow] duration-150 ease-out hover:scale-110 active:scale-95 active:duration-100 data-[state=on]:shadow-[inset_0_0_0_1px_rgba(38,40,46,0.1),0_0_0_2px_var(--card),0_0_0_3.5px_var(--lamp)]"
             :style="{ background: c }"
           />
         </ToggleGroup>
