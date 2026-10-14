@@ -1,5 +1,5 @@
 <template>
-  <div class="studio-root h-svh overflow-hidden">
+  <div class="studio-root h-dvh overflow-hidden">
     <slot />
   </div>
 </template>

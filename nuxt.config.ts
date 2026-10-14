@@ -56,7 +56,7 @@ export default defineNuxtConfig({
       title: 'Vitrum',
       htmlAttrs: { lang: 'en' },
       meta: [
-        { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content' },
         { name: 'description', content: 'Vitrum turns any icon, logo or wordmark into a true-to-size 3D object in glass, metal or full colour that you can orbit and export.' },
         { name: 'theme-color', content: '#eceef2' },
       ],

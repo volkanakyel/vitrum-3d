@@ -3,6 +3,15 @@
 @custom-variant dark (&:is(.dark *));
 /* Touch screens: keyboard hints mean nothing there. */
 @custom-variant hover-none (@media (hover: none));
+/* Hover only where a precise pointer can hover. Tailwind's default checks `(hover: hover)` alone,
+   which some styluses and Android devices claim; a tap must never leave a sticky hover state. */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
 
 /*
   Vitrum — "Light table" (v4).
@@ -14,7 +23,8 @@
 
   Actions are pills. Containers nest concentric: window 24 → pane 16 → tile 10.
   Type is Geist only, tight; figures use its tabular numerals (no mono face).
-  Motion: response only. Presses squash to .96 and release on a soft overshoot; selections slide.
+  Motion: response only. Presses squash (`press`) and release on a soft overshoot; selections slide.
+  Curves are the four `--ease-*` tokens below; nothing in the app eases in.
 */
 
 /*
@@ -89,7 +99,6 @@
   /* ink-3 ≥ 4.9:1 even on a raised control (`--card`). */
   --ink-2: rgba(243, 244, 246, 0.76);
   --ink-3: rgba(243, 244, 246, 0.64);
-  --ink-hover: #ffffff;
   --surface: #363940;
   --shell: #2a2d34;
   --slab: #31343b;
@@ -137,7 +146,6 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.045),
     0 40px 80px -40px rgba(0, 0, 0, 0.55);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 6px 24px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --well-inset: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
   color-scheme: dark;
 }
@@ -169,7 +177,6 @@
   --ink: var(--graphite-900);
   --ink-2: var(--graphite-600);
   --ink-3: var(--graphite-500);
-  --ink-hover: var(--graphite-700);
   --surface: var(--graphite-0);
   --shell: var(--graphite-100);
   --slab: var(--graphite-0);
@@ -216,7 +223,6 @@
     0 2px 24px rgba(38, 40, 46, 0.05),
     0 24px 48px -24px rgba(38, 40, 46, 0.18);
   --shadow-sm: 0 1px 2px rgba(38, 40, 46, 0.05);
-  --shadow: 0 6px 24px rgba(38, 40, 46, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
   /* A recess: a hairline edge, a soft top shade and a 1px white catch on the lower lip. */
   --well-inset: inset 0 0 0 0.5px rgba(38, 40, 46, 0.06), inset 0 1px 2px rgba(38, 40, 46, 0.05), 0 1px 0 rgba(255, 255, 255, 0.7);
   color-scheme: light;
@@ -226,13 +232,25 @@
   color: var(--foreground);
 }
 
-:root {
-  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
-  /* Release after a press: a soft overshoot back to rest. `pop` is for small things (a dot, a ring). */
+/*
+  Motion. Tailwind's built-in curves are too soft to read as intentional, so `ease-out` and
+  `ease-in-out` are replaced app-wide (shadcn primitives included), and `ease-in` is removed: it
+  delays the first frames, the exact moment the user is watching.
+
+  out     entering, exiting, anything answering an input (the default)
+  in-out  something already on screen moving or morphing to a new place
+  spring  release after a press: a soft overshoot back to rest
+  `ease` (plain) stays for hover colour changes.
+
+  Durations: press 100–160ms, tooltips 125–200, menus 150–250, panels ≤ 300 (sheets up to 500 with
+  the iOS drawer curve, cubic-bezier(0.32, 0.72, 0, 1), if one is added). Only marketing
+  explanations run longer. `static` so arbitrary values like `var(--ease-spring)` always resolve.
+*/
+@theme static {
+  --ease-in: initial;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-spring: cubic-bezier(0.3, 1.12, 0.4, 1);
-  --ease-pop: cubic-bezier(0.28, 1.4, 0.36, 1);
 }
 
 /*
@@ -243,31 +261,22 @@
 */
 @theme {
   --breakpoint-desk: 68.8125rem; /* ≤1100px: nav tightens, bento goes to two columns */
-  --breakpoint-lap: 62.5625rem; /* ≤1000px: example grid goes to two columns */
   --breakpoint-split: 53.8125rem; /* ≤860px: hero stage goes square, finishes move under it */
   --breakpoint-tab: 50.0625rem; /* ≤800px: phone layout for nav, headings, footer */
   --breakpoint-fold: 42.5625rem; /* ≤680px: bento goes to one column */
   --breakpoint-phone: 32.5625rem; /* ≤520px */
-  --breakpoint-xs: 30.0625rem; /* ≤480px */
   --breakpoint-2xs: 26.3125rem; /* ≤420px */
   --breakpoint-3xs: 25.0625rem; /* ≤400px */
 
-  /* Entrances. Delays are set per element with `animation-delay-*`. */
-  --animate-rise: rise 800ms var(--ease-out-expo) both;
-  --animate-lift: lift 900ms 180ms var(--ease-out-expo) both;
-  --animate-settle: settle 500ms var(--ease-out-quint) both;
+  /* Entrances (marketing, seen once per visit). Delays are set per element with `animation-delay-*`.
+     Under reduced motion they degrade on their own, see below: no `motion-reduce:` needed. */
+  --animate-rise: rise 800ms var(--ease-out) both;
   --animate-breathe: breathe 9s ease-in-out infinite;
   --animate-breathe-halo: breathe-halo 7s ease-in-out infinite reverse;
-  --animate-sweep: sweep 6.5s var(--ease-out-quint) infinite;
+  --animate-sweep: sweep 6.5s var(--ease-out) infinite;
 
   @keyframes rise {
     from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
-  }
-  @keyframes lift {
-    from { opacity: 0; transform: translateY(40px) scale(0.98); }
-  }
-  @keyframes settle {
-    from { opacity: 0; transform: translateY(6px); }
   }
   /* Scale only: the element's position comes from Tailwind's `translate` utilities, which set the
      separate `translate` property. A `transform: translate()` here would add to it, not replace it. */
@@ -284,41 +293,39 @@
     35%, 100% { transform: translateX(120%); }
   }
 }
+/* Reduced motion is gentler, not zero: the entrance keeps its fade, ambient loops stop. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --animate-rise: fade-in 300ms ease both;
+    --animate-breathe: none;
+    --animate-breathe-halo: none;
+    --animate-sweep: none;
+  }
+}
 
 /*
-  Landing demo keyframes. Top-level (not inside @theme) so they are always emitted: the demos
-  reference them through arbitrary values, e.g. `animate-[draw_900ms_200ms_var(--ease-in-out-cubic)_forwards]`.
+  Shared keyframes. Top-level (not inside @theme) so they are always emitted: components reference
+  them through arbitrary values, e.g. `animate-[iso-flow_900ms_linear_infinite]`.
 */
-/* Stroke reveal for paths drawn with `stroke-draw`. */
-@keyframes draw {
-  to { stroke-dashoffset: 0; }
+@keyframes fade-in {
+  from { opacity: 0; }
 }
-@keyframes appear {
-  to { opacity: 1; }
+/* Exit fade. reka unmounts tooltip and popover content on `animationend`, so exits are keyframes. */
+@keyframes fade-out {
+  to { opacity: 0; }
 }
-/* Back to rest from whatever offset utilities set: Tailwind v4's translate-* and scale-* write the
-   `translate` and `scale` properties, not `transform`, so this clears those. */
-@keyframes to-rest {
-  to { opacity: 1; translate: none; scale: none; }
+/* Landing pipeline: dashes flowing along a pass (`stroke-dasharray: 1.5 3` repeats every 4.5, so -9 loops). */
+@keyframes iso-flow {
+  to { stroke-dashoffset: -9; }
 }
 /* A step's countdown on the landing pipeline: an arc closing around the step number. */
 @keyframes iso-ring {
   from { stroke-dashoffset: 1; }
   to { stroke-dashoffset: 0; }
 }
-@keyframes file-rise {
-  from { opacity: 0; transform: translateY(12px); }
-}
-/* Import loader: a scan line across the tile (`--tile` is set on the loader) and a ticking "...". */
-@keyframes key-press {
-  0% { opacity: 0; transform: translateY(-10px); }
-  38% { opacity: 1; transform: translateY(0); }
-  55% {
-    transform: translateY(4px);
-    box-shadow: 0 0 0 1px rgba(38, 40, 46, 0.07), 0 1px 0 1px rgba(38, 40, 46, 0.05), 0 2px 0 -1px #e2e5eb, 0 8px 16px -10px rgba(38, 40, 46, 0.25), inset 0 1px 0 #fff;
-    color: var(--lamp);
-  }
-  100% { transform: translateY(0); }
+/* GLB turntable: dashes creeping round the ring (one dash + gap is 7, so -14 loops). */
+@keyframes orbit {
+  to { stroke-dashoffset: -14; }
 }
 
 @theme inline {
@@ -367,28 +374,17 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  /* Card family, nested concentric: window/card (p-2, 24) → pane (16) → tile (10). */
+  /* Card family, nested concentric: window (p-2, 24) → pane (16) → tile (10). */
   --radius-window: 24px;
-  --radius-card: 24px;
   --radius-pane: 16px;
   --radius-tile: 10px;
   --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow);
   --shadow-raise: var(--shadow-raise);
   --shadow-raise-dark: var(--shadow-raise-dark);
-  --shadow-float: var(--shadow-float);
   --shadow-pane: var(--shadow-pane);
-  --shadow-hairline: 0 0 0 1px var(--hairline);
-  --inset-shadow-hairline: inset 0 0 0 1px var(--hairline);
-  --ease-out-quint: var(--ease-out-quint);
-  --ease-out-expo: var(--ease-out-expo);
-  --ease-in-out-cubic: var(--ease-in-out-cubic);
   --color-lamp-glow: var(--lamp-glow);
-  --color-ink-hover: var(--ink-hover);
   --color-slab: var(--slab);
   --color-stage: var(--stage);
-  --ease-spring: var(--ease-spring);
-  --ease-pop: var(--ease-pop);
 }
 
 /* Elevation utilities so components share one vocabulary. */
@@ -414,6 +410,25 @@
   &:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: var(--ring-offset, 2px);
+  }
+}
+/*
+  Press feedback for anything pressable: the instant the pointer lands it squashes (down fast,
+  ease-out), and on release it settles back on a soft overshoot. Colour, background and shadow
+  ease alongside for hover. Depth defaults to .97; tune per element with `[--press:.92]`.
+  Under reduced motion the squash goes, the colour changes stay.
+*/
+@utility press {
+  transition-property: color, background-color, box-shadow, opacity, scale;
+  transition-duration: 150ms, 150ms, 150ms, 150ms, 280ms;
+  transition-timing-function: ease, ease, ease, ease, var(--ease-spring);
+  &:active:not(:disabled) {
+    scale: var(--press, 0.97);
+    transition-duration: 100ms;
+    transition-timing-function: var(--ease-out);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:active:not(:disabled) { scale: none; }
   }
 }
 /* `animation-delay-120` → 120ms. Tailwind's `delay-*` only covers transitions. */
@@ -493,9 +508,31 @@
     line-height: 1.5;
     letter-spacing: -0.005em;
   }
-  html:has(.studio-root) { overflow: hidden; }
+  /* The studio is an app shell, not a document: no page bounce or pull-to-refresh under the stage. */
+  html:has(.studio-root) { overflow: hidden; overscroll-behavior: none; }
+
+  /* Native feel on touch: no grey tap flash (every control has its own :active state), no font
+     inflation in landscape, no 300ms double-tap wait, and control labels are not text to select. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  button, a, summary, label, [role='button'], [role='tab'], [role='switch'], [role='slider'] {
+    touch-action: manipulation;
+  }
+  button, summary, [role='button'], [role='tab'], [role='switch'] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* iOS zooms into any field under 16px and never zooms back out. */
+  @media (pointer: coarse) {
+    input:not([type='range'], [type='checkbox'], [type='radio'], [type='color']), textarea, select {
+      font-size: max(16px, 1em);
+    }
+  }
   button { cursor: pointer; }
-  .font-mono { font-feature-settings: 'zero', 'tnum'; letter-spacing: -0.01em; }
   /* Display: Swiss grotesk, tight, medium weight. */
   .font-display { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.035em; font-feature-settings: 'ss01', 'cv11'; }
   ::selection { background: var(--lamp-glow); }
@@ -512,26 +549,19 @@
 }
 
 /* Marketing column. One gutter scale for the landing page and footer; the nav is slightly wider
-   on phones (`.frame-nav`). Nested queries keep the narrowest breakpoint winning. */
+   on phones (`frame-nav`). */
 @utility frame {
-  width: min(1200px, calc(100% - 128px));
+  --frame-gutter: 128px;
+  /* In landscape on a notched phone the safe areas outgrow the phone gutter; never sit under them. */
+  --frame-safe: calc(env(safe-area-inset-left, 0px) + env(safe-area-inset-right, 0px) + 16px);
+  width: min(1200px, calc(100% - max(var(--frame-gutter), var(--frame-safe))));
   margin-inline: auto;
-  @media (max-width: 1100px) {
-    width: calc(100% - 72px);
-  }
-  @media (max-width: 800px) {
-    width: calc(100% - 44px);
-  }
+  @variant max-desk { --frame-gutter: 72px; }
+  @variant max-tab { --frame-gutter: var(--frame-gutter-phone, 44px); }
 }
 @utility frame-nav {
-  width: min(1200px, calc(100% - 128px));
-  margin-inline: auto;
-  @media (max-width: 1100px) {
-    width: calc(100% - 72px);
-  }
-  @media (max-width: 800px) {
-    width: calc(100% - 32px);
-  }
+  @apply frame;
+  --frame-gutter-phone: 32px;
 }
 
 /* Film grain tile for the landing shell. Position and blend are utilities on the element.
@@ -548,13 +578,13 @@
 */
 ::view-transition-group(*) {
   animation-duration: 460ms;
-  animation-timing-function: var(--ease-out-quint);
+  animation-timing-function: var(--ease-out);
 }
 ::view-transition-old(root) {
-  animation: 180ms ease-out both vt-fade-out;
+  animation: 180ms var(--ease-out) both fade-out;
 }
 ::view-transition-new(root) {
-  animation: 320ms 80ms ease-out both vt-fade-in;
+  animation: 320ms 80ms var(--ease-out) both fade-in;
 }
 /* Both snapshots fill the morphing box instead of letterboxing, so the stage never squashes. */
 ::view-transition-old(stage),
@@ -563,12 +593,7 @@
   height: 100%;
   object-fit: cover;
 }
-@keyframes vt-fade-out {
-  to { opacity: 0; }
-}
-@keyframes vt-fade-in {
-  from { opacity: 0; }
-}
+
 
 /* FAQ disclosure: the answer's height eases open where the browser can animate `details`
    content (interpolate-size); elsewhere it opens instantly, as before. */
@@ -580,7 +605,7 @@
     height: 0;
     overflow: clip;
     opacity: 0;
-    transition: height 260ms var(--ease-out-quint), opacity 200ms ease-out, content-visibility 260ms allow-discrete;
+    transition: height 260ms var(--ease-out), opacity 200ms var(--ease-out), content-visibility 260ms allow-discrete;
   }
   .faq[open]::details-content {
     height: auto;
@@ -611,10 +636,11 @@
   inherits: true;
   initial-value: -40%;
 }
-/* Hover depth for pills (`SiteButton`): 0 at rest, 1 on hover; eased by a transition. */
+/* Hover depth for pills (`SiteButton`): 0 at rest, 1 on hover; eased by a transition. Read only on
+   the pill itself, so it does not inherit: children are not restyled on every frame of the ease. */
 @property --lift {
   syntax: '<number>';
-  inherits: true;
+  inherits: false;
   initial-value: 0;
 }
 /* Scope defaults live in a layer so a utility on the element (e.g. [--glass-tint:…]) can override them. */
@@ -659,7 +685,7 @@
     border-radius: inherit;
     pointer-events: none;
     background: radial-gradient(90% 120% at var(--glass-x) var(--glass-y), var(--glass-sheen), transparent 60%);
-    transition: --glass-x 520ms var(--ease-out-quint), --glass-y 520ms var(--ease-out-quint);
+    transition: --glass-x 520ms var(--ease-out), --glass-y 520ms var(--ease-out);
   }
   /* the rim: a 1px gradient border that is brightest where the light hits */
   &::after {
@@ -685,8 +711,6 @@
   }
 }
 
-/* The sliding "selected" pill of a segmented control (studio tabs, finishes, modes, views): a white
-   glass lozenge behind the active option. Sits under its label; the parent sets the radius. */
 /*
   Segmented control (shadcn ToggleGroup in the studio). The track is a recess cut into the slab:
   a cool fill, a hairline inner edge, a soft shade under its top lip and a 1px white catch on its
