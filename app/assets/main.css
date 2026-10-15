@@ -1,0 +1,756 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+/* Touch screens: keyboard hints mean nothing there. */
+@custom-variant hover-none (@media (hover: none));
+/* Hover only where a precise pointer can hover. Tailwind's default checks `(hover: hover)` alone,
+   which some styluses and Android devices claim; a tap must never leave a sticky hover state. */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+/*
+  Vitrum — "Light table" (v4).
+
+  The app is a cool graphite-on-mist table; slabs (cards, panels, the stage window) are white panes
+  lifted off it with a glass rim, and the renders sit in grey lightboxes inside them. Controls that
+  float over a stage are dark islands (`.bench`). `.bench` re-declares the dark tokens; `.lightbox`
+  pins the light ones for anything that must stay light inside a dark island.
+
+  Actions are pills. Containers nest concentric: window 24 → pane 16 → tile 10.
+  Type is Geist only, tight; figures use its tabular numerals (no mono face).
+  Motion: response only. Presses squash (`press`) and release on a soft overshoot; selections slide.
+  Curves are the four `--ease-*` tokens below; nothing in the app eases in.
+*/
+
+/*
+  The palette. Two ramps and nothing else: every token below, and every colour in a component,
+  is one of these steps (or one of them at an alpha).
+
+  Graphite — a cool neutral, hue ~225°. 100 is the table, 0 the panes, 900 the ink.
+             Text steps are chosen for contrast: 600 (ink-2) ≥ 6.4:1 and 500 (ink-3) ≥ 4.5:1 on every
+             light surface, 200 included. Nothing lighter than 500 carries text.
+  Azure    — the one accent, a clear glass blue (hue ~216°, a step warmer than graphite so the two
+             sit together): what is live, selected or lit. Never a fill larger than a dot, a ring or a
+             small control. 500 carries white text (4.6:1); accent text on the table uses
+             `--lamp-ink` (600, 5.1:1). On the dark bench the accent steps up to 400 and its text
+             to 300.
+  Charcoal — dark fills (primary pills, the bench islands) use graphite-800/850, a step lighter
+             than the ink, so a dark button reads as a soft solid, not a hole in the page.
+
+  The renders and the WebGL stage are lit on graphite-100/150, so those two steps are fixed.
+*/
+:root {
+  --graphite-0: #ffffff;
+  --graphite-25: #f7f8fa;
+  --graphite-50: #f2f3f6;
+  --graphite-100: #eceef2;
+  --graphite-150: #e7e9ef;
+  --graphite-200: #dfe2e7;
+  --graphite-300: #c9ccd3;
+  --graphite-400: #9a9da5;
+  --graphite-500: #63666e;
+  --graphite-600: #4d5058;
+  --graphite-700: #41444c;
+  --graphite-800: #363940;
+  --graphite-850: #2e3138;
+  --graphite-900: #26282e;
+  --graphite-950: #23252b;
+
+  --azure-50: #eef4fe;
+  --azure-100: #dce9fd;
+  --azure-200: #bcd5fb;
+  --azure-300: #8ebcf8;
+  --azure-400: #5b9ef4;
+  --azure-500: #2a72e0;
+  --azure-600: #1d5fc8;
+  --azure-700: #1a4f9e;
+}
+
+.bench {
+  /* shadcn tokens */
+  --background: #2a2d34;
+  --foreground: #f3f4f6;
+  /* `card` is a raised control on the bench (active pills, fields); `slab` is a panel. */
+  --card: #3d4048;
+  --card-foreground: #f3f4f6;
+  --popover: #31343b;
+  --popover-foreground: #f3f4f6;
+  --primary: #f3f4f6;
+  --primary-foreground: #2a2d34;
+  --secondary: #363940;
+  --secondary-foreground: #f3f4f6;
+  --muted: #363940;
+  --muted-foreground: #b0b2b8;
+  --accent: #363940;
+  --accent-foreground: #f3f4f6;
+  --destructive: #ff6b6b;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: var(--azure-400);
+  --radius: 0.625rem;
+
+  /* brand */
+  --ink: #f3f4f6;
+  /* ink-3 ≥ 4.9:1 even on a raised control (`--card`). */
+  --ink-2: rgba(243, 244, 246, 0.76);
+  --ink-3: rgba(243, 244, 246, 0.64);
+  --surface: #363940;
+  --shell: #2a2d34;
+  --slab: #31343b;
+  --stage: #363940;
+  --well: rgba(255, 255, 255, 0.045);
+  --well-strong: rgba(255, 255, 255, 0.085);
+  --lamp: var(--azure-400);
+  --lamp-soft: rgba(91, 158, 244, 0.16);
+  --lamp-ink: var(--azure-300);
+  --lamp-glow: rgba(91, 158, 244, 0.28);
+  --hairline: rgba(255, 255, 255, 0.07);
+  --hairline-strong: rgba(255, 255, 255, 0.12);
+
+  --sidebar: #2a2d34;
+  --sidebar-foreground: #f3f4f6;
+  --sidebar-primary: #f3f4f6;
+  --sidebar-primary-foreground: #2a2d34;
+  --sidebar-accent: #363940;
+  --sidebar-accent-foreground: #f3f4f6;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-ring: var(--azure-400);
+
+  /* elevation
+     raise  = a control sitting on a slab: hairline, top highlight, a short contact shadow
+     inverse = the primary pill (warm white on the bench)
+     float  = a layer above the page (popover, dock, toast)
+     pane   = a slab lifted off the bench */
+  --shadow-raise:
+    0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 2px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-raise-dark:
+    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 8px 20px -10px rgba(0, 0, 0, 0.7);
+  --shadow-float:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    0 16px 40px -12px rgba(0, 0, 0, 0.65);
+  --shadow-pane:
+    0 0 0 1px rgba(255, 255, 255, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 40px 80px -40px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --well-inset: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+  color-scheme: dark;
+}
+
+/* The default (light) values. `.lightbox` repeats them for light content inside a dark island. */
+:root,
+.lightbox {
+  --background: var(--graphite-100);
+  --foreground: var(--graphite-900);
+  --card: #ffffff;
+  --card-foreground: #26282e;
+  --popover: #ffffff;
+  --popover-foreground: #26282e;
+  --primary: var(--graphite-800);
+  --primary-foreground: #ffffff;
+  --secondary: #e3e6eb;
+  --secondary-foreground: #26282e;
+  --muted: #e3e6eb;
+  --muted-foreground: var(--graphite-500);
+  --accent: #e3e6eb;
+  --accent-foreground: #26282e;
+  --destructive: #d24444;
+  --border: var(--graphite-200);
+  --input: var(--graphite-300);
+  --ring: var(--azure-500);
+  --radius: 0.625rem;
+
+  /* Text greys are solid steps, not alphas, so they read the same on the table and on a pane. */
+  --ink: var(--graphite-900);
+  --ink-2: var(--graphite-600);
+  --ink-3: var(--graphite-500);
+  --surface: var(--graphite-0);
+  --shell: var(--graphite-100);
+  --slab: var(--graphite-0);
+  /* The lightbox a render sits in. */
+  --stage: var(--graphite-150);
+  --well: rgba(38, 40, 46, 0.045);
+  --well-strong: rgba(38, 40, 46, 0.08);
+  --lamp: var(--azure-500);
+  --lamp-soft: var(--azure-50);
+  --lamp-ink: var(--azure-600);
+  --lamp-glow: rgba(42, 114, 224, 0.18);
+  --hairline: rgba(38, 40, 46, 0.08);
+  --hairline-strong: rgba(38, 40, 46, 0.14);
+
+  /* The studio's sidebar and window frame: a step lighter than the landing's table. */
+  --sidebar: var(--graphite-50);
+  --sidebar-foreground: #26282e;
+  --sidebar-primary: var(--graphite-800);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e3e6eb;
+  --sidebar-accent-foreground: #26282e;
+  --sidebar-border: rgba(38, 40, 46, 0.08);
+  --sidebar-ring: var(--azure-500);
+
+  --shadow-raise:
+    0 0 0 1px rgba(38, 40, 46, 0.07),
+    0 1px 1px rgba(38, 40, 46, 0.05),
+    0 2px 5px -2px rgba(38, 40, 46, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --shadow-raise-dark:
+    0 0 0 1px rgba(46, 49, 56, 0.9),
+    0 1px 2px rgba(38, 40, 46, 0.2),
+    0 8px 16px -8px rgba(38, 40, 46, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --shadow-float:
+    0 0 0 1px rgba(38, 40, 46, 0.08),
+    0 1px 2px rgba(38, 40, 46, 0.05),
+    0 2px 24px rgba(38, 40, 46, 0.06),
+    0 16px 32px -16px rgba(38, 40, 46, 0.18);
+  --shadow-pane:
+    inset 1.5px 1.5px 1px rgba(255, 255, 255, 0.9),
+    inset -1px -1px 1px rgba(255, 255, 255, 0.5),
+    0 0 0 0.5px rgba(38, 40, 46, 0.1),
+    0 2px 24px rgba(38, 40, 46, 0.05),
+    0 24px 48px -24px rgba(38, 40, 46, 0.18);
+  --shadow-sm: 0 1px 2px rgba(38, 40, 46, 0.05);
+  /* A recess: a hairline edge, a soft top shade and a 1px white catch on the lower lip. */
+  --well-inset: inset 0 0 0 0.5px rgba(38, 40, 46, 0.06), inset 0 1px 2px rgba(38, 40, 46, 0.05), 0 1px 0 rgba(255, 255, 255, 0.7);
+  color-scheme: light;
+}
+.lightbox,
+.bench {
+  color: var(--foreground);
+}
+
+/*
+  Motion. Tailwind's built-in curves are too soft to read as intentional, so `ease-out` and
+  `ease-in-out` are replaced app-wide (shadcn primitives included), and `ease-in` is removed: it
+  delays the first frames, the exact moment the user is watching.
+
+  out     entering, exiting, anything answering an input (the default)
+  in-out  something already on screen moving or morphing to a new place
+  spring  release after a press: a soft overshoot back to rest
+  `ease` (plain) stays for hover colour changes.
+
+  Durations: press 100–160ms, tooltips 125–200, menus 150–250, panels ≤ 300 (sheets up to 500 with
+  the iOS drawer curve, cubic-bezier(0.32, 0.72, 0, 1), if one is added). Only marketing
+  explanations run longer. `static` so arbitrary values like `var(--ease-spring)` always resolve.
+*/
+@theme static {
+  --ease-in: initial;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-spring: cubic-bezier(0.3, 1.12, 0.4, 1);
+}
+
+/*
+  Marketing breakpoints. The landing page is laid out desktop-first, so these are used as
+  `max-*` variants. Each sits 1px above its design width because `max-tab:` compiles to
+  `width < 50.0625rem`: it matches 800px and below, like the original `max-width: 800px`.
+  Tailwind's defaults (sm, md, …) stay untouched; the shadcn primitives and the studio use them.
+*/
+@theme {
+  --breakpoint-desk: 68.8125rem; /* ≤1100px: nav tightens, bento goes to two columns */
+  --breakpoint-split: 53.8125rem; /* ≤860px: hero stage goes square, finishes move under it */
+  --breakpoint-tab: 50.0625rem; /* ≤800px: phone layout for nav, headings, footer */
+  --breakpoint-fold: 42.5625rem; /* ≤680px: bento goes to one column */
+  --breakpoint-phone: 32.5625rem; /* ≤520px */
+  --breakpoint-2xs: 26.3125rem; /* ≤420px */
+  --breakpoint-3xs: 25.0625rem; /* ≤400px */
+
+  /* Entrances (marketing, seen once per visit). Delays are set per element with `animation-delay-*`.
+     Under reduced motion they degrade on their own, see below: no `motion-reduce:` needed. */
+  --animate-rise: rise 800ms var(--ease-out) both;
+  --animate-breathe: breathe 9s ease-in-out infinite;
+  --animate-breathe-halo: breathe-halo 7s ease-in-out infinite reverse;
+  --animate-sweep: sweep 6.5s var(--ease-out) infinite;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
+  }
+  /* Scale only: the element's position comes from Tailwind's `translate` utilities, which set the
+     separate `translate` property. A `transform: translate()` here would add to it, not replace it. */
+  @keyframes breathe {
+    0%, 100% { scale: 1; opacity: 1; }
+    50% { scale: 1.06; opacity: 0.85; }
+  }
+  @keyframes breathe-halo {
+    0%, 100% { scale: 1; opacity: 0.9; }
+    50% { scale: 1.08; opacity: 0.7; }
+  }
+  @keyframes sweep {
+    0% { transform: translateX(-120%); }
+    35%, 100% { transform: translateX(120%); }
+  }
+}
+/* Reduced motion is gentler, not zero: the entrance keeps its fade, ambient loops stop. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --animate-rise: fade-in 300ms ease both;
+    --animate-breathe: none;
+    --animate-breathe-halo: none;
+    --animate-sweep: none;
+  }
+}
+
+/*
+  Shared keyframes. Top-level (not inside @theme) so they are always emitted: components reference
+  them through arbitrary values, e.g. `animate-[iso-flow_900ms_linear_infinite]`.
+*/
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+/* Exit fade. reka unmounts tooltip and popover content on `animationend`, so exits are keyframes. */
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+/* Landing pipeline: dashes flowing along a pass (`stroke-dasharray: 1.5 3` repeats every 4.5, so -9 loops). */
+@keyframes iso-flow {
+  to { stroke-dashoffset: -9; }
+}
+/* A step's countdown on the landing pipeline: an arc closing around the step number. */
+@keyframes iso-ring {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+/* GLB turntable: dashes creeping round the ring (one dash + gap is 7, so -14 loops). */
+@keyframes orbit {
+  to { stroke-dashoffset: -14; }
+}
+
+@theme inline {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-shell: var(--shell);
+  --color-well: var(--well);
+  --color-well-strong: var(--well-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-lamp: var(--lamp);
+  --color-lamp-soft: var(--lamp-soft);
+  --color-lamp-ink: var(--lamp-ink);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  /* Card family, nested concentric: window (p-2, 24) → pane (16) → tile (10). */
+  --radius-window: 24px;
+  --radius-pane: 16px;
+  --radius-tile: 10px;
+  --shadow-sm: var(--shadow-sm);
+  --shadow-raise: var(--shadow-raise);
+  --shadow-raise-dark: var(--shadow-raise-dark);
+  --shadow-pane: var(--shadow-pane);
+  --color-lamp-glow: var(--lamp-glow);
+  --color-slab: var(--slab);
+  --color-stage: var(--stage);
+}
+
+/* Elevation utilities so components share one vocabulary. */
+@utility hairline {
+  box-shadow: 0 0 0 1px var(--hairline);
+}
+@utility raise {
+  box-shadow: var(--shadow-raise);
+}
+@utility floating {
+  box-shadow: var(--shadow-float);
+}
+@utility pane {
+  box-shadow: var(--shadow-pane);
+}
+/* Recessed trough for segmented controls and wells. */
+@utility well {
+  background: var(--well);
+  box-shadow: var(--well-inset);
+}
+/*
+  Inspector field: the 32px sunken row every studio control sits in (slider, colour, switch), so a
+  section reads as one column with one left edge. A hairline, a soft inner shade and a white lip.
+*/
+@utility field {
+  background: var(--well-strong);
+  box-shadow: inset 0 0 0 0.5px rgba(38, 40, 46, 0.1), inset 0 1px 2px rgba(38, 40, 46, 0.07), 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+/* Keyboard focus: an azure ring (≥3:1 on every surface, light and bench). Widen the gap with `[--ring-offset:4px]`. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: var(--ring-offset, 2px);
+  }
+}
+/*
+  Press feedback for anything pressable: the instant the pointer lands it squashes (down fast,
+  ease-out), and on release it settles back on a soft overshoot. Colour, background and shadow
+  ease alongside for hover. Depth defaults to .97; tune per element with `[--press:.92]`.
+  Under reduced motion the squash goes, the colour changes stay.
+*/
+@utility press {
+  transition-property: color, background-color, box-shadow, opacity, scale;
+  transition-duration: 150ms, 150ms, 150ms, 150ms, 280ms;
+  transition-timing-function: ease, ease, ease, ease, var(--ease-spring);
+  &:active:not(:disabled) {
+    scale: var(--press, 0.97);
+    transition-duration: 100ms;
+    transition-timing-function: var(--ease-out);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:active:not(:disabled) { scale: none; }
+  }
+}
+/* `animation-delay-120` → 120ms. Tailwind's `delay-*` only covers transitions. */
+@utility animation-delay-* {
+  animation-delay: calc(--value(integer) * 1ms);
+}
+/* A path with `pathLength="1"` hidden behind its own dash; `animate-[draw_…]` reveals it. */
+@utility stroke-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+/* Porcelain tile behind a mark (studio empty state, import loader). */
+@utility tile {
+  background: linear-gradient(160deg, var(--graphite-0) 0%, var(--graphite-50) 100%);
+}
+/* Empty source slot: a recessed well with a dashed hairline drawn inside it. */
+@utility dashed-well {
+  background-color: var(--well);
+  background-image:
+    repeating-linear-gradient(90deg, var(--hairline-strong) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(90deg, var(--hairline-strong) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(180deg, var(--hairline-strong) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(180deg, var(--hairline-strong) 0 6px, transparent 6px 12px);
+  background-size: 100% 1px, 100% 1px, 1px 100%, 1px 100%;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  background-repeat: no-repeat;
+}
+/* A finish swatch: a lit sphere with a soft underside. */
+@utility sphere {
+  border-radius: 50%;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5), inset 0 -2px 3px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(38, 40, 46, 0.05);
+}
+/* Landing type scale. Geist, tight; body features (tnum) are inherited, unlike `.font-display`. */
+@utility heading-hero {
+  font-family: var(--font-display);
+  font-size: clamp(40px, 5.4vw, 76px);
+  font-weight: 500;
+  line-height: 0.98;
+  letter-spacing: -0.058em;
+}
+@utility heading-section {
+  font-family: var(--font-display);
+  font-size: clamp(30px, 3.5vw, 50px);
+  font-weight: 500;
+  line-height: 1.02;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+/*
+  Landing text scale (the studio keeps its denser 12–13px UI scale):
+  14 meta and legal · 15 labels, links, captions · 16–17 body · 18 lead · headings above.
+*/
+@utility text-lead {
+  font-size: 18px;
+  line-height: 1.6;
+  letter-spacing: -0.014em;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+/* Small figures and labels (readouts, counts): Geist with tabular figures, no mono face. */
+@utility index {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  font-feature-settings: 'tnum';
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; box-sizing: border-box; }
+  html, body, #__nuxt { height: 100%; margin: 0; }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01', 'tnum';
+    font-optical-sizing: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: -0.005em;
+  }
+  /* The studio is an app shell, not a document: no page bounce or pull-to-refresh under the stage. */
+  html:has(.studio-root) { overflow: hidden; overscroll-behavior: none; }
+
+  /* Native feel on touch: no grey tap flash (every control has its own :active state), no font
+     inflation in landscape, no 300ms double-tap wait, and control labels are not text to select. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  button, a, summary, label, [role='button'], [role='tab'], [role='switch'], [role='slider'] {
+    touch-action: manipulation;
+  }
+  button, summary, [role='button'], [role='tab'], [role='switch'] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* iOS zooms into any field under 16px and never zooms back out. */
+  @media (pointer: coarse) {
+    input:not([type='range'], [type='checkbox'], [type='radio'], [type='color']), textarea, select {
+      font-size: max(16px, 1em);
+    }
+  }
+  button { cursor: pointer; }
+  /* Display: Swiss grotesk, tight, medium weight. */
+  .font-display { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.035em; font-feature-settings: 'ss01', 'cv11'; }
+  ::selection { background: var(--lamp-glow); }
+  /* Key caps: white, hairline, a 1px ledge underneath. */
+  kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-card px-1 text-[11.5px] font-medium text-muted-foreground;
+    box-shadow: 0 0 0 1px var(--hairline), 0 1px 0 rgba(38, 40, 46, 0.1);
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+  input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+}
+
+/* Marketing column. One gutter scale for the landing page and footer; the nav is slightly wider
+   on phones (`frame-nav`). */
+@utility frame {
+  --frame-gutter: 128px;
+  /* In landscape on a notched phone the safe areas outgrow the phone gutter; never sit under them. */
+  --frame-safe: calc(env(safe-area-inset-left, 0px) + env(safe-area-inset-right, 0px) + 16px);
+  width: min(1200px, calc(100% - max(var(--frame-gutter), var(--frame-safe))));
+  margin-inline: auto;
+  @variant max-desk { --frame-gutter: 72px; }
+  @variant max-tab { --frame-gutter: var(--frame-gutter-phone, 44px); }
+}
+@utility frame-nav {
+  @apply frame;
+  --frame-gutter-phone: 32px;
+}
+
+/* Film grain tile for the landing shell. Position and blend are utilities on the element.
+   Studio pages omit it so it is not composited over the WebGL canvas. */
+@utility grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/*
+  Landing → studio. The hero's stage and the studio's stage share `view-transition-name: stage`,
+  so the preview grows into the editor; everything else crossfades. Nuxt skips the transition
+  entirely under `prefers-reduced-motion`.
+*/
+::view-transition-group(*) {
+  animation-duration: 460ms;
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-old(root) {
+  animation: 180ms var(--ease-out) both fade-out;
+}
+::view-transition-new(root) {
+  animation: 320ms 80ms var(--ease-out) both fade-in;
+}
+/* Both snapshots fill the morphing box instead of letterboxing, so the stage never squashes. */
+::view-transition-old(stage),
+::view-transition-new(stage) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+
+/* FAQ disclosure: the answer's height eases open where the browser can animate `details`
+   content (interpolate-size); elsewhere it opens instantly, as before. */
+@supports (interpolate-size: allow-keywords) {
+  .faq {
+    interpolate-size: allow-keywords;
+  }
+  .faq::details-content {
+    height: 0;
+    overflow: clip;
+    opacity: 0;
+    transition: height 260ms var(--ease-out), opacity 200ms var(--ease-out), content-visibility 260ms allow-discrete;
+  }
+  .faq[open]::details-content {
+    height: auto;
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .faq::details-content { transition: none; }
+  }
+}
+
+/*
+  Liquid glass. The same optics the studio renders, in CSS: a frosted body, a rim that catches the
+  light (bright top-left, soft bottom-right), a faint fringe on the inner edge (white on the lit
+  side, a trace of the azure accent on the far side) and a specular sheen that trails the pointer (`v-glass` sets
+  --glass-x/--glass-y; they are registered so the sheen eases after the pointer instead of snapping).
+
+  Colours come from the scope: light glass on the table, smoked glass inside `.bench`.
+  Tune per element with --glass-blur and --glass-fill. Needs a positioned element (absolute,
+  fixed or `relative`); content stays above the sheen because the glass isolates itself.
+*/
+@property --glass-x {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 30%;
+}
+@property --glass-y {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: -40%;
+}
+/* Hover depth for pills (`SiteButton`): 0 at rest, 1 on hover; eased by a transition. Read only on
+   the pill itself, so it does not inherit: children are not restyled on every frame of the ease. */
+@property --lift {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+/* Scope defaults live in a layer so a utility on the element (e.g. [--glass-tint:…]) can override them. */
+@layer base {
+  :root,
+  .lightbox {
+    --glass-tint: rgba(255, 255, 255, 0.58);
+    --glass-tint-top: rgba(255, 255, 255, 0.82);
+    --glass-rim: rgba(255, 255, 255, 0.95);
+    --glass-rim-low: rgba(255, 255, 255, 0.45);
+    --glass-edge: rgba(38, 40, 46, 0.07);
+    --glass-sheen: rgba(255, 255, 255, 0.7);
+    --glass-drop: 0 1px 2px rgba(38, 40, 46, 0.06), 0 12px 32px -14px rgba(38, 40, 46, 0.28);
+  }
+  .bench {
+    --glass-tint: rgba(46, 49, 56, 0.84);
+    --glass-tint-top: rgba(70, 73, 82, 0.82);
+    --glass-rim: rgba(255, 255, 255, 0.34);
+    --glass-rim-low: rgba(255, 255, 255, 0.08);
+    --glass-edge: rgba(0, 0, 0, 0.35);
+    --glass-sheen: rgba(255, 255, 255, 0.16);
+    --glass-drop: 0 1px 2px rgba(0, 0, 0, 0.3), 0 16px 36px -14px rgba(8, 9, 12, 0.6);
+  }
+}
+@utility glass {
+  isolation: isolate;
+  background: linear-gradient(180deg, var(--glass-tint-top), var(--glass-fill, var(--glass-tint)) 60%);
+  -webkit-backdrop-filter: blur(var(--glass-blur, 14px)) saturate(180%) brightness(1.03);
+  backdrop-filter: blur(var(--glass-blur, 14px)) saturate(180%) brightness(1.03);
+  box-shadow:
+    inset 0 0 0 1px var(--glass-edge),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.55),
+    inset -1.5px -1.5px 1px -1px rgba(42, 114, 224, 0.16),
+    var(--glass-drop);
+
+  /* specular sheen, trailing the pointer */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(90% 120% at var(--glass-x) var(--glass-y), var(--glass-sheen), transparent 60%);
+    transition: --glass-x 520ms var(--ease-out), --glass-y 520ms var(--ease-out);
+  }
+  /* the rim: a 1px gradient border that is brightest where the light hits */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    padding: 1px;
+    background: linear-gradient(140deg, var(--glass-rim), transparent 38%, transparent 64%, var(--glass-rim-low));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::before { transition: none; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    background: var(--glass-tint-top);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/*
+  Segmented control (shadcn ToggleGroup in the studio). The track is a recess cut into the slab:
+  a cool fill, a hairline inner edge, a soft shade under its top lip and a 1px white catch on its
+  bottom lip. The thumb is a solid white key sitting in it: a gradient so the top reads lit, a
+  0.5px edge, a bright inner top line, a faint inner bottom line, then a tight contact shadow and
+  a wider soft one. Hairline dividers sit between idle options (see SegmentedControl).
+*/
+@utility segment-track {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--graphite-150) 78%, transparent), color-mix(in srgb, var(--graphite-100) 70%, transparent));
+  box-shadow:
+    inset 0 0 0 1px rgba(38, 40, 46, 0.055),
+    inset 0 1px 2px rgba(38, 40, 46, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.85);
+}
+@utility segment-thumb {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+  box-shadow:
+    0 0 0 0.5px rgba(38, 40, 46, 0.16),
+    inset 0 1px 0 #ffffff,
+    inset 0 -1px 0 rgba(38, 40, 46, 0.035),
+    0 1px 1.5px rgba(38, 40, 46, 0.1),
+    0 2px 6px -1px rgba(38, 40, 46, 0.1),
+    0 6px 14px -8px rgba(38, 40, 46, 0.18);
+}
+@utility glass-pill {
+  @apply glass absolute inset-0 -z-10 rounded-full;
+  --glass-tint-top: #fff;
+  --glass-tint: #fafbfc;
+  /* Hairline, tight contact shadow, then a wide soft fall-off: the pill sits on the well, it does not float. */
+  --glass-drop: 0 0 0 0.5px rgba(38, 40, 46, 0.1), 0 1px 1px rgba(38, 40, 46, 0.06), 0 2px 4px -1px rgba(38, 40, 46, 0.08), 0 6px 12px -6px rgba(38, 40, 46, 0.14);
+}

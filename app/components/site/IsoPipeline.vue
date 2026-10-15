@@ -1,0 +1,406 @@
+<script setup lang="ts">
+import { motion } from 'motion-v'
+
+/**
+ * The pipeline as an exploded isometric drawing: four plates, one per stage, from the flat file at
+ * the top to the finished icon at the bottom. Fine grey linework; the stage that is on glows azure.
+ * Steps advance on their own while the figure is on screen and stop for a while after someone
+ * points at one.
+ */
+
+const STEPS = [
+  { title: 'Drop in a logo', text: 'An SVG or a PNG. Brand colours come along with it.' },
+  { title: 'Traced into shapes', text: 'Every shape is found and holes are kept, so nothing gets redrawn.' },
+  { title: 'Given depth', text: 'Extrude, layer, inflate or emboss it, sized in real millimetres.' },
+  { title: 'Finished and exported', text: 'Glass, metal or colour, out as a PNG, a GLB or an STL.' },
+] as const
+
+const root = useTemplateRef<HTMLElement>('root')
+const { reduced, running } = useDemoPlayback(root)
+const INTERVAL = 3200
+const { index: active, hold } = useCycle(STEPS.length, INTERVAL, running, 7000)
+
+/** True once someone has picked a step: the progress line hides until the loop moves on again. */
+const picked = ref(false)
+let picking = false
+watch(active, () => {
+  if (!picking) picked.value = false
+  picking = false
+})
+function pick(i: number) {
+  picking = i !== active.value
+  picked.value = true
+  hold(i)
+}
+
+/* Isometric projection. World units: a plate is 32 × 32, one unit is S px on screen. */
+const S = 4
+const C = Math.sqrt(3) / 2
+const OX = 168
+const GAP = 26 // world units between plates
+const OY = 3 * GAP * S + 22
+const PLATE = 32
+const T = 1 // plate thickness
+const H = 5 // extrusion depth
+type P3 = readonly [number, number, number]
+const xy = ([x, y, z]: P3) => [OX + (x - y) * C * S, OY + ((x + y) * S) / 2 - z * S] as const
+const pts = (list: readonly P3[]) => list.map(p => xy(p).map(n => n.toFixed(1)).join(',')).join(' ')
+const line = (list: readonly P3[], close = false) => `M${pts(list).replaceAll(' ', 'L')}${close ? 'Z' : ''}`
+
+/* The Framer mark (see LOGOS), as polygons (it is all straight edges), centred on the plate. */
+const MARK: readonly (readonly [number, number])[][] = [
+  [[4, 0], [20, 0], [20, 8], [12, 8]],
+  [[4, 8], [12, 8], [20, 16], [4, 16]],
+  [[4, 16], [12, 16], [4, 24]],
+].map(poly => poly.map(([x, y]) => [x! + 8, y! + 4] as const))
+const at = (poly: readonly (readonly [number, number])[], z: number): P3[] => poly.map(([x, y]) => [x, y, z])
+
+const zOf = (i: number) => (STEPS.length - 1 - i) * GAP
+
+function plate(z: number) {
+  return {
+    top: pts([[0, 0, z], [PLATE, 0, z], [PLATE, PLATE, z], [0, PLATE, z]]),
+    right: pts([[PLATE, 0, z], [PLATE, PLATE, z], [PLATE, PLATE, z - T], [PLATE, 0, z - T]]),
+    front: pts([[0, PLATE, z], [PLATE, PLATE, z], [PLATE, PLATE, z - T], [0, PLATE, z - T]]),
+    edges: line([[PLATE, 0, z - T], [PLATE, PLATE, z - T], [0, PLATE, z - T]]) + line([[PLATE, PLATE, z], [PLATE, PLATE, z - T]]),
+  }
+}
+
+/** The solid: side faces that face the viewer, back to front, then the top faces. */
+function solid(z0: number, z1: number) {
+  const sides: { points: string; shade: number; depth: number }[] = []
+  for (const poly of MARK) {
+    const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length
+    const cy = poly.reduce((s, p) => s + p[1], 0) / poly.length
+    poly.forEach((p, k) => {
+      const q = poly[(k + 1) % poly.length]!
+      let nx = q[1] - p[1]
+      let ny = p[0] - q[0]
+      const mx = (p[0] + q[0]) / 2
+      const my = (p[1] + q[1]) / 2
+      if (nx * (mx - cx) + ny * (my - cy) < 0) [nx, ny] = [-nx, -ny]
+      if (nx + ny <= 0) return
+      const len = Math.hypot(nx, ny)
+      sides.push({
+        points: pts([[p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1], [p[0], p[1], z1]]),
+        // Light from the left: faces turned towards +y are the lit ones.
+        shade: (ny / len) * 0.5 + 0.5,
+        depth: mx + my,
+      })
+    })
+  }
+  sides.sort((a, b) => a.depth - b.depth)
+  return { sides, tops: MARK.map(poly => pts(at(poly, z1))), edge: MARK.map(poly => line(at(poly, z1), true)).join('') }
+}
+
+const LAYERS = STEPS.map((_, i) => ({ z: zOf(i), plate: plate(zOf(i)) }))
+const FINISH = solid(zOf(3), zOf(3) + H)
+const WIRE = {
+  base: MARK.map(poly => line(at(poly, zOf(2)), true)).join(''),
+  top: MARK.map(poly => line(at(poly, zOf(2) + H), true)).join(''),
+  posts: MARK.flat().map(([x, y]) => line([[x, y, zOf(2)], [x, y, zOf(2) + H]])).join(''),
+}
+const TRACE = {
+  outline: MARK.map(poly => line(at(poly, zOf(1)), true)).join(''),
+  nodes: MARK.flat().map(([x, y]) => xy([x, y, zOf(1)])),
+}
+const FLAT = MARK.map(poly => pts(at(poly, zOf(0))))
+
+/* Dashed guides between the three visible corners of neighbouring plates. */
+const CORNERS = [[0, PLATE], [PLATE, PLATE], [PLATE, 0]] as const
+const GUIDES = LAYERS.slice(0, -1).map((layer, i) =>
+  CORNERS.map(([x, y]) => line([[x, y, layer.z - T], [x, y, zOf(i + 1)]])).join(''),
+)
+
+/* Numbered markers off each plate's left corner, matching the list. */
+const MARKERS = LAYERS.map(layer => {
+  const [x, y] = xy([0, PLATE, layer.z])
+  return { x: x - 24, y, tip: x - 4 }
+})
+
+/* The three exports, small tiles on the floor beside the finished icon, labels lying on the plane. */
+const FLOOR = `matrix(${C * S} ${S / 2} ${-C * S} ${S / 2} ${OX} ${OY})`
+const FILES = ['PNG', 'GLB', 'STL'].map((name, k) => {
+  const x0 = 37
+  const y0 = 1 + k * 10
+  const w = 8
+  return {
+    name,
+    // Label anchor: the tile's centre, so every name sits centred whatever its width.
+    cx: x0 + w / 2,
+    cy: y0 + w / 2,
+    top: pts([[x0, y0, 0], [x0 + w, y0, 0], [x0 + w, y0 + w, 0], [x0, y0 + w, 0]]),
+    sides: pts([[x0 + w, y0, 0], [x0 + w, y0 + w, 0], [x0, y0 + w, 0], [x0, y0 + w, -0.8], [x0 + w, y0 + w, -0.8], [x0 + w, y0, -0.8]]),
+  }
+})
+
+const state = (i: number) => (i < active.value ? 'done' : i === active.value ? 'on' : 'off')
+const uid = useId()
+const glow = `iso-glow-${uid}`
+const glass = `iso-glass-${uid}`
+/** The step highlight glides between steps; under reduced motion it just moves. */
+const highlight = computed(() => (reduced.value ? { duration: 0 } : { type: 'spring' as const, stiffness: 420, damping: 40 }))
+
+/*
+ * Linework reads `--line`, which each layer sets from its state (off, done, on); colour changes
+ * ease with `FADE`. The `group/layer` variants light the parts of the plate that is on.
+ */
+const FADE = 'duration-360 ease-[ease]'
+const ROUND = '[stroke-linejoin:round] [stroke-linecap:round]'
+const LAYER = 'group/layer [--line:var(--graphite-300)] transition-transform duration-520 ease-spring data-[state=done]:[--line:var(--graphite-500)] data-[state=on]:[--line:var(--lamp)] data-[state=on]:-translate-y-[5px] motion-reduce:transition-none'
+const PLATE_TOP = `fill-white/62 transition-[fill] ${FADE} group-data-[state=on]/layer:fill-[color-mix(in_srgb,var(--lamp)_7%,rgba(255,255,255,.8))]`
+const PLATE_SIDE = 'fill-(--graphite-200)/70'
+const PASS = {
+  glow: `fill-none stroke-lamp stroke-[2.6] ${ROUND} opacity-0 transition-opacity duration-420 ease-[ease] group-data-[state=on]/layer:opacity-40`,
+  line: `fill-none stroke-(--line) stroke-[0.9] ${ROUND} transition-[stroke] ${FADE}`,
+} as const
+const FACE = 'stroke-(--azure-700)/32 stroke-[0.7] [stroke-linejoin:round]'
+const FILE_EDGE = 'stroke-(--line) stroke-[0.8] [stroke-linejoin:round]'
+</script>
+
+<template>
+  <div
+    ref="root"
+    class="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-2 rounded-window bg-slab p-2 shadow-pane max-desk:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] max-tab:grid-cols-1"
+  >
+    <div
+      class="lightbox relative grid place-items-center overflow-hidden rounded-pane bg-[radial-gradient(90%_70%_at_50%_0%,var(--graphite-0)_0%,transparent_70%),linear-gradient(180deg,var(--graphite-50),var(--graphite-100))] px-8 py-10 shadow-[inset_0_0_0_1px_var(--hairline),inset_0_1px_0_var(--graphite-0)] max-tab:px-3 max-tab:py-6"
+    >
+      <svg
+        class="block h-auto max-h-[max(300px,calc(100svh-400px))] w-full max-w-[460px] max-tab:max-h-none"
+        viewBox="0 0 400 500"
+        aria-hidden="true"
+      >
+        <defs>
+          <filter
+            :id="glow"
+            x="-20%"
+            y="-20%"
+            width="140%"
+            height="140%"
+          >
+            <feGaussianBlur stdDeviation="3.2" />
+          </filter>
+          <linearGradient
+            :id="glass"
+            x1="0"
+            y1="0"
+            x2="1"
+            y2="1"
+          >
+            <stop
+              offset="0"
+              stop-color="var(--graphite-25)"
+            />
+            <stop
+              offset="1"
+              stop-color="var(--azure-100)"
+            />
+          </linearGradient>
+        </defs>
+
+        <!-- Light runs down the lit guides, the direction the work flows. -->
+        <path
+          v-for="(d, i) in GUIDES"
+          :key="`guide-${i}`"
+          class="fill-none stroke-(--graphite-300) stroke-[0.8] [stroke-dasharray:1.5_3] transition-[stroke] data-lit:stroke-lamp/70"
+          :class="[FADE, { 'animate-[iso-flow_900ms_linear_infinite]': running && active > i }]"
+          :d="d"
+          :data-lit="active > i || undefined"
+        />
+
+        <!-- Painted bottom up, so each plate frosts the ones below it. -->
+        <g
+          v-for="i in [3, 2, 1, 0]"
+          :key="i"
+          :class="LAYER"
+          :data-state="state(i)"
+          @pointerenter="pick(i)"
+        >
+          <polygon
+            :class="PLATE_SIDE"
+            :points="LAYERS[i]!.plate.right"
+          />
+          <polygon
+            :class="PLATE_SIDE"
+            :points="LAYERS[i]!.plate.front"
+          />
+          <polygon
+            :class="PLATE_TOP"
+            :points="LAYERS[i]!.plate.top"
+          />
+
+          <!-- Linework once in grey, once again blurred in azure as the glow. -->
+          <g
+            v-for="pass in (['glow', 'line'] as const)"
+            :key="pass"
+            :class="PASS[pass]"
+            :filter="pass === 'glow' ? `url(#${glow})` : undefined"
+          >
+            <polygon :points="LAYERS[i]!.plate.top" />
+            <path :d="LAYERS[i]!.plate.edges" />
+            <path
+              v-if="i === 1"
+              :d="TRACE.outline"
+            />
+            <path
+              v-if="i === 3 && pass === 'glow'"
+              :d="FINISH.edge"
+            />
+            <template v-if="i === 2">
+              <path
+                :d="WIRE.base"
+                stroke-dasharray="2 2.5"
+              />
+              <path
+                :d="WIRE.posts"
+                class="opacity-50"
+              />
+              <path :d="WIRE.top" />
+            </template>
+          </g>
+
+          <polygon
+            v-for="(p, k) in i === 0 ? FLAT : []"
+            :key="`flat-${k}`"
+            class="fill-ink opacity-80"
+            :points="p"
+          />
+
+          <template v-if="i === 3">
+            <polygon
+              v-for="(f, k) in FINISH.sides"
+              :key="`side-${k}`"
+              :class="FACE"
+              :points="f.points"
+              :style="{ fill: `color-mix(in srgb, var(--azure-100) ${Math.round(30 + f.shade * 65)}%, var(--azure-300))` }"
+            />
+            <polygon
+              v-for="(p, k) in FINISH.tops"
+              :key="`top-${k}`"
+              :class="FACE"
+              :points="p"
+              :fill="`url(#${glass})`"
+            />
+            <!-- The tiles land one after another when the last step comes on. -->
+            <g
+              v-for="(file, k) in FILES"
+              :key="file.name"
+              class="transition-transform duration-520 ease-spring group-data-[state=on]/layer:-translate-y-[3px] motion-reduce:transition-none"
+              :style="{ transitionDelay: `${k * 70}ms` }"
+            >
+              <polygon
+                :class="[PLATE_SIDE, FILE_EDGE]"
+                :points="file.sides"
+              />
+              <polygon
+                :class="[PLATE_TOP, FILE_EDGE]"
+                :points="file.top"
+              />
+              <text
+                :transform="FLOOR"
+                :x="file.cx"
+                :y="file.cy"
+                text-anchor="middle"
+                dominant-baseline="central"
+                class="fill-(--line) text-[3.1px] font-semibold tracking-[0.02em] transition-[fill]"
+                :class="FADE"
+              >{{ file.name }}</text>
+            </g>
+          </template>
+
+          <circle
+            v-for="([cx, cy], k) in i === 1 ? TRACE.nodes : []"
+            :key="`node-${k}`"
+            class="fill-white stroke-(--line) stroke-[0.9] transition-[stroke,fill] group-data-[state=on]/layer:fill-lamp"
+            :class="FADE"
+            :cx="cx"
+            :cy="cy"
+            r="1.8"
+          />
+
+          <path
+            class="stroke-(--line) stroke-[0.8] transition-[stroke]"
+            :class="FADE"
+            :d="`M${MARKERS[i]!.x + 9} ${MARKERS[i]!.y}H${MARKERS[i]!.tip}`"
+          />
+          <circle
+            class="fill-white stroke-(--line) stroke-[0.8] transition-[fill,stroke] group-data-[state=on]/layer:fill-lamp"
+            :class="FADE"
+            :cx="MARKERS[i]!.x"
+            :cy="MARKERS[i]!.y"
+            r="9"
+          />
+          <text
+            class="fill-(--graphite-500) text-[11.5px] font-medium tabular-nums transition-[fill] group-data-[state=on]/layer:fill-white"
+            :class="FADE"
+            :x="MARKERS[i]!.x"
+            :y="MARKERS[i]!.y + 3.4"
+            text-anchor="middle"
+          >{{ i + 1 }}</text>
+        </g>
+      </svg>
+    </div>
+
+    <ol class="flex flex-col justify-center gap-1 px-10 py-6 max-desk:px-4 [@media(max-height:780px)]:py-3 max-tab:px-1 max-tab:pt-2 max-tab:pb-1">
+      <li
+        v-for="(step, i) in STEPS"
+        :key="step.title"
+      >
+        <button
+          type="button"
+          class="relative flex w-full items-start gap-4 rounded-[18px] px-5 py-[14px] text-left press [--press:.985] focus-ring [--ring-offset:2px] [@media(max-height:780px)]:py-2.5"
+          :aria-pressed="active === i"
+          @click="pick(i)"
+          @focus="pick(i)"
+          @pointerenter="pick(i)"
+        >
+          <motion.span
+            v-if="active === i"
+            layout-id="iso-step"
+            class="absolute inset-0 rounded-[18px] bg-well"
+            :transition="highlight"
+            aria-hidden="true"
+          />
+          <!-- The number doubles as the timer: while the steps advance on their own, a hairline arc
+               closes around it, and the next step lights when the ring is full. -->
+          <span class="relative grid size-7 shrink-0 place-items-center">
+            <svg
+              v-if="active === i"
+              class="pointer-events-none absolute -inset-[5px] size-[38px] -rotate-90"
+              viewBox="0 0 38 38"
+              aria-hidden="true"
+            >
+              <circle
+                cx="19"
+                cy="19"
+                r="18"
+                class="fill-none stroke-lamp/20"
+                stroke-width="1.25"
+              />
+              <circle
+                v-if="running && !picked"
+                :key="active"
+                cx="19"
+                cy="19"
+                r="18"
+                pathLength="1"
+                class="fill-none stroke-lamp [stroke-dasharray:1] [stroke-linecap:round] animate-[iso-ring_var(--interval)_linear_both]"
+                stroke-width="1.25"
+                :style="{ '--interval': `${INTERVAL}ms` }"
+              />
+            </svg>
+            <span
+              class="grid size-7 place-items-center rounded-full text-[14px] font-medium tabular-nums transition-[background-color,color,box-shadow] duration-300 ease-[ease]"
+              :class="active === i ? 'bg-lamp text-white' : 'text-ink-3 shadow-[0_0_0_1px_var(--hairline-strong)]'"
+            >{{ i + 1 }}</span>
+          </span>
+          <span class="relative flex min-w-0 flex-col gap-1">
+            <span class="font-(family-name:--font-display) text-[18px] leading-[1.3] font-medium tracking-[-0.02em] text-ink">{{ step.title }}</span>
+            <span class="max-w-[40ch] text-[16px] leading-[1.55] text-pretty text-ink-2">{{ step.text }}</span>
+          </span>
+        </button>
+      </li>
+    </ol>
+  </div>
+</template>

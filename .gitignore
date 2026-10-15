@@ -1,0 +1,45 @@
+# Build output
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+
+# Dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Tests
+test-results
+playwright-report
+
+# Editors and OS
+.DS_Store
+.idea
+.fleet
+.vscode
+
+# Local work: screenshots, design files, agent tooling, research
+.shots
+design/
+eval/
+.agents/
+.claude/
+.codex/
+.cursor/
+.superpowers/
+skills/
+.hyperframes/
+skills-lock.json
+AGENTS.md
+CLAUDE.md
+docs/superpowers/
