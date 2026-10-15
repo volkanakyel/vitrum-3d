@@ -96,6 +96,9 @@ onBeforeUnmount(() => cancelAnimationFrame(glintFrame))
 /* Classes shared by the hero and closing call-to-action rows. */
 const actions = 'flex flex-wrap items-center gap-3 max-2xs:w-full'
 const action = 'max-2xs:flex-[1_1_100%]'
+/* A hero headline line: the ink fades toward the bottom of the two-line block. The padding,
+   cancelled by the margin, gives the clip room for ascenders and descenders past the tight line box. */
+const heroLine = 'block animate-rise bg-[linear-gradient(180deg,var(--ink)_35%,color-mix(in_srgb,var(--ink)_62%,transparent))] bg-[length:100%_200%] bg-clip-text py-[0.12em] -my-[0.12em] text-transparent'
 /* Gallery prints: the export tiles' soft pane; on hover its shadow deepens a touch. */
 const printPane = 'bg-[linear-gradient(180deg,color-mix(in_oklab,var(--shell)_55%,white)_0%,var(--shell)_70%)] shadow-[inset_0_0_0_1px_rgba(38,40,46,.05),inset_0_1px_0_rgba(255,255,255,.9),0_1px_2px_rgba(38,40,46,.03),0_16px_36px_-24px_rgba(38,40,46,.16)] transition-shadow duration-500 ease-out group-hover:shadow-[inset_0_0_0_1px_rgba(38,40,46,.06),inset_0_1px_0_rgba(255,255,255,.9),0_1px_2px_rgba(38,40,46,.04),0_22px_44px_-24px_rgba(38,40,46,.24)]'
 /* The print's "Remix" chip rises on hover or keyboard focus; under reduced motion it only fades. */
@@ -151,7 +154,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
         @unavailable="live = false"
       />
 
-      <div class="frame pointer-events-none relative z-[2] flex h-full flex-col items-center justify-center pb-[13vh] text-center max-tab:justify-start max-tab:pt-[124px] max-tab:pb-0">
+      <div class="frame pointer-events-none relative z-[2] flex h-full flex-col items-center justify-center pb-[13svh] text-center max-tab:justify-start max-tab:pt-[124px] max-tab:pb-0">
         <p class="mb-7 flex animate-rise items-center gap-2.5 text-[15px] text-ink-2 max-tab:mb-6">
           <LiveDot
             on
@@ -159,12 +162,15 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
           />
           Free, and nothing leaves your browser
         </p>
+        <!-- Each line clips its own half of one two-line gradient. Clipping on the h1 instead would
+             leave the lines invisible in Safari: their rise animation lifts them onto their own
+             layers, which the parent's text clip never reaches. -->
         <h1
           id="hero-title"
-          class="heading-hero bg-[linear-gradient(180deg,var(--ink)_35%,color-mix(in_srgb,var(--ink)_62%,transparent))] bg-clip-text pb-[0.08em] text-transparent max-2xs:text-[38px]"
+          class="heading-hero flex flex-col pb-[0.08em] max-2xs:text-[38px]"
         >
-          <span class="block animate-rise animation-delay-60">Custom 3D icons</span>
-          <span class="block animate-rise animation-delay-120">from any logo.</span>
+          <span :class="[heroLine, 'animation-delay-60 bg-top']">Custom 3D icons</span>
+          <span :class="[heroLine, 'animation-delay-120 bg-bottom']">from any logo.</span>
         </h1>
         <p class="mt-6 max-w-[46ch] animate-rise text-lead text-balance animation-delay-180 max-2xs:text-[17px]">
           Drop in an SVG or PNG and get it back in glass, metal or colour. Export a PNG for your designs, a GLB for three.js or an STL for print.
@@ -193,7 +199,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
       </div>
 
       <!-- Docked on the screen's lower edge once the scene is live: before that there is nothing to re-finish. -->
-      <div class="absolute inset-x-0 bottom-[max(28px,env(safe-area-inset-bottom))] z-[2] flex h-12 justify-center max-phone:bottom-5">
+      <div class="absolute inset-x-0 bottom-[max(28px,env(safe-area-inset-bottom))] z-[2] flex h-12 justify-center max-phone:bottom-[max(20px,env(safe-area-inset-bottom))]">
         <Transition
           enter-active-class="transition-[opacity,translate] duration-[420ms] ease-out"
           enter-from-class="translate-y-2 opacity-0 motion-reduce:translate-y-0"

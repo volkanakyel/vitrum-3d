@@ -6,6 +6,7 @@ const { preset, paused = false, clear = 0 } = defineProps<{ preset: string; paus
 const emit = defineEmits<{ ready: []; unavailable: [] }>()
 const canvas = useTemplateRef('canvas')
 const ready = ref(false)
+const shown = ref(false)
 let scene: Showcase | null = null
 let disposed = false
 
@@ -41,6 +42,7 @@ watch(reducedMotion, value => scene?.setReducedMotion(value))
 useEventListener(canvas, 'webglcontextlost', (event: Event) => {
   event.preventDefault()
   ready.value = false
+  shown.value = false
   scene?.setVisible(false)
   emit('unavailable')
 })
@@ -50,6 +52,8 @@ onMounted(async () => {
     const { Showcase } = await import('~/utils/showcase')
     if (disposed || !canvas.value) return
     scene = new Showcase(canvas.value, { layout: 'hero', narrow: false, preset })
+    // Show the canvas as soon as the first mark lands; the rest arrive one by one behind it.
+    scene.onPlaced = () => { shown.value = true }
     scene.setPaused(paused)
     scene.setHeroClear(clear)
     scene.setVisible(visible.value)
@@ -61,6 +65,7 @@ onMounted(async () => {
   } catch {
     scene?.dispose()
     scene = null
+    shown.value = false
     emit('unavailable')
   }
 })
@@ -80,7 +85,7 @@ onBeforeUnmount(() => {
     <canvas
       ref="canvas"
       class="absolute inset-0 block size-full object-cover opacity-0 transition-opacity duration-450 ease-[ease] motion-reduce:transition-none"
-      :class="{ 'opacity-100': ready }"
+      :class="{ 'opacity-100': shown }"
       aria-hidden="true"
     />
   </div>

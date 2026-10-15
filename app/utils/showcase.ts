@@ -180,7 +180,9 @@ export class Showcase {
 
   /** Build the layout's objects, yielding between them so the page stays responsive. */
   async load(): Promise<void> {
-    const idle = () => new Promise<void>(r => setTimeout(r, 0))
+    // Yield through a frame, not just a task, so each object is drawn and starts landing before
+    // the next one is traced.
+    const idle = () => new Promise<void>(r => requestAnimationFrame(() => setTimeout(r, 0)))
     if (this.opts.layout === 'hero') {
       for (const spot of HERO_SPOTS) {
         if (this.disposed) return
@@ -219,8 +221,11 @@ export class Showcase {
   }
 
   private trace(sample: Sample, stack = false): Traced {
-    const source = drawSample(sample, 768)
-    const trace = traceImage(source, { ...DEFAULT_TRACE_OPTIONS, resolution: 768, stack, mode: 'auto' })
+    // Phone heroes draw each mark at ~200 device px; a 512 px trace is ample and under half
+    // the pixels traced on the main thread before the first mark can land.
+    const res = this.opts.layout === 'hero' && this.canvas.clientWidth < 768 ? 512 : 768
+    const source = drawSample(sample, res)
+    const trace = traceImage(source, { ...DEFAULT_TRACE_OPTIONS, resolution: res, stack, mode: 'auto' })
     return { trace, source }
   }
 
