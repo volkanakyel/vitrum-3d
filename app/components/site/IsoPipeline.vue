@@ -36,7 +36,8 @@ function pick(i: number) {
 /* Isometric projection. World units: a plate is 32 × 32, one unit is S px on screen. */
 const S = 4
 const C = Math.sqrt(3) / 2
-const OX = 168
+// Centres the whole drawing, markers on the left and export tiles on the right, in the 400-wide viewBox.
+const OX = 196
 const GAP = 26 // world units between plates
 const OY = 3 * GAP * S + 22
 const PLATE = 32
