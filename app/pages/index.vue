@@ -23,17 +23,24 @@ const hero = useTemplateRef('hero')
 const heroActions = useTemplateRef('heroActions')
 const heroTitle = useTemplateRef('heroTitle')
 const heroClear = ref(0)
-/** The headline's centre in the hero: the 3D marks come out from behind it. */
-const heroOrigin = shallowRef<{ x: number; y: number }>()
+/** The copy block (headline to actions) in the hero: the 3D marks grow out of its edges. */
+const heroCopy = shallowRef<{ left: number; top: number; right: number; bottom: number }>()
 function measureHeroClear() {
   if (!hero.value || !heroActions.value) return
   const box = hero.value.getBoundingClientRect()
   const clear = Math.round(Math.max(0, heroActions.value.getBoundingClientRect().bottom - box.top))
   if (clear !== heroClear.value) heroClear.value = clear
-  const t = heroTitle.value?.getBoundingClientRect()
-  if (t) {
-    const x = Math.round(t.left + t.width / 2 - box.left), y = Math.round(t.top + t.height / 2 - box.top)
-    if (x !== heroOrigin.value?.x || y !== heroOrigin.value?.y) heroOrigin.value = { x, y }
+  const title = heroTitle.value
+  if (title) {
+    const parts = [title, title.nextElementSibling, heroActions.value].filter(Boolean).map(el => el!.getBoundingClientRect())
+    const copy = {
+      left: Math.round(Math.min(...parts.map(r => r.left)) - box.left),
+      top: Math.round(Math.min(...parts.map(r => r.top)) - box.top),
+      right: Math.round(Math.max(...parts.map(r => r.right)) - box.left),
+      bottom: clear,
+    }
+    const c = heroCopy.value
+    if (!c || c.left !== copy.left || c.top !== copy.top || c.right !== copy.right || c.bottom !== copy.bottom) heroCopy.value = copy
   }
 }
 useResizeObserver([hero, heroActions], measureHeroClear)
@@ -167,7 +174,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
         :preset="preset"
         :paused="paused"
         :clear="heroClear"
-        :origin="heroOrigin"
+        :copy="heroCopy"
         @ready="live = true"
         @unavailable="live = false"
       />

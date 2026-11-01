@@ -29,7 +29,32 @@ interface Placed {
   landing: number
   /** Eased pointer tilt (x about the horizontal axis, y about the vertical). */
   look: THREE.Vector2
+  /** Hero entrance: where the mark grows out from, on the edge of the copy (world units). */
+  from?: THREE.Vector3
 }
+
+/**
+ * CSS-style cubic-bezier easing (x is time, y is progress), solved by Newton steps. The hero's
+ * entrance uses a soft start and a long glide, so a mark swells out of the copy instead of being
+ * thrown from it.
+ */
+function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
+  const ax = 3 * x1 - 3 * x2 + 1, bx = 3 * x2 - 6 * x1, cx = 3 * x1
+  const ay = 3 * y1 - 3 * y2 + 1, by = 3 * y2 - 6 * y1, cy = 3 * y1
+  return (x: number) => {
+    if (x <= 0) return 0
+    if (x >= 1) return 1
+    let t = x
+    for (let i = 0; i < 6; i++) {
+      const dx = ((ax * t + bx) * t + cx) * t - x
+      const d = (3 * ax * t + 2 * bx) * t + cx
+      if (Math.abs(dx) < 1e-5 || !d) break
+      t -= dx / d
+    }
+    return ((ay * t + by) * t + cy) * t
+  }
+}
+const SWELL = cubicBezier(0.3, 0.15, 0, 1)
 
 /** Yield through a frame, not just a task, so the page paints between two pieces of work. */
 const nextFrame = () => new Promise<void>(r => requestAnimationFrame(() => setTimeout(r, 0)))
@@ -80,8 +105,8 @@ export class Showcase {
   private target = new THREE.Vector3()
   /** Hero, narrow screens: canvas px from the top that the copy occupies; the marks stay below. */
   private heroClear = 0
-  /** Hero: the headline's centre in canvas px; the marks come out from behind it. */
-  private heroOrigin: { x: number; y: number } | null = null
+  /** Hero: the copy block (headline to actions) in canvas px; the marks grow out of its edges. */
+  private heroCopy: { left: number; top: number; right: number; bottom: number } | null = null
   /** Hero: world units per css px (see `layoutHero`). */
   private heroU = 1
   /** Fires once per object as it lands, so the page can reveal its caption. */
@@ -472,28 +497,36 @@ export class Showcase {
     this.invalidate()
   }
 
-  /** Hero: the headline's centre in canvas px. */
-  setHeroOrigin(x: number, y: number): void {
-    this.heroOrigin = { x, y }
+  /** Hero: the copy block (headline to actions) in canvas px. */
+  setHeroCopy(rect: { left: number; top: number; right: number; bottom: number }): void {
+    this.heroCopy = rect
   }
 
   /**
-   * Hero entrance order: nearest the headline first, so the set opens outward from the title,
-   * the inner pair a beat before the outer pair. Negative landing is the delay.
+   * Hero entrance. Each mark grows out of the edge of the copy nearest its spot (beside the
+   * headline on wide screens, under the actions on a phone), so none ever passes beneath the
+   * letters: the second line is translucent ink and a mark behind it reads as flicker. Nearest
+   * marks go first; mirrored pairs share a beat. Negative landing is the delay.
    */
   private stageEntrance() {
-    const o0 = this.heroOrigin
-    if (!o0) return
-    const w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1
-    const ox = (o0.x - w / 2) / this.heroU, oy = (h / 2 - o0.y) / this.heroU
-    const ranked = [...this.placed].sort((a, b) => Math.hypot(a.home.x - ox, a.home.y - oy) - Math.hypot(b.home.x - ox, b.home.y - oy))
-    // Mirrored pairs sit at the same distance: they share a beat.
+    const c = this.heroCopy
+    if (!c) return
+    const w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1, u = this.heroU
+    const dist = new Map<Placed, number>()
+    for (const o of this.placed) {
+      // Home in canvas px, then the nearest point of the copy's box to it.
+      const hx = o.home.x * u + w / 2, hy = h / 2 - o.home.y * u
+      const sx = Math.min(c.right, Math.max(c.left, hx)), sy = Math.min(c.bottom, Math.max(c.top, hy))
+      o.from = new THREE.Vector3((sx - w / 2) / u, (h / 2 - sy) / u, o.home.z - 160)
+      dist.set(o, Math.hypot(hx - sx, hy - sy))
+    }
+    const ranked = [...this.placed].sort((a, b) => dist.get(a)! - dist.get(b)!)
     let beat = -1, last = -Infinity
     for (const o of ranked) {
-      const d = Math.hypot(o.home.x - ox, o.home.y - oy)
+      const d = dist.get(o)!
       if (d - last > 24) beat++
       last = d
-      o.landing = -beat * 0.07
+      o.landing = -beat * 0.05
     }
   }
 
@@ -585,14 +618,14 @@ export class Showcase {
 
     for (const o of this.placed) {
       const g = o.group
-      // The hero's marks travel out from behind the headline (0.65 s each); the other layouts rise.
-      const fromTitle = layout === 'hero' && this.heroOrigin
-      const landing = o.landing = still ? 1 : Math.min(1, o.landing + dt * (fromTitle ? 1.55 : 1.7))
+      // The hero's marks swell out of the copy (0.95 s each); the other layouts rise.
+      const from = layout === 'hero' ? o.from : undefined
+      const landing = o.landing = still ? 1 : Math.min(1, o.landing + dt * (from ? 1 / 0.95 : 1.7))
       const l = Math.max(0, landing)
       const e = 1 - Math.pow(1 - l, 3)
-      // Quartic out: leaves the title fast and glides the last stretch into place.
-      const q = 1 - Math.pow(1 - l, 4)
-      g.scale.setScalar(fromTitle ? (l > 0 ? 0.18 + 0.82 * q : 0.0001) : 0.92 + 0.08 * e)
+      const q = SWELL(l)
+      // Size leads place a little, so a mark is never a speck travelling out on its own.
+      g.scale.setScalar(from ? Math.max(0.0001, SWELL(Math.min(1, l * 1.3))) : 0.92 + 0.08 * e)
 
       // Where the cursor is relative to this object, on screen. The object turns to face it:
       // fully when the cursor is on or near it, fading out with distance, off when it leaves.
@@ -614,14 +647,12 @@ export class Showcase {
 
       if (layout === 'hero' || layout === 'specimen') {
         const bob = Math.sin(t * 0.65 + (layout === 'hero' ? Math.abs(o.home.x) * 0.004 : o.phase)) * 4
-        if (fromTitle) {
-          // From the headline's centre, a little behind it, out to the mark's spot. Height eases
-          // a touch slower than width, so each path bows out of the title instead of a straight line.
-          const ox = (this.heroOrigin!.x - w / 2) / this.heroU, oy = (h / 2 - this.heroOrigin!.y) / this.heroU
-          const ey = 1 - Math.pow(1 - l, 2.4)
-          g.position.x = ox + (o.home.x - ox) * q
-          g.position.y = oy + (o.home.y - oy) * ey + bob
-          g.position.z = o.home.z - 220 * (1 - q)
+        if (from) {
+          // One curve drives place, depth and size together, so the mark reads as a single
+          // shape swelling into position rather than a small object flying across.
+          g.position.x = from.x + (o.home.x - from.x) * q
+          g.position.y = from.y + (o.home.y - from.y) * q + bob * q
+          g.position.z = from.z + (o.home.z - from.z) * q
         } else {
           g.position.y = o.home.y - 24 * (1 - e) + bob
         }
@@ -631,10 +662,10 @@ export class Showcase {
           // set reads as one arrangement; the centre mark keeps a slight turn to show its depth.
           const side = Math.sign(Math.round(o.home.x))
           const sway = Math.sin(t * 0.32 + (side < 0 ? 0 : Math.PI)) * 0.1 * (1 - gain * 0.6)
-          // On the way out each mark turns in from edge-on, as if dealt from the title, and settles.
-          const deal = fromTitle ? (1 - q) * (side || 1) * 1.1 : 0
-          g.rotation.y = (side ? -side * 0.34 : -0.3) + sway + look.y * 0.35 + deal
-          g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x * 0.35 + 0.16 - (fromTitle ? (1 - q) * 0.35 : 0)
+          // A soft turn into place on the way out, on the same curve: no snap at the end.
+          const turn = from ? (1 - q) * (side || 1) * 0.6 : 0
+          g.rotation.y = (side ? -side * 0.34 : -0.3) + sway + look.y * 0.35 + turn
+          g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x * 0.35 + 0.16 - (from ? (1 - q) * 0.2 : 0)
           g.rotation.z = 0
         } else {
           g.rotation.y = Math.sin(t * 0.32 + o.phase) * 0.16 * (1 - gain * 0.6) + look.y * 0.35 + (o.id === 'chat' ? 0.35 : -0.38)

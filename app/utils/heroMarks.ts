@@ -60,3 +60,54 @@ export function buildMarksInWorker(requests: MarkRequest[]): MarkBuild {
   marks.catch(() => {})
   return { marks, terminate: () => runs.forEach(r => r.terminate()) }
 }
+
+// ─── Cache ───────────────────────────────────────────────────────────────────────────────────
+// The marks are the same on every visit of one build, so a reload need not trace them again: the
+// built arrays are kept in IndexedDB under the build id and the trace size, and a reload's marks
+// are ready as soon as the renderer is. Any storage failure just means building as usual.
+
+const DB = 'vitrum-hero'
+const STORE = 'marks'
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB, 1)
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE)
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+function idb<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest): Promise<T> {
+  return openDb().then(db => new Promise<T>((resolve, reject) => {
+    const tx = db.transaction(STORE, mode)
+    const req = run(tx.objectStore(STORE))
+    tx.oncomplete = () => { db.close(); resolve(req.result as T) }
+    tx.onerror = tx.onabort = () => { db.close(); reject(tx.error) }
+  }))
+}
+
+/**
+ * The hero's marks from the cache when this build has stored them, from the workers otherwise
+ * (then stored for the next visit). `version` should change whenever the marks could: the build id.
+ */
+export function heroMarks(requests: MarkRequest[], version: string): MarkBuild {
+  if (typeof indexedDB === 'undefined' || !version) return buildMarksInWorker(requests)
+  const key = `${version}:${requests.map(r => `${r.id}/${r.sampleId}/${r.sizeMm}/${r.res}`).join(',')}`
+  let build: MarkBuild | null = null
+  let stopped = false
+  const marks = idb<MarkData[] | undefined>('readonly', s => s.get(key))
+    .catch(() => undefined)
+    .then((hit) => {
+      if (hit?.length === requests.length) return hit
+      if (stopped) throw new Error('stopped')
+      build = buildMarksInWorker(requests)
+      return build.marks.then((built) => {
+        // Earlier builds' entries go; this one is written once (structured clone of the arrays).
+        idb('readwrite', s => s.clear()).then(() => idb('readwrite', s => s.put(built, key))).catch(() => {})
+        return built
+      })
+    })
+  marks.catch(() => {})
+  return { marks, terminate: () => { stopped = true; build?.terminate() } }
+}
