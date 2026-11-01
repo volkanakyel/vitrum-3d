@@ -1,5 +1,6 @@
 import { contours as d3Contours } from 'd3-contour'
 import { gaussianBlur, makeCanvas, rasterizeOutline, sourceSize } from './raster'
+import { groupItems, type TraceItem } from './sheet'
 
 export type SourceMode = 'auto' | 'dark' | 'light' | 'alpha' | 'color'
 export type ResolvedMode = Exclude<SourceMode, 'auto'>
@@ -50,6 +51,11 @@ export interface TraceResult {
   polygons: TracedPolygon[]
   /** Stack traces only: colour regions to raise above the base (`polygons`). */
   layers?: TraceLayer[]
+  /**
+   * The separate marks the polygons make up (an icon sheet holds many), in reading order. Absent
+   * on stack traces, where the polygons are one object's base.
+   */
+  items?: TraceItem[]
   /** The page holds an object larger than the artwork (an icon on its tile); Stack suits it. */
   hasTile: boolean
   /** Working raster size. */
@@ -147,7 +153,11 @@ export function traceImage(img: TraceSource, opts: TraceOptions): TraceResult {
   // that keeps the whole object.
   const artworkArea = first.coverage * first.width * first.height
   const outer = findOuter(detect, first.background, detectRes / Math.max(iw, ih))
-  first.hasTile = !!outer && Math.abs(ringArea(outer.exterior)) > artworkArea * 1.3
+  // A tile is bigger than the artwork's own outline, not just than its ink: an outline drawing
+  // (a bolt drawn as a line, a ring) has little ink, but the outer edge found is its own.
+  const filledArea = first.polygons.reduce((s, p) => s + Math.abs(ringArea(p.exterior)), 0)
+  const outerArea = outer ? Math.abs(ringArea(outer.exterior)) : 0
+  first.hasTile = outerArea > artworkArea * 1.3 && outerArea > filledArea * 1.15
   const bw = first.bbox.maxX - first.bbox.minX
   const bh = first.bbox.maxY - first.bbox.minY
   const longest = Math.max(first.width, first.height)
@@ -690,6 +700,7 @@ function traceImageData(
 
   return {
     polygons,
+    items: groupItems(polygons),
     hasTile: false,
     width,
     height,

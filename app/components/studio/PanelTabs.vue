@@ -42,14 +42,14 @@ function holdPress(e: MouseEvent) {
   <TabsList
     data-sheet-grip
     data-sheet-peek
-    class="relative z-10 grid h-9 w-full grid-cols-3 max-md:isolate max-md:touch-none max-md:rounded-full max-md:segment-track max-md:p-[3px] md:-mx-2 md:-mb-px md:h-10 md:w-[calc(100%+1rem)] md:rounded-none md:bg-transparent md:p-0"
+    class="relative z-10 grid h-9 w-full grid-cols-3 max-md:h-11 max-md:isolate max-md:touch-none max-md:rounded-full max-md:segment-track max-md:p-[3px] md:-mx-2 md:-mb-px md:h-10 md:w-[calc(100%+1rem)] md:rounded-none md:bg-transparent md:p-0"
     @mousedown.capture="holdPress"
   >
     <TabsTrigger
       v-for="t in tabs"
       :key="t.value"
       :value="t.value"
-      class="group/tab relative gap-1.5 rounded-full border-0 text-[13px] text-muted-foreground transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none md:h-full md:rounded-none md:focus-visible:rounded-t-xl md:focus-visible:outline-none md:focus-visible:ring-2 md:focus-visible:ring-inset md:focus-visible:ring-ring/35"
+      class="group/tab relative gap-1.5 rounded-full border-0 text-[13px] max-md:text-[14px] text-muted-foreground transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none md:h-full md:rounded-none md:focus-visible:rounded-t-xl md:focus-visible:outline-none md:focus-visible:ring-2 md:focus-visible:ring-inset md:focus-visible:ring-ring/35"
       @click="select(t.value)"
     >
       <motion.span

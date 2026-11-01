@@ -18,6 +18,10 @@ export interface TirUniforms {
   tirStrength: { value: number }
   tirPower: { value: number }
   rimChroma: { value: number }
+  /** The Liquid finish (0..1): spectral refraction, rims split by wavelength, film grain. */
+  liquid: { value: number }
+  /** Liquid only: the IOR spread from red to violet, as a share of the IOR. */
+  spectralSpread: { value: number }
 }
 
 /**
@@ -87,18 +91,63 @@ export function patchTotalInternalReflection(m: MeshTransmissionMaterial, u: Tir
     shader.uniforms.tirStrength = u.tirStrength
     shader.uniforms.tirPower = u.tirPower
     shader.uniforms.rimChroma = u.rimChroma
+    shader.uniforms.liquid = u.liquid
+    shader.uniforms.spectralSpread = u.spectralSpread
     shader.fragmentShader = shader.fragmentShader
-      .replace('uniform float chromaticAberration;', 'uniform float chromaticAberration;\nuniform float tirStrength;\nuniform float tirPower;\nuniform float rimChroma;')
+      .replace('uniform float chromaticAberration;', 'uniform float chromaticAberration;\nuniform float tirStrength;\nuniform float tirPower;\nuniform float rimChroma;\nuniform float liquid;\nuniform float spectralSpread;')
       .replace(
         'totalDiffuse = mix( totalDiffuse, transmission.rgb, material.transmission );',
         `{
           float grazing = pow( 1.0 - saturate( dot( normal, geometryViewDir ) ), tirPower );
           float tir = saturate( grazing * tirStrength );
+          // Liquid splits light by wavelength only at the edges, as a prism does: across the flat
+          // front and back the shift would only tint the whole face. The model is built along
+          // its z axis, so the object-space normal turning away from z finds the bevels and
+          // walls (the bevels are faceted, so the normal's change per pixel cannot); grazing
+          // finds the silhouette whatever the pose.
+          vec3 nObj = normalize( transpose( mat3( modelMatrix ) ) * inverseTransformDirection( normal, viewMatrix ) );
+          float edge = max( smoothstep( 0.1, 0.5, 1.0 - abs( nObj.z ) ), smoothstep( 0.25, 0.75, grazing ) );
+          // The way the normal leans away from the eye, as long as the lean is steep: bending the
+          // normal either way along it splits a reflection by wavelength across the rim.
+          vec3 lean = ( normal - geometryViewDir * dot( normal, geometryViewDir ) ) * edge;
           #ifdef USE_ENVMAP
             vec3 tirRadiance = getIBLRadiance( geometryViewDir, normal, material.roughness ) * envMapIntensity;
+            if ( liquid > 0.0 ) {
+              // Liquid: the rim mirrors the strip lights with red and blue pulled apart, so every
+              // bright streak on an edge carries a warm side and a cool side.
+              float s = spectralSpread * 1.5;
+              vec3 split = vec3(
+                getIBLRadiance( geometryViewDir, normalize( normal - lean * s ), material.roughness ).r,
+                tirRadiance.g / max( envMapIntensity, 1e-4 ),
+                getIBLRadiance( geometryViewDir, normalize( normal + lean * s ), material.roughness ).b
+              ) * envMapIntensity;
+              tirRadiance = mix( tirRadiance, split, liquid );
+            }
           #else
             vec3 tirRadiance = vec3( 0.0 );
           #endif
+          if ( liquid > 0.0 ) {
+            // Spectral refraction: seven fixed wavelengths, each at its own IOR, each weighted by
+            // its hue. Fixed taps (no jitter) keep the bands crisp, so a white edge seen through
+            // the body breaks into clean red, green and blue outlines instead of a smear.
+            vec3 vW = normalize( cameraPosition - vWorldPosition );
+            vec3 nW = inverseTransformDirection( normal, viewMatrix );
+            vec3 spectral = vec3( 0.0 );
+            vec3 weight = vec3( 0.0 );
+            for ( int k = 0; k < 7; k ++ ) {
+              float w = float( k ) / 6.0;
+              vec3 hue = saturate( vec3( 1.5 - abs( w * 4.0 - 0.6 ), 1.5 - abs( w * 4.0 - 2.0 ), 1.5 - abs( w * 4.0 - 3.4 ) ) );
+              float kIor = material.ior * ( 1.0 + spectralSpread * ( w - 0.5 ) );
+              vec3 t = getIBLVolumeRefraction(
+                nW, vW, material.roughness, material.diffuseColor, material.specularColor, material.specularF90,
+                vWorldPosition, modelMatrix, viewMatrix, projectionMatrix, kIor, material.thickness,
+                material.attenuationColor, material.attenuationDistance
+              ).rgb;
+              spectral += t * hue;
+              weight += hue;
+            }
+            transmission.rgb = mix( transmission.rgb, spectral / weight, liquid * edge );
+          }
           transmission.rgb = mix( transmission.rgb, tirRadiance, tir );
           // Thin-film rainbow on the rims: the hue turns with the view angle and drifts across
           // the surface, so a holographic glass shimmers as it rotates. Quadratic in the
@@ -108,6 +157,12 @@ export function patchTotalInternalReflection(m: MeshTransmissionMaterial, u: Tir
           vec3 spectrum = 0.55 + 0.45 * cos( 6.28318 * ( hue + vec3( 0.0, 0.33, 0.67 ) ) );
           transmission.rgb = mix( transmission.rgb, transmission.rgb * spectrum * 1.35 + spectrum * 0.08, chroma );
           totalSpecular *= mix( vec3( 1.0 ), spectrum * 1.6, chroma );
+          // Film grain over the body, as a liquid-glass render carries in its dark passages. Fixed
+          // to the pixel so it reads as the print's grain, not as noise crawling over the glass.
+          if ( liquid > 0.0 ) {
+            float g = fract( sin( dot( gl_FragCoord.xy, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 ) - 0.5;
+            transmission.rgb += g * 0.035 * liquid * ( 0.35 + 0.65 * smoothstep( 0.6, 0.0, dot( transmission.rgb, vec3( 0.333 ) ) ) );
+          }
         }
         totalDiffuse = mix( totalDiffuse, transmission.rgb, material.transmission );`,
       )

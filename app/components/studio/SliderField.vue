@@ -436,7 +436,7 @@ const handleHidden = computed(() => pct.value < 3 || textZones.value.some(([a, b
           key="reset"
           type="button"
           data-no-drag
-          class="flex cursor-pointer text-muted-foreground transition-[color,scale] duration-150 ease-out hover:text-lamp-ink active:scale-[.85]"
+          class="relative flex cursor-pointer text-muted-foreground transition-[color,scale] duration-150 ease-out before:absolute before:-inset-2 hover:text-lamp-ink active:scale-[.85] pointer-coarse:before:-inset-3.5"
           :initial="{ opacity: 0, transform: 'scale(0.9)' }"
           :animate="{ opacity: 1, transform: 'scale(1)' }"
           :exit="{ opacity: 0, transform: 'scale(0.9)', transition: { duration: 0.1, ease: EASE_OUT } }"

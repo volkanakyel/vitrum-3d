@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { buildExtrudeGeometry, roundSharpCorners } from '~/utils/extrude'
+import { buildExtrudeGeometry, collapseShortEdges, roundSharpCorners } from '~/utils/extrude'
 import type { TraceResult } from '~/utils/trace'
 
 function square(size = 100): TraceResult {
@@ -68,5 +68,16 @@ describe('roundSharpCorners', () => {
     const out = roundSharpCorners(pts, 1)
     expect(out.length).toBeGreaterThan(3)
     for (const p of out) expect(p.x).toBeLessThanOrEqual(40)
+  })
+})
+
+describe('collapseShortEdges', () => {
+  it('turns a tip drawn with a tiny flat into one corner', () => {
+    const tip: [number, number][] = [[0, 0], [10, 10], [10.5, 10.6], [11, 10.6], [21, 0], [10, -20]]
+    expect(collapseShortEdges(tip, 2)).toEqual([[0, 0], [10, 10], [21, 0], [10, -20]])
+  })
+  it('leaves a ring with no short edges alone', () => {
+    const sq: [number, number][] = [[0, 0], [10, 0], [10, 10], [0, 10]]
+    expect(collapseShortEdges(sq, 2)).toEqual(sq)
   })
 })

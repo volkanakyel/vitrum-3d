@@ -1,7 +1,12 @@
 import { MATERIAL_PRESETS, type MaterialPreset } from '~/utils/presets'
 
-/** Finishes the hero can preview. Order is the swatch order. */
-export const LANDING_LOOK_IDS = ['chrome', 'silver', 'titanium', 'black', 'smoke', 'obsidian', 'frosted', 'clear'] as const
+/**
+ * Finishes the hero can preview. Order is the swatch order. Warm metals and black only: each one
+ * holds a clean edge on the light hero table (#eceef2). Pale or tinted glass washed into it, gold
+ * rendered olive and gunmetal read as navy, so they stay in the studio. Liquid
+ * shows its smoked variant here, since its clear base is tuned for a black wall the hero lacks.
+ */
+export const LANDING_LOOK_IDS = ['liquid-smoke', 'black', 'rosegold', 'champagne', 'bronze', 'chrome'] as const
 
 export interface LandingExample {
   /** Sample id in `samples.ts`; the card opens it in the studio. */
@@ -40,6 +45,7 @@ export function landingLooks(): MaterialPreset[] {
   return LANDING_LOOK_IDS.map((id) => {
     const preset = MATERIAL_PRESETS.find(item => item.id === id)
     if (!preset) throw new Error(`Missing material preset: ${id}`)
-    return preset
+    // The hero names the finish, not the variant: its smoked Liquid is simply "Liquid" here.
+    return id === 'liquid-smoke' ? { ...preset, label: 'Liquid' } : preset
   })
 }

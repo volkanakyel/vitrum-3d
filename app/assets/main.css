@@ -534,12 +534,6 @@
     user-select: none;
     -webkit-touch-callout: none;
   }
-  /* iOS zooms into any field under 16px and never zooms back out. */
-  @media (pointer: coarse) {
-    input:not([type='range'], [type='checkbox'], [type='radio'], [type='color']), textarea, select {
-      font-size: max(16px, 1em);
-    }
-  }
   button { cursor: pointer; }
   /* Display: Swiss grotesk, tight, medium weight. */
   .font-display { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.035em; font-feature-settings: 'ss01', 'cv11'; }
@@ -554,6 +548,15 @@
   input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
   input[type='number']::-webkit-outer-spin-button,
   input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+}
+
+/* iOS zooms into any field under 16px and never zooms back out. Unlayered on purpose: a size
+   utility on the field (`text-[13px]`) lives in the utilities layer, and any unlayered rule beats
+   every layered one, so no component can drop a touch field under the floor by accident. */
+@media (pointer: coarse) {
+  input:not([type='range'], [type='checkbox'], [type='radio'], [type='color']), textarea, select {
+    font-size: max(16px, 1em);
+  }
 }
 
 /* Marketing column. One gutter scale for the landing page and footer; the nav is slightly wider

@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
  * with the neutral finishes, so flipping looks never means leaving the model. Glass above the
  * hairline, metal below; the ring slides to the pick. The full list stays in the Material tab.
  */
-const RAIL = ['clear', 'frosted', 'smoke', 'obsidian', 'chrome', 'silver', 'titanium', 'black', 'ceramic'] as const
+const RAIL = ['clear', 'frosted', 'smoke', 'obsidian', 'liquid', 'chrome', 'silver', 'titanium', 'black', 'ceramic'] as const
 
 const props = defineProps<{ glass: GlassParams }>()
 const reduced = useReducedMotion()

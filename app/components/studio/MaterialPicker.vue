@@ -8,21 +8,21 @@ const props = defineProps<{ glass: GlassParams }>()
 const { ink } = useStudioContext()
 
 const tab = ref<Finish>(props.glass.finish)
-const finishLabel: Record<Finish, string> = { glass: 'Glass', metal: 'Metal', print: 'Color' }
-const finishIcon: Record<Finish, 'gem' | 'cuboid' | 'image'> = { glass: 'gem', metal: 'cuboid', print: 'image' }
+const finishLabel: Record<Finish, string> = { glass: 'Glass', liquid: 'Liquid', metal: 'Metal', print: 'Color' }
+const finishIcon: Record<Finish, 'gem' | 'droplets' | 'cuboid' | 'image'> = { glass: 'gem', liquid: 'droplets', metal: 'cuboid', print: 'image' }
 watch(() => props.glass.finish, f => (tab.value = f))
 
 const presets = computed(() => MATERIAL_PRESETS.filter(p => p.group === tab.value))
 const active = computed(() => activePresetId(props.glass))
 const apply = (p: MaterialPreset) => applyPreset(props.glass, p)
-const finishes: SegmentOption<Finish>[] = (['glass', 'metal', 'print'] as const).map(f => ({ value: f, label: finishLabel[f], icon: finishIcon[f] }))
+const finishes: SegmentOption<Finish>[] = (['glass', 'liquid', 'metal', 'print'] as const).map(f => ({ value: f, label: finishLabel[f], icon: finishIcon[f] }))
 function pickPreset(id: unknown) {
   const p = presets.value.find(m => m.id === id)
   if (p) apply(p)
 }
 function switchTab(f: Finish) {
   tab.value = f
-  const first = { glass: 'clear', metal: 'chrome', print: 'natural' }[f]
+  const first = { glass: 'clear', liquid: 'liquid', metal: 'chrome', print: 'natural' }[f]
   if (props.glass.finish !== f) apply(MATERIAL_PRESETS.find(p => p.id === first)!)
 }
 </script>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const link = 'inline-flex items-center gap-[7px] press focus-ring [--ring-offset:5px] hover:text-ink focus-visible:rounded-[3px]'
+const link = 'inline-flex items-center gap-[7px] pointer-coarse:min-h-11 press focus-ring [--ring-offset:5px] hover:text-ink focus-visible:rounded-[3px]'
 </script>
 
 <template>
@@ -12,7 +12,7 @@ const link = 'inline-flex items-center gap-[7px] press focus-ring [--ring-offset
             Custom 3D icons,<br>straight from your SVG.
           </p>
         </div>
-        <div class="flex flex-col items-start gap-3.5 text-[15px]">
+        <div class="flex flex-col items-start gap-3.5 text-[15px] pointer-coarse:gap-0">
           <h2 class="mb-2 text-[15px] font-medium text-ink">
             On this page
           </h2>
@@ -29,7 +29,7 @@ const link = 'inline-flex items-center gap-[7px] press focus-ring [--ring-offset
             :class="link"
           >Questions</a>
         </div>
-        <div class="flex flex-col items-start gap-3.5 text-[15px]">
+        <div class="flex flex-col items-start gap-3.5 text-[15px] pointer-coarse:gap-0">
           <h2 class="mb-2 text-[15px] font-medium text-ink">
             Studio
           </h2>

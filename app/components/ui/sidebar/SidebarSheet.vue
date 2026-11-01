@@ -189,7 +189,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
     <button
       type="button"
       data-sheet-grip
-      class="group/grip mx-auto flex h-[22px] w-24 shrink-0 cursor-grab touch-none items-center justify-center outline-none active:cursor-grabbing"
+      class="group/grip mx-auto flex h-[22px] w-32 shrink-0 cursor-grab touch-none items-center justify-center outline-none active:cursor-grabbing"
       :aria-label="snap === 'peek' ? 'Expand controls' : 'Collapse controls'"
       :aria-expanded="snap !== 'peek'"
       @click="toggle"

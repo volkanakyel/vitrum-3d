@@ -165,8 +165,8 @@ export const SAMPLES: Sample[] = [
 
 /** The landing hero's centre object; its finish follows the page's swatches. */
 export const HERO_STORY = 'github'
-/** The hero's opening finish; the landing stays monochrome so the shapes, not the colours, lead. */
-export const HERO_FINISH = 'chrome'
+/** The hero's opening finish: the smoked Liquid glass, dark enough to hold its edge on the light table. */
+export const HERO_FINISH = 'liquid-smoke'
 /**
  * Where the hero's objects sit, in screen space, so they frame the copy on any screen: x and y are
  * fractions of the half-width and half-height from the centre (up is +), size is px on a
@@ -184,13 +184,14 @@ export interface HeroSpot {
 }
 // One arc under and around the copy, mirrored left to right: an outer pair at headline height, an
 // inner pair at the buttons, the switchable GitHub mark at the bottom centre. Each pair shares a
-// size and depth; black and chrome alternate across the diagonal so neither side reads heavier.
+// size and depth; rose gold and black alternate across the diagonal so neither side reads heavier,
+// and both keep a clean edge against the light table.
 export const HERO_SPOTS: readonly HeroSpot[] = [
   { id: 'story', size: 160, z: 24, wide: [0, -0.56], narrow: [0, 0.6] },
-  { id: 'figma', preset: 'black', size: 100, z: 0, wide: [-0.68, 0.2], narrow: [-0.64, 0.22] },
-  { id: 'framer', preset: 'chrome', size: 100, z: 0, wide: [0.68, 0.2], narrow: [0.64, 0.22] },
-  { id: 'apple', preset: 'chrome', size: 112, z: 10, wide: [-0.5, -0.38], narrow: [-0.66, 0.88] },
-  { id: 'spotify', preset: 'black', size: 112, z: 10, wide: [0.5, -0.38], narrow: [0.66, 0.88] },
+  { id: 'figma', preset: 'rosegold', size: 100, z: 0, wide: [-0.68, 0.2], narrow: [-0.64, 0.22] },
+  { id: 'framer', preset: 'black', size: 100, z: 0, wide: [0.68, 0.2], narrow: [0.64, 0.22] },
+  { id: 'apple', preset: 'black', size: 112, z: 10, wide: [-0.5, -0.38], narrow: [-0.66, 0.88] },
+  { id: 'spotify', preset: 'rosegold', size: 112, z: 10, wide: [0.5, -0.38], narrow: [0.66, 0.88] },
 ]
 
 /** Brand marks. Their fine details (tails, stripes, bars) need a small bevel to survive. */

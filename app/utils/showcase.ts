@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import { buildExtrudeGeometry } from './extrude'
-import { bakeEnvironment, createStudioEnvironment } from './glassScene'
+import { bakeEnvironment, createLiquidEnvironment, createStudioEnvironment } from './glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams } from './presets'
 import { buildPrintTexture } from './printTexture'
 import { DEFAULT_TRACE_OPTIONS, traceImage, type TraceResult } from './trace'
@@ -61,6 +61,8 @@ export class Showcase {
   private paused = false
   private elapsed = 0
   private pmrem: THREE.PMREMGenerator
+  /** Liquid's own reflections (black room, white strip lights), baked the first time it is picked. */
+  private envLiquid: THREE.Texture | null = null
   private shadowTex: THREE.CanvasTexture
   private backdrop: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
   private static readonly BACKDROP_DISTANCE = 6000
@@ -285,7 +287,13 @@ export class Showcase {
 
   /** A single-pass physical material per finish; glass uses three's own transmission. */
   private material(p: GlassParams, texture: () => HTMLCanvasElement): THREE.MeshPhysicalMaterial {
-    if (p.finish === 'glass') {
+    if (p.finish === 'glass' || p.finish === 'liquid') {
+      // Liquid reflects its own room, as in the studio: hard white strips on black, so the dark
+      // body carries long bright streaks. The landing has no spectral pass, so a thin film splits
+      // those streaks into colour at the rims instead. Only this material sees that room; the
+      // other marks keep the studio light.
+      const liquid = p.finish === 'liquid'
+      if (liquid && !this.envLiquid) this.envLiquid = bakeEnvironment(this.pmrem, createLiquidEnvironment(), 0.035)
       return new THREE.MeshPhysicalMaterial({
         color: 0xffffff,
         metalness: 0,
@@ -298,9 +306,10 @@ export class Showcase {
         attenuationDistance: p.attenuationMm,
         clearcoat: p.clearcoat,
         clearcoatRoughness: 0.04,
-        iridescence: p.edgeChroma,
-        iridescenceIOR: 1.3,
-        iridescenceThicknessRange: [120, 480],
+        iridescence: liquid ? 1 : p.edgeChroma,
+        iridescenceIOR: liquid ? 1.5 : 1.3,
+        iridescenceThicknessRange: liquid ? [300, 700] : [120, 480],
+        envMap: liquid ? this.envLiquid : null,
         envMapIntensity: p.envIntensity * 1.3,
         specularIntensity: 1,
       })
@@ -528,6 +537,7 @@ export class Showcase {
     this.shadowTex.dispose()
     this.backdrop.material.map?.dispose()
     this.pmrem.dispose()
+    this.envLiquid?.dispose()
     this.scene.environment?.dispose()
     this.renderer.dispose()
   }

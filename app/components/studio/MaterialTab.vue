@@ -18,7 +18,7 @@ const COLOR_SOURCES: SegmentOption<ColorSource>[] = [
   { value: 'paint', label: 'Paint', icon: 'palette' },
 ]
 const PAINT_SWATCHES = ['#ece5dc', '#c9bca9', '#6b2a4a', '#7b4a2c', '#c46a4a', '#b3202c', '#34373e', '#eceef2', '#2457d6', '#ff8fae']
-const isGlass = computed(() => glass.finish === 'glass')
+const isGlass = computed(() => glass.finish === 'glass' || glass.finish === 'liquid')
 
 /**
  * What the sliders call default: the last preset picked in this finish, so choosing Velvet does not
@@ -39,7 +39,7 @@ function restore(...keys: (keyof GlassParams)[]) {
 }
 
 function resetSurface() {
-  if (glass.finish === 'glass') restore('ior', 'dispersion', 'clarity', 'roughness', 'blur')
+  if (isGlass.value) restore('ior', 'dispersion', 'clarity', 'roughness', 'blur')
   else if (glass.finish === 'metal') restore('metalness', 'roughness', 'clearcoat')
   else restore('roughness', 'clearcoat', 'flatten', 'grain', 'sheen', 'weave', 'soften', 'paint')
 }
@@ -104,6 +104,16 @@ function resetSurface() {
             :max="2.33"
             :step="0.01"
             :default-value="base.ior"
+          />
+          <SliderField
+            v-if="glass.finish === 'liquid'"
+            v-model="glass.dispersion"
+            label="Dispersion"
+            hint="How far each edge splits into a spectrum, red on one side and blue on the other"
+            :min="0"
+            :max="1"
+            :step="0.01"
+            :default-value="base.dispersion"
           />
           <SliderField
             v-model="glass.clarity"

@@ -6,6 +6,7 @@ import { Kbd } from '@/components/ui/kbd'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { LOGOS } from '~/utils/logos'
+import { MATERIAL_PRESETS } from '~/utils/presets'
 
 definePageMeta({ layout: 'studio', key: 'studio' })
 
@@ -16,6 +17,8 @@ const {
   setView, onDrop, onPick, loadSample, openLinkedSample, doExport,
 } = studio
 provideStudio(studio)
+// Probe scripts drive the studio's state from the outside in development.
+if (import.meta.dev && import.meta.client) (window as unknown as { __vs: unknown }).__vs = { ...studio, MATERIAL_PRESETS }
 
 useHead({ title: 'Icon studio · Vitrum' })
 
@@ -52,11 +55,20 @@ const dockFade = useTransform(sheetH, h => (h ? Math.min(1, Math.max(0, 1 - (h -
 const stageDim = useTransform(sheetH, h => (h > sheetHalf.value ? Math.min(1, (h - sheetHalf.value) / Math.max(1, sheetFull.value - sheetHalf.value)) * STAGE_DIM_MAX : 0))
 
 const route = useRoute()
-onMounted(() => {
-  const sample = route.query.sample
-  if (typeof sample !== 'string' || sample.length === 0) return
+const linkedSample = typeof route.query.sample === 'string' && route.query.sample.length > 0 ? route.query.sample : ''
+/**
+ * A link that opens a sample: known from the URL before the first paint, so the empty state never
+ * flashes in for the moment between page load and the loader taking over.
+ */
+const opening = ref(!!linkedSample)
+onMounted(async () => {
+  if (!linkedSample) return
   const finish = route.query.finish
-  void openLinkedSample(sample, typeof finish === 'string' ? finish : undefined)
+  try {
+    await openLinkedSample(linkedSample, typeof finish === 'string' ? finish : undefined)
+  } finally {
+    opening.value = false
+  }
 })
 </script>
 
@@ -81,7 +93,7 @@ onMounted(() => {
           <div class="flex min-w-0 items-center gap-1.5">
             <Tooltip>
               <TooltipTrigger as-child>
-                <SidebarTrigger class="size-8 rounded-full text-muted-foreground hover:bg-well hover:text-foreground" />
+                <SidebarTrigger class="size-8 rounded-full text-muted-foreground hover:bg-well hover:text-foreground pointer-coarse:size-10" />
               </TooltipTrigger>
               <TooltipContent>
                 Toggle panel
@@ -141,6 +153,7 @@ onMounted(() => {
                climbs past half. -->
           <motion.div
             class="pointer-events-none absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-10 flex justify-center max-md:bottom-0"
+            :class="{ 'max-md:hidden': !subject }"
             :style="{ y: dockY, opacity: dockFade }"
           >
             <motion.div
@@ -268,7 +281,7 @@ onMounted(() => {
           <!-- Empty state: the light table, waiting for an icon. -->
           <AnimatePresence>
             <motion.div
-              v-if="!subject && !importing"
+              v-if="!subject && !importing && !opening"
               key="empty"
               class="pointer-events-none absolute inset-0 grid place-items-center overflow-hidden p-6"
               :style="sheetPeek ? { paddingBottom: `${sheetPeek + sheetInset + 12}px` } : undefined"
@@ -291,9 +304,9 @@ onMounted(() => {
               />
               <div
                 v-glass
-                class="glass pointer-events-auto relative w-[440px] max-w-[calc(100vw-3rem)] rounded-window px-8 pt-10 pb-8 text-center [--glass-blur:22px] [--glass-drop:0_2px_24px_rgba(3,7,18,.04),0_28px_56px_-32px_rgba(3,7,18,.3)] [--glass-tint:rgba(255,255,255,.52)]"
+                class="glass pointer-events-auto relative w-[440px] max-w-[calc(100vw-3rem)] rounded-window px-8 pt-10 pb-8 text-center max-sm:px-5 max-sm:pt-7 max-sm:pb-6 [--glass-blur:22px] [--glass-drop:0_2px_24px_rgba(3,7,18,.04),0_28px_56px_-32px_rgba(3,7,18,.3)] [--glass-tint:rgba(255,255,255,.52)]"
               >
-                <span class="tile relative mx-auto mb-7 flex size-[88px] items-center justify-center overflow-hidden rounded-[26px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(38,40,46,0.05),inset_0_0_0_1px_rgba(255,255,255,0.6),0_0_0_1px_var(--hairline),0_20px_36px_-22px_rgba(3,7,18,0.4)]">
+                <span class="tile relative mx-auto mb-7 flex size-[88px] max-sm:hidden items-center justify-center overflow-hidden rounded-[26px] shadow-[inset_0_1px_0_#ffffff,inset_0_-1px_0_rgba(38,40,46,0.05),inset_0_0_0_1px_rgba(255,255,255,0.6),0_0_0_1px_var(--hairline),0_20px_36px_-22px_rgba(3,7,18,0.4)]">
                   <span
                     class="absolute inset-0 animate-sweep rounded-[inherit] bg-[linear-gradient(115deg,transparent_30%,rgba(255,255,255,0)_42%,rgba(255,255,255,0.9)_50%,rgba(255,255,255,0)_58%,transparent_70%)] [transform:translateX(-120%)]"
                     aria-hidden="true"
@@ -303,7 +316,7 @@ onMounted(() => {
                     class="relative text-ink opacity-90 [filter:drop-shadow(0_1px_0_rgba(255,255,255,0.95))_drop-shadow(0_-0.5px_0_rgba(38,40,46,0.14))]"
                   />
                 </span>
-                <h1 class="font-display mb-2.5 text-[26px] leading-[1.08] text-foreground">
+                <h1 class="font-display mb-2.5 text-[26px] leading-[1.08] text-balance text-foreground max-sm:text-[24px]">
                   Turn an icon into solid glass
                 </h1>
                 <p class="mx-auto mb-7 max-w-[34ch] text-[13px] leading-relaxed text-ink-2">
@@ -341,11 +354,11 @@ onMounted(() => {
                   </Button>
                 </div>
                 <!-- Or skip the file picker: open a known mark, traced and finished. -->
-                <div class="mt-7 border-t border-hairline pt-6">
+                <div class="mt-7 border-t border-hairline pt-6 max-sm:mt-5 max-sm:pt-5">
                   <p class="mb-3 text-[12.5px] text-ink-3">
                     Or start from a logo
                   </p>
-                  <ul class="flex flex-wrap justify-center gap-1">
+                  <ul class="flex flex-wrap justify-center gap-1 max-sm:gap-0">
                     <li
                       v-for="logo in LOGOS"
                       :key="logo.id"

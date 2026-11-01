@@ -6,7 +6,7 @@ import { DEFAULT_RELIEF_OPTIONS as R, type HeightSource } from '~/utils/relief'
 import { DEFAULT_TRACE_OPTIONS as T, type TraceOptions } from '~/utils/trace'
 
 /** The Shape tab: how the outline becomes a solid, and how big it is. */
-const { glass, trace, traceOpts, reliefOpts, heightMm, setHeight, resetGlass } = useStudioContext()
+const { glass, trace, traceOpts, reliefOpts, heightMm, setHeight, setSpread, resetGlass } = useStudioContext()
 
 const GEOMETRIES: SegmentOption<Geometry>[] = [
   { value: 'extrude', label: 'Extrude' },
@@ -52,6 +52,8 @@ const TRACE_GRID = gridSizes([512, 1024, 2048])
 const isRelief = computed(() => glass.geometry === 'relief')
 const isInflate = computed(() => glass.geometry === 'inflate')
 const isStack = computed(() => glass.geometry === 'stack')
+/** Separate marks the extrusion can spread apart: an icon sheet, or a symbol beside its wordmark. */
+const pieces = computed(() => (glass.geometry === 'extrude' ? trace.value?.items?.length ?? 0 : 0))
 const outlineHint = computed(() => trace.value && `${shapeCountLabel(trace.value)} · ${TRACE_MODE_LABEL[trace.value.resolvedMode]}`)
 /** Typed dimensions only land when they are numbers; a cleared field leaves the model alone. */
 const isNumber = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -132,6 +134,26 @@ function resetOutline() {
           {{ Math.round(l.area * 100) }}%
         </span>
       </div>
+    </SectionGroup>
+
+    <SectionGroup
+      v-if="pieces > 1"
+      key="set"
+      title="Set"
+      :hint="`${pieces} pieces`"
+      resettable
+      @reset="setSpread(D.spread)"
+    >
+      <SliderField
+        :model-value="glass.spread"
+        label="Spacing"
+        hint="Spreads the separate pieces apart; each keeps its size, so the set grows"
+        :min="0"
+        :max="1.5"
+        :step="0.01"
+        :default-value="D.spread"
+        @update:model-value="setSpread"
+      />
     </SectionGroup>
 
     <SectionGroup

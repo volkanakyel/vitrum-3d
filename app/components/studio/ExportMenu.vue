@@ -42,7 +42,7 @@ function pick(kind: ExportKind) {
       <Button
         size="sm"
         :disabled="disabled"
-        class="h-8 gap-2 pr-2.5 pl-3.5 text-[12.5px] max-sm:pr-2 max-sm:pl-2.5"
+        class="h-8 gap-2 pr-2.5 pl-3.5 text-[12.5px] max-sm:pr-2.5 max-sm:pl-3 pointer-coarse:h-10"
         aria-label="Export"
       >
         <Icon

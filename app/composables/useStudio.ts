@@ -2,9 +2,10 @@ import { useEventListener } from '@vueuse/core'
 import type { InjectionKey } from 'vue'
 import type { ImportPhase } from '~/components/studio/StageLoader.vue'
 import type { ModelDimensions, ViewName } from '~/utils/glassScene'
-import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams, type Geometry } from '~/utils/presets'
+import { activeBackdropId, BACKDROP_PRESETS, DEFAULT_GLASS_PARAMS, LIQUID_BACKDROP_IDS, MATERIAL_PRESETS, type GlassParams, type Geometry } from '~/utils/presets'
 import { DEFAULT_RELIEF_OPTIONS, reliefAspect, type ReliefData, type ReliefOptions } from '~/utils/relief'
 import { LOGO_SAMPLE_IDS, SAMPLES, sampleFile, type SamplePose } from '~/utils/samples'
+import { SHEET_MIN_ITEMS, layoutBox, medianItemSize } from '~/utils/sheet'
 import { DEFAULT_TRACE_OPTIONS, loadImage, type TraceOptions, type TraceResult } from '~/utils/trace'
 import { Tracer } from '~/utils/tracer'
 
@@ -12,6 +13,17 @@ import { Tracer } from '~/utils/tracer'
 const ICON_PROFILE = { roundness: 0.6, detail: 0.35, colourPreset: 'satin' }
 /** Marks with open counters. A deeper slab lets automatic tile detection fill them in. */
 const OPEN_COUNTERS = new Set(['camera', 'chat', 'spark', 'heart'])
+/**
+ * Liquid glass is shot as a round body: a tube as deep as its stroke is wide, edges rounded the
+ * whole way so no flat wall is left (a flat wall refracts one colour of the split across its
+ * whole face). The bevel stops short of half the stroke so thinner parts do not fold over.
+ */
+const LIQUID_BODY = { bevel: 0.4, maxBevel: 0.12, segments: 14 }
+/**
+ * How an icon sheet opens: the marks spread apart into a set, each icon about this many mm across
+ * and a slab as deep as a fifth of that, so twelve 20 mm icons do not stand as 14 mm deep bricks.
+ */
+const SHEET_PROFILE = { spread: 0.4, iconMm: 40, depth: 0.2 }
 
 /** Shape a landing link opens with, after the trace has chosen its own defaults. */
 function linkedSampleShape(id: string): Pick<GlassParams, 'geometry' | 'widthMm' | 'depthMm' | 'bevelMm'> {
@@ -44,6 +56,10 @@ export const TRACE_MODE_LABEL: Record<TraceResult['resolvedMode'], string> = {
   light: 'light pixels',
   alpha: 'alpha',
   color: 'colour distance',
+}
+/** An extruded icon sheet: enough separate marks that they stand as a set. */
+export function isSheet(t: TraceResult | null): boolean {
+  return (t?.items?.length ?? 0) >= SHEET_MIN_ITEMS
 }
 /** "1 shape", "3 shapes". */
 export function shapeCountLabel(t: TraceResult | null): string {
@@ -166,11 +182,35 @@ export function useStudio() {
   }
 
   /** Cap the bevel at ~30% of the traced stroke width so thin letters are not swallowed. */
+  /** Typical stroke width of the traced artwork at the model's size, in mm. */
+  function strokeMm(t: TraceResult): number {
+    const box = glass.geometry === 'extrude' ? layoutBox(t, glass.spread) : t.bbox
+    return t.strokeWidth * (glass.widthMm / Math.max(box.maxX - box.minX, 1e-6))
+  }
+
+  /** The round body Liquid is rendered as, for an extrusion of this trace. */
+  function liquidBody(t: TraceResult): Pick<GlassParams, 'depthMm' | 'bevelMm' | 'bevelSegments'> {
+    const bevel = +Math.max(0.5, Math.min(strokeMm(t) * LIQUID_BODY.bevel, glass.widthMm * LIQUID_BODY.maxBevel)).toFixed(1)
+    return { bevelMm: bevel, depthMm: +(bevel * 2 + 0.1).toFixed(1), bevelSegments: LIQUID_BODY.segments }
+  }
+  /** The shape Liquid replaced, to put back when the finish changes again (null: nothing to undo). */
+  let beforeLiquid: { shape: Pick<GlassParams, 'depthMm' | 'bevelMm' | 'bevelSegments'>; body: Pick<GlassParams, 'depthMm' | 'bevelMm' | 'bevelSegments'> } | null = null
+  function rounden(t: TraceResult) {
+    const body = liquidBody(t)
+    if (!beforeLiquid) beforeLiquid = { shape: { depthMm: glass.depthMm, bevelMm: glass.bevelMm, bevelSegments: glass.bevelSegments }, body }
+    else beforeLiquid.body = body
+    Object.assign(glass, body)
+  }
+
   function fitBevelToStroke(t: TraceResult) {
     if (!t.strokeWidth) return
-    const bw = Math.max(t.bbox.maxX - t.bbox.minX, 1e-6)
-    const strokeMm = t.strokeWidth * (glass.widthMm / bw)
-    const bevel = Math.max(0.2, Math.min(DEFAULT_GLASS_PARAMS.bevelMm, +(strokeMm * 0.3).toFixed(1)))
+    if (glass.finish === 'liquid' && glass.geometry === 'extrude') {
+      viewer.value?.snap(liquidBody(t), false)
+      rounden(t)
+      return
+    }
+    const strokeMm_ = strokeMm(t)
+    const bevel = Math.max(0.2, Math.min(DEFAULT_GLASS_PARAMS.bevelMm, +(strokeMm_ * 0.3).toFixed(1)))
     viewer.value?.snap({ bevelMm: bevel }, false)
     glass.bevelMm = bevel
   }
@@ -190,9 +230,15 @@ export function useStudio() {
     if (glass.geometry === 'inflate') {
       reliefOpts.roundness = ICON_PROFILE.roundness
       reliefOpts.detail = ICON_PROFILE.detail
+    } else if (glass.geometry === 'extrude' && isSheet(t)) {
+      Object.assign(stage, sheetShape(t))
     } else if (glass.geometry === 'extrude' && glass.depthMm > glass.widthMm * 0.3) {
       // Back from a volume to a slab: the volume's depth would make a brick of a logo.
       stage.depthMm = DEFAULT_GLASS_PARAMS.depthMm
+    }
+    // A single mark opens as drawn, at the studio's size: only a sheet comes in spread and scaled.
+    if (stage.spread === undefined && glass.spread) {
+      Object.assign(stage, { spread: 0, widthMm: DEFAULT_GLASS_PARAMS.widthMm, depthMm: DEFAULT_GLASS_PARAMS.depthMm })
     }
     if (rich) {
       autoFinish = 'print'
@@ -207,7 +253,35 @@ export function useStudio() {
     }
   }
 
-  watch(() => glass.finish, (f) => { if (f !== autoFinish) autoFinish = '' })
+  /** Spread, size and depth that make a sheet's marks a set of icons at a real-world size. */
+  function sheetShape(t: TraceResult): Pick<GlassParams, 'spread' | 'widthMm' | 'depthMm'> {
+    const spread = SHEET_PROFILE.spread
+    const box = layoutBox(t, spread)
+    const icon = Math.max(medianItemSize(t.items!), 1e-6)
+    return {
+      spread,
+      widthMm: Math.round(SHEET_PROFILE.iconMm * (box.maxX - box.minX) / icon),
+      depthMm: SHEET_PROFILE.iconMm * SHEET_PROFILE.depth,
+    }
+  }
+
+  watch(() => glass.finish, (f, was) => {
+    if (f !== autoFinish) autoFinish = ''
+    // Liquid brings its charcoal wall and a round body; leaving it for another finish takes both
+    // back, unless the user has since picked a backdrop or tuned the shape themselves.
+    if (f === 'liquid' && was !== 'liquid' && trace.value?.strokeWidth && glass.geometry === 'extrude') rounden(trace.value)
+    if (was === 'liquid' && f !== 'liquid') {
+      if (LIQUID_BACKDROP_IDS.has(activeBackdropId(glass) ?? '')) Object.assign(glass, BACKDROP_PRESETS[0]!.values)
+      const b = beforeLiquid?.body
+      if (b && glass.depthMm === b.depthMm && glass.bevelMm === b.bevelMm && glass.bevelSegments === b.bevelSegments) {
+        // The depth and smoothness come back as they were; the edge is fitted to the outline
+        // on the stage now, which may not be the one Liquid was picked on.
+        Object.assign(glass, { depthMm: beforeLiquid!.shape.depthMm, bevelSegments: beforeLiquid!.shape.bevelSegments })
+        if (trace.value) fitBevelToStroke(trace.value)
+      }
+      beforeLiquid = null
+    }
+  })
 
   async function runRelief(): Promise<void> {
     const t = trace.value
@@ -309,11 +383,20 @@ export function useStudio() {
   async function openLinkedSample(sampleId: string, finishId?: string): Promise<void> {
     const sample = SAMPLES.find(s => s.id === sampleId)
     if (!sample) return
+    const finish = MATERIAL_PRESETS.find(p => p.id === finishId) ?? MATERIAL_PRESETS.find(p => p.id === sample.preset)
     try {
+      // The finish is in place before the model lands: set after, the model would show for a few
+      // frames in the default glass and then turn into the linked finish.
+      if (finish) { viewer.value?.snap(finish.values); Object.assign(glass, finish.values) }
       await loadSample(sample.id)
-      const finish = MATERIAL_PRESETS.find(p => p.id === finishId) ?? MATERIAL_PRESETS.find(p => p.id === sample.preset)
+      // Again after the trace, which may have picked a finish of its own for the picture.
       if (finish) Object.assign(glass, finish.values)
       Object.assign(glass, linkedSampleShape(sample.id))
+      // A link into Liquid keeps the round body Liquid is rendered as.
+      if (glass.finish === 'liquid' && trace.value && glass.geometry === 'extrude') rounden(trace.value)
+      // The link's shape lands at once, in the same frame the loader starts to leave, rather than
+      // easing from the traced defaults in front of the viewer.
+      viewer.value?.snap({ ...glass })
     } catch {
       error.value = 'This example could not be opened. Choose a sample or upload your own artwork.'
     }
@@ -378,9 +461,21 @@ export function useStudio() {
     if ((g === 'inflate' || g === 'relief') && r && r.mirror === (g === 'inflate')) return reliefAspect(r)
     const t = trace.value
     if (!t) return 1
-    return (t.bbox.maxY - t.bbox.minY) / Math.max(t.bbox.maxX - t.bbox.minX, 1e-6)
+    const box = g === 'extrude' ? layoutBox(t, glass.spread) : t.bbox
+    return (box.maxY - box.minY) / Math.max(box.maxX - box.minX, 1e-6)
   })
   const heightMm = computed(() => glass.widthMm * aspect.value)
+  /**
+   * Spread a sheet's marks apart without resizing them: W is the whole set, so it grows with the
+   * gutters and every icon keeps its millimetres.
+   */
+  function setSpread(v: number) {
+    const t = trace.value
+    if (!t) return
+    const width = (s: number) => { const b = layoutBox(t, s); return Math.max(b.maxX - b.minX, 1e-6) }
+    glass.widthMm = +(glass.widthMm * width(v) / width(glass.spread)).toFixed(2)
+    glass.spread = v
+  }
   function setHeight(v: number) {
     if (v > 0 && aspect.value > 0) glass.widthMm = v / aspect.value
   }
@@ -388,7 +483,7 @@ export function useStudio() {
   return {
     image, ink, fileName, trace, traceOpts, reliefOpts, relief, glass, dims, busy, importing, error,
     dragging, exporting, toast, view, viewer, heightMm, subject, ready, keyed,
-    setView, useFile, clearImage, onDrop, onPick, loadSample, openLinkedSample, doExport, setHeight, notify,
+    setView, useFile, clearImage, onDrop, onPick, loadSample, openLinkedSample, doExport, setHeight, setSpread, notify,
     resetGlass,
   }
 }

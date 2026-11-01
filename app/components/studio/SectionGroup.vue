@@ -33,7 +33,7 @@ const appear = inject<Ref<boolean>>('sectionAppear', ref(true)).value
               size="icon-xs"
               :class="[
                 // Revealed on hover with a mouse; always shown on touch, where there is no hover to reveal it.
-                'text-muted-foreground opacity-0 group-hover/section:opacity-100 focus-visible:opacity-100 hover-none:opacity-100 pointer-coarse:opacity-100',
+                'relative text-muted-foreground opacity-0 before:absolute before:-inset-2.5 group-hover/section:opacity-100 focus-visible:opacity-100 hover-none:opacity-100 pointer-coarse:opacity-100',
                 hint ? '' : '-mr-1.5',
               ]"
               aria-label="Reset section"

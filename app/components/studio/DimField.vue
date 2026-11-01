@@ -22,7 +22,8 @@ const AXIS_NAME = { W: 'Width', H: 'Height', D: 'Depth' } as const
       >{{ axis }}</span>
       <NumberFieldInput
         :aria-label="`${AXIS_NAME[axis]} in millimetres`"
-        class="field h-8 rounded-[10px] border-0 pr-9 pl-7 text-right text-[13px] font-medium tabular-nums transition-[background-color,box-shadow] hover:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] focus-visible:bg-card focus-visible:ring-[3px] focus-visible:ring-ring/35 pointer-coarse:h-10 pointer-coarse:text-[14px]" />
+        class="field h-8 rounded-[10px] border-0 pr-9 pl-7 text-right text-[13px] font-medium tabular-nums transition-[background-color,box-shadow] hover:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] focus-visible:bg-card focus-visible:ring-[3px] focus-visible:ring-ring/35 pointer-coarse:h-10"
+        enterkeyhint="done" />
       <span
         class="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[12px] text-muted-foreground"
         aria-hidden="true"

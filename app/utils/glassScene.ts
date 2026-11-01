@@ -6,6 +6,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { MeshTransmissionMaterial } from '@pmndrs/vanilla'
 import { createBackdropMaterial, paintBackdrop, type BackdropUniforms } from './backdrop'
 import { buildExtrudeGeometry } from './extrude'
+import { arrangedPolygons } from './sheet'
 import { patchTotalInternalReflection, patchWeave, type TirUniforms, type WeaveUniforms } from './glassShaders'
 import { DEFAULT_GLASS_PARAMS, type Finish, type Geometry, type GlassParams } from './presets'
 import { buildCropTexture, buildPrintTexture } from './printTexture'
@@ -61,6 +62,75 @@ export function createStudioEnvironment({ neutral = false } = {}): THREE.Scene {
   return scene
 }
 
+/**
+ * The Liquid finish's room: black, with hard white strip lights and one broad panel overhead.
+ * A liquid-glass render is a black object drawn by its reflections: long clean streaks on the
+ * rims, a blown-out panel across the top face, and nothing grey in between for the glass to
+ * show but the dark it refracts. All lights are pure white so the only colour is dispersion.
+ */
+export function createLiquidEnvironment(): THREE.Scene {
+  const scene = new THREE.Scene()
+  // A dim dome, black below and smoke-grey above: faces turned to the viewer catch a soft grey
+  // sheen from it, so the body reads as dark glass rather than a hole cut in the frame.
+  scene.add(new THREE.Mesh(
+    new THREE.SphereGeometry(30, 32, 16),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: `varying vec3 vP; void main(){
+        vec3 d = normalize(vP);
+        float up = smoothstep(-0.2, 0.9, d.y);
+        float front = smoothstep(0.2, 1.0, d.z) * 0.08;
+        gl_FragColor = vec4(vec3(0.004 + 0.16 * up + front), 1.0);
+      }`,
+    }),
+  ))
+  const light = (w: number, h: number, intensity: number, pos: [number, number, number], rollDeg = 0) => {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffffff).multiplyScalar(intensity), side: THREE.DoubleSide }),
+    )
+    m.position.set(...pos)
+    m.lookAt(0, 0, 0)
+    m.rotateZ(THREE.MathUtils.degToRad(rollDeg))
+    scene.add(m)
+  }
+  // Off the camera's axis: a face turned to the viewer mirrors the dark room and stays black,
+  // and the lights land as streaks on the rims and bevels that turn toward them.
+  // Panels are kept narrow: Liquid renders round bodies, and a convex surface mirrors a wide arc
+  // of the room, so a broad panel would wash a whole side of the body white instead of laying
+  // one clean sheet across it.
+  light(9, 2.6, 4, [2, 15, -2])              // overhead panel: the white sheet on top faces
+  light(1.6, 22, 7, [-14, 2, -2], 8)         // tall hard strip on the left
+  light(1.6, 22, 7, [14, 0, -4], -6)         // tall hard strip on the right
+  light(22, 1.2, 5, [0, -11, 2])             // low streak: the bright line along bottom rims
+  light(1, 18, 5, [-9, 7, 9], 38)            // diagonal kicker, high and to the side
+  light(4, 3, 2.4, [10, 8, 12])              // soft panel high right: a white sheet on faces turned up and right
+  light(5, 5, 1.5, [0, 2, -16])              // a dim card behind, so the refraction is not pure black
+  // A big softbox just off the line a front face mirrors, bright on its far edge and fading to
+  // nothing on the near one: as the model sways its faces slide into it, so a white sheet
+  // sweeps across the dark glass the way it does in a liquid-glass render.
+  const sheet = new THREE.Mesh(
+    new THREE.PlaneGeometry(6, 22),
+    new THREE.ShaderMaterial({
+      side: THREE.DoubleSide,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'varying vec2 vUv; void main(){ float t = smoothstep(0.15, 0.85, vUv.x); gl_FragColor = vec4(vec3(2.4 * t * t), 1.0); }',
+    }),
+  )
+  sheet.position.set(13, 3, 13)
+  sheet.lookAt(0, 0, 0)
+  scene.add(sheet)
+  // The whole rig turned half way round, lights to the back. Liquid renders round bodies, and a
+  // round body bends the light from the front-left strips across a whole flank, washing it white;
+  // from behind, the strips only reach the body as the thin streaks and spectral rims the look is.
+  const rig = new THREE.Group()
+  rig.add(...scene.children)
+  rig.rotation.y = Math.PI
+  scene.add(rig)
+  return scene
+}
+
 /** Free every mesh's geometry and materials under `root` (a scene only rendered once, into a PMREM). */
 function disposeSceneGraph(root: THREE.Object3D): void {
   root.traverse((obj) => {
@@ -109,6 +179,8 @@ export class GlassStudio {
   readonly camera: THREE.PerspectiveCamera
   readonly controls: OrbitControls
   readonly material: MeshTransmissionMaterial
+  /** The glass's back faces, drawn into `fboMain` for the front faces to refract. */
+  private backMaterial: MeshTransmissionMaterial
   private fboMain: THREE.WebGLRenderTarget
   private fboBack: THREE.WebGLRenderTarget
   private timer = new THREE.Timer()
@@ -118,14 +190,18 @@ export class GlassStudio {
   private target: GlassParams = { ...DEFAULT_GLASS_PARAMS }
   /** Values currently applied; eased toward `target` every frame. */
   private params: GlassParams = { ...DEFAULT_GLASS_PARAMS }
-  private built = { widthMm: NaN, depthMm: NaN, bevelMm: NaN, bevelSegments: NaN, reliefMm: NaN, layerMm: NaN, geometry: '' as Geometry | '', relief: null as ReliefData | null }
+  private built = { widthMm: NaN, depthMm: NaN, bevelMm: NaN, bevelSegments: NaN, reliefMm: NaN, layerMm: NaN, spread: NaN, geometry: '' as Geometry | '', relief: null as ReliefData | null }
   private camGoal: THREE.Vector3 | null = null
   /** Wheel zoom eases toward this distance from the target; 0 when settled. */
   private zoomGoal = 0
   /** True from the first pointer or wheel event until the orbit has settled again. */
   private interacting = false
   private interactTimer: ReturnType<typeof setTimeout> | undefined
+  /** The finish the mesh was last drawn in: glass and liquid share a material, so it cannot tell. */
+  private drawnFinish: Finish = 'glass'
   private pop = 1
+  /** Frames still to draw though nothing in the loop moves; see `invalidate`. */
+  private redraw = 2
   /**
    * The sway: a slow rock either side of the azimuth the model faced when it started. `swayIn`
    * ramps the swing up from rest, so it never lurches after a drag; `swayAt` is the offset applied
@@ -154,6 +230,7 @@ export class GlassStudio {
   private stage: 'wall' | 'floor' | null = null
   private envStudio: THREE.Texture
   private envRoom: THREE.Texture | null = null
+  private envLiquid: THREE.Texture | null = null
   private backdrop: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>
   private backdropUniforms: BackdropUniforms
   private shadowPlane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
@@ -194,7 +271,7 @@ export class GlassStudio {
   /** Parameters that land at once: integers, and the two that rebuild textures. */
   private static readonly SNAP_KEYS: ReadonlySet<string> = new Set(['bevelSegments', 'flatten', 'grain', 'soften'])
   /** Size parameters: they ease while a rebuild is cheap and snap once it is not. */
-  private static readonly GEOMETRY_KEYS: ReadonlySet<string> = new Set(['widthMm', 'depthMm', 'bevelMm', 'reliefMm', 'layerMm'])
+  private static readonly GEOMETRY_KEYS: ReadonlySet<string> = new Set(['widthMm', 'depthMm', 'bevelMm', 'reliefMm', 'layerMm', 'spread'])
   /** Colour parameters ease through RGB rather than snapping. */
   private static readonly COLOR_KEYS: ReadonlySet<string> = new Set(['tint', 'paint', 'background', 'background2'])
   /** Every parameter the easing loop walks, fixed so a frame allocates nothing. */
@@ -342,39 +419,19 @@ export class GlassStudio {
     patchWeave(this.print, this.weaveUniforms)
 
     // drei's transmission material: renders the scene into its own buffer twice (back faces, then
-    // front faces) so the rims refract the glass behind them instead of a flat background.
-    this.material = new MeshTransmissionMaterial({
-      samples: 8,
-      transmissionSampler: false,
-      chromaticAberration: this.params.dispersion * GlassStudio.DISPERSION_GAIN,
-      anisotropicBlur: this.params.blur,
-      _transmission: this.params.clarity,
-      thickness: this.params.depthMm,
-      roughness: this.params.roughness,
-      attenuationColor: new THREE.Color(this.params.tint),
-      attenuationDistance: this.params.attenuationMm,
-    })
-    this.material.color.set(0xffffff)
-    this.tirUniforms = { tirStrength: { value: this.params.tir }, tirPower: { value: 1.5 }, rimChroma: { value: this.params.edgeChroma } }
-    patchTotalInternalReflection(this.material, this.tirUniforms)
-    this.material.metalness = 0
-    this.material.ior = this.params.ior
-    this.material.clearcoat = this.params.clearcoat
-    this.material.clearcoatRoughness = 0.04
-    this.material.iridescence = this.params.edgeChroma
-    this.material.iridescenceIOR = 1.3
-    this.material.iridescenceThicknessRange = [120, 480]
-    this.material.specularIntensity = 1
-    this.material.envMapIntensity = this.params.envIntensity
-    this.material.side = THREE.FrontSide
-
+    // front faces) so the rims refract the glass behind them instead of a flat background. Each
+    // pass has its own material: the back faces always draw into a buffer and the front faces
+    // always to the screen, so neither ever switches shader program between passes.
+    this.tirUniforms = { tirStrength: { value: this.params.tir }, tirPower: { value: 1.5 }, rimChroma: { value: this.params.edgeChroma }, liquid: { value: 0 }, spectralSpread: { value: 0 } }
     const fboOpts: THREE.RenderTargetOptions = { type: THREE.HalfFloatType, samples: 4 }
     this.fboMain = new THREE.WebGLRenderTarget(1, 1, fboOpts)
     this.fboBack = new THREE.WebGLRenderTarget(1, 1, fboOpts)
-    this.material.uniforms.buffer.value = this.fboMain.texture
+    this.material = this.createGlass(THREE.FrontSide, this.fboMain.texture)
+    this.backMaterial = this.createGlass(THREE.BackSide, this.fboBack.texture)
 
     this.resize()
     this.loop()
+    void this.warmUp()
     if (import.meta.dev) (window as unknown as { __studio: GlassStudio }).__studio = this
   }
 
@@ -397,6 +454,7 @@ export class GlassStudio {
     if (shift) this.camera.setViewOffset(w, h, 0, shift, w, h)
     else this.camera.clearViewOffset()
     this.camera.updateProjectionMatrix()
+    this.invalidate()
   }
 
   /**
@@ -407,6 +465,7 @@ export class GlassStudio {
     const w = this.canvas.clientWidth || 1
     const h = this.canvas.clientHeight || 1
     this.renderer.setSize(w, h, false)
+    this.invalidate()
     this.camera.aspect = w / h
     this.applyFocus()
     this.sizeBuffers()
@@ -466,6 +525,7 @@ export class GlassStudio {
       return
     }
     if (this.disposed) return
+    this.invalidate()
     this.lastTime = performance.now()
     this.loop(this.lastTime)
   }
@@ -478,11 +538,83 @@ export class GlassStudio {
     this.raf = requestAnimationFrame(this.loop)
     const dt = Math.min(0.1, (now - this.lastTime) / 1000 || 0.016)
     this.lastTime = now
-    this.ease(dt)
-    this.sway(dt)
-    this.controls.update()
+    const easing = this.ease(dt)
+    const swaying = this.sway(dt)
+    // True while the camera moves: a drag, its damped glide to rest, or an orbit.
+    const orbiting = this.controls.update()
+    if (!easing && !swaying && !orbiting && this.redraw === 0) return
+    this.redraw = Math.max(0, this.redraw - 1)
     this.placeBackdrop()
     this.renderPasses()
+  }
+
+  /** One side of the glass, refracting `buffer`; finish values arrive through `applyMaterials`. */
+  private createGlass(side: THREE.Side, buffer: THREE.Texture): MeshTransmissionMaterial {
+    const p = this.params
+    const m = new MeshTransmissionMaterial({
+      samples: 8,
+      transmissionSampler: false,
+      chromaticAberration: p.dispersion * GlassStudio.DISPERSION_GAIN,
+      anisotropicBlur: p.blur,
+      _transmission: p.clarity,
+      thickness: p.depthMm,
+      roughness: p.roughness,
+      attenuationColor: new THREE.Color(p.tint),
+      attenuationDistance: p.attenuationMm,
+    })
+    patchTotalInternalReflection(m, this.tirUniforms)
+    m.color.set(0xffffff)
+    m.metalness = 0
+    m.ior = p.ior
+    m.clearcoat = p.clearcoat
+    m.clearcoatRoughness = 0.04
+    m.iridescence = p.edgeChroma
+    m.iridescenceIOR = 1.3
+    m.iridescenceThicknessRange = [120, 480]
+    m.specularIntensity = 1
+    m.envMapIntensity = p.envIntensity
+    m.side = side
+    m.uniforms.buffer.value = buffer
+    return m
+  }
+
+  /**
+   * Compile the finishes' shaders while the stage is still empty, in parallel where the driver
+   * allows (KHR_parallel_shader_compile). Otherwise the first model to land compiles them on the
+   * spot and its first frame stalls for as long as that takes; the glass alone is two programs
+   * (its back faces render in their own pass). The proxy is never added to the stage.
+   */
+  private async warmUp(): Promise<void> {
+    const proxy = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1))
+    const gl = this.renderer
+    try {
+      // The back faces only ever draw into a buffer, which compiles a different program (linear
+      // output, no tone mapping) than the screen does. The compile itself is queued in the call;
+      // only the wait for the driver is async, so the target can be restored right after.
+      for (const [material, target] of [[this.backMaterial, this.fboMain], [this.material, null], [this.metal, null]] as const) {
+        if (this.disposed) return
+        proxy.material = material
+        const prev = gl.getRenderTarget()
+        gl.setRenderTarget(target)
+        const done = gl.compileAsync(proxy, this.camera, this.scene)
+        gl.setRenderTarget(prev)
+        await done
+      }
+    } catch {
+      // A missed warm-up only costs the first frame its compile; nothing to recover.
+    } finally {
+      proxy.geometry.dispose()
+    }
+  }
+
+  /**
+   * Draw the next frames even if nothing in the loop moves: a texture, a mesh or the canvas size
+   * changed outside it. A still stage is otherwise never redrawn, so an idle studio costs no GPU
+   * (the glass is three full-screen passes a frame) and a phone stays cool. Two frames, because a
+   * texture uploaded in one frame can show in the next.
+   */
+  private invalidate(): void {
+    this.redraw = 2
   }
 
   /** Start the sway again from rest, around wherever the camera now is. */
@@ -497,12 +629,12 @@ export class GlassStudio {
    * sliver, so a full turn spends half its time showing nothing. The swing eases in over ~1.5 s
    * and holds still while the hand or a camera glide owns the view.
    */
-  private sway(dt: number) {
+  private sway(dt: number): boolean {
     const p = this.params
-    if (!p.autoRotate || p.rotateMode !== 'sway') return
+    if (!p.autoRotate || p.rotateMode !== 'sway') return false
     if (this.camGoal || this.held) {
       this.restartSway()
-      return
+      return false
     }
     this.swayIn = Math.min(1, this.swayIn + dt / 1.5)
     this.swayPhase += dt * p.rotateSpeed * 0.4
@@ -512,13 +644,15 @@ export class GlassStudio {
     off.applyAxisAngle(this.swayAxis, at - this.swayAt)
     this.camera.position.copy(this.controls.target).add(off)
     this.swayAt = at
+    return true
   }
 
   /**
    * Exponential easing toward the target parameters. Every slider, colour and camera move
-   * arrives over ~150 ms instead of snapping, which is what makes the viewer feel fluid.
+   * arrives over ~150 ms instead of snapping, which is what makes the viewer feel fluid. True
+   * while anything is still on its way: a parameter, a camera glide or zoom, the pop.
    */
-  private ease(dt: number) {
+  private ease(dt: number): boolean {
     const k = 1 - Math.exp(-dt * 14)
     const kCam = 1 - Math.exp(-dt * 8)
     const p = this.params as unknown as Record<string, number | string | boolean>
@@ -558,30 +692,44 @@ export class GlassStudio {
       this.camera.position.copy(this.controls.target).add(off.setLength(nd))
       if (Math.abs(this.zoomGoal - nd) < Math.max(0.02, nd * 5e-4)) this.zoomGoal = 0
     }
-    if (this.pop < 1) {
+    const popping = this.pop < 1
+    if (popping) {
       this.pop = Math.min(1, this.pop + dt / 0.45)
       const s = 1 - 0.05 * Math.sin(Math.PI * this.pop)
       this.mesh?.scale.setScalar(s)
     }
+    return dirty || popping || !!this.camGoal || !!this.zoomGoal
   }
 
   /** Push the finish parameters to every material; no geometry, no stage. */
   private applyMaterials() {
     const p = this.params
-    this.material.roughness = p.roughness
-    this.material.ior = p.ior
-    this.material.uniforms.chromaticAberration.value = p.dispersion * GlassStudio.DISPERSION_GAIN
-    this.material.clearcoat = p.clearcoat
-    this.material.envMapIntensity = p.envIntensity
-    this.material.attenuationColor.set(p.tint)
-    this.material.color.set(p.tint).lerp(WHITE, 0.7)
-    this.material.attenuationDistance = p.attenuationMm
+    for (const m of [this.material, this.backMaterial]) {
+      m.roughness = p.roughness
+      m.ior = p.ior
+      // Liquid splits light in its own spectral pass (see glassShaders); the stock RGB smear on
+      // top would only blur its bands.
+      m.uniforms.chromaticAberration.value = p.finish === 'liquid' ? 0 : p.dispersion * GlassStudio.DISPERSION_GAIN
+      m.clearcoat = p.clearcoat
+      m.envMapIntensity = p.envIntensity
+      m.attenuationColor.set(p.tint)
+      m.color.set(p.tint).lerp(WHITE, 0.7)
+      m.attenuationDistance = p.attenuationMm
+      m.iridescence = p.edgeChroma
+      m.uniforms.anisotropicBlur.value = p.blur
+      m.uniforms._transmission.value = p.clarity
+    }
+    // Light crosses half the body from a back face to the front, the whole body from the front.
+    this.backMaterial.thickness = p.depthMm * 0.5
     this.material.thickness = p.depthMm
-    this.material.iridescence = p.edgeChroma
     this.tirUniforms.tirStrength.value = p.tir
     this.tirUniforms.rimChroma.value = p.edgeChroma
-    this.material.uniforms.anisotropicBlur.value = p.blur
-    this.material.uniforms._transmission.value = p.clarity
+    const liquid = p.finish === 'liquid'
+    this.tirUniforms.liquid.value = liquid ? 1 : 0
+    // Red to violet as a share of the IOR. The refraction here runs through the model's full
+    // millimetre depth, so a few percent already shifts the bands by a face's width: 0.5 on the
+    // slider spreads the IOR by ±1%, which splits an edge by a few pixels, as the look has it.
+    this.tirUniforms.spectralSpread.value = liquid ? p.dispersion * 0.18 : 0
     this.metal.color.set(p.tint)
     this.metal.metalness = p.metalness
     this.metal.roughness = p.roughness
@@ -606,12 +754,13 @@ export class GlassStudio {
 
   /** Push the eased parameters into materials, camera and scene. */
   private apply() {
+    this.invalidate()
     const p = this.params
-    const prevFinish = this.mesh?.material === this.metal ? 'metal' : this.mesh?.material === this.print ? 'print' : 'glass'
+    const prevFinish = this.mesh?.material === this.metal ? 'metal' : this.mesh?.material === this.print ? 'print' : this.drawnFinish
     this.applyMaterials()
     // Clear glass shows what is behind it, and a black silhouette right behind a clear slab
     // reads as a grey slab. Fade the contact shadow by the glass's clarity, never by the mesh.
-    const glassy = p.finish === 'glass'
+    const glassy = p.finish === 'glass' || p.finish === 'liquid'
     const shadowOpacity = glassy ? p.shadow * (1 - 0.7 * p.clarity) : p.shadow
     this.shadowPlane.material.opacity = shadowOpacity
     this.floor.material.opacity = shadowOpacity
@@ -633,6 +782,7 @@ export class GlassStudio {
       if (p.finish === 'print') { this.ensurePrintTexture(); this.scheduleSurface() }
       this.mesh.material = this.materialFor(p.finish)
       if (prevFinish !== p.finish) this.pop = 0
+      this.drawnFinish = p.finish
       // A new stage (wall ↔ floor) is a new shot: glide to its named angle.
       if (floorChanged) this.frame(true)
     }
@@ -645,6 +795,7 @@ export class GlassStudio {
       b.geometry !== active ||
       Math.abs(b.widthMm - p.widthMm) > 0.01 || Math.abs(b.depthMm - p.depthMm) > 0.01 ||
       (!relief && (Math.abs(b.bevelMm - p.bevelMm) > 0.005 || b.bevelSegments !== p.bevelSegments)) ||
+      (active === 'extrude' && Math.abs(b.spread - p.spread) > 0.002) ||
       (active === 'stack' && Math.abs(b.layerMm - p.layerMm) > 0.01) ||
       (relief && (Math.abs(b.reliefMm - p.reliefMm) > 0.01 || b.relief !== this.relief))
     ) {
@@ -658,15 +809,15 @@ export class GlassStudio {
     const gl = this.renderer
     const m = this.material
     const mesh = this.mesh
-    if (!mesh || this.params.finish !== 'glass') {
+    if (!mesh || this.material !== mesh.material) {
       gl.setRenderTarget(null)
       gl.render(this.scene, this.camera)
       return
     }
     this.timer.update()
-    m.uniforms.time.value = this.timer.getElapsed()
-    const oldTone = gl.toneMapping
-    gl.toneMapping = THREE.NoToneMapping
+    m.uniforms.time.value = this.backMaterial.uniforms.time.value = this.timer.getElapsed()
+    // Buffers are drawn untoned and linear (three does that for any render target); the screen
+    // pass tone-maps the whole picture once.
 
     // 1. Scene without the glass -> fboBack.
     mesh.visible = false
@@ -675,17 +826,12 @@ export class GlassStudio {
 
     // 2. Back faces refracting fboBack -> fboMain.
     mesh.visible = true
-    m.uniforms.buffer.value = this.fboBack.texture
-    m.thickness = this.params.depthMm * 0.5
-    m.side = THREE.BackSide
+    mesh.material = this.backMaterial
     gl.setRenderTarget(this.fboMain)
     gl.render(this.scene, this.camera)
 
     // 3. Front faces refracting fboMain -> screen.
-    m.uniforms.buffer.value = this.fboMain.texture
-    m.thickness = this.params.depthMm
-    m.side = THREE.FrontSide
-    gl.toneMapping = oldTone
+    mesh.material = m
     gl.setRenderTarget(null)
     gl.render(this.scene, this.camera)
   }
@@ -746,7 +892,9 @@ export class GlassStudio {
     // it: its own roughness map carries the surface and never sees a room reflection.
     const bare = product && this.params.finish === 'print'
     if (product && !bare && !this.envRoom) this.envRoom = bakeEnvironment(this.pmrem, new RoomEnvironment(), 0.04)
-    const env = bare ? null : product ? this.envRoom : this.envStudio
+    const liquid = !product && this.params.finish === 'liquid'
+    if (liquid && !this.envLiquid) this.envLiquid = bakeEnvironment(this.pmrem, createLiquidEnvironment(), 0.035)
+    const env = bare ? null : product ? this.envRoom : liquid ? this.envLiquid : this.envStudio
     if (this.scene.environment !== env) this.scene.environment = env
     this.applyEnvironmentLight()
   }
@@ -796,6 +944,7 @@ export class GlassStudio {
    *   resolution (capped) so print detail is not limited by the trace raster.
    */
   setTrace(trace: TraceResult | null, source: HTMLImageElement | null = null): void {
+    this.invalidate()
     const first = !this.mesh
     this.trace = trace
     this.source = source
@@ -811,6 +960,7 @@ export class GlassStudio {
 
   /** Height grid for the Relief geometry; `null` drops back to the extruded silhouette. */
   setRelief(relief: ReliefData | null): void {
+    this.invalidate()
     const hadMesh = !!this.mesh
     const cropChanged = !!relief && !!this.relief && !sameCrop(relief.crop, this.relief.crop)
     const maskChanged = !!relief && !!this.relief && !!relief.mask !== !!this.relief.mask
@@ -907,6 +1057,7 @@ export class GlassStudio {
     this.print.normalScale.set(1, 1)
     this.print.roughnessMap = this.surface.roughness
     this.print.needsUpdate = true
+    this.invalidate()
     if (import.meta.dev) console.debug(`[surface] ${Math.round(performance.now() - t0)} ms (${sig})`)
   }
 
@@ -929,6 +1080,7 @@ export class GlassStudio {
    * a second one from the easing loop.
    */
   snapParams(next: Partial<GlassParams>, applyNow = true): void {
+    this.invalidate()
     Object.assign(this.target, next)
     Object.assign(this.params, next)
     // A rebuild replaces the geometry, never the finish: the materials take the values now
@@ -1015,17 +1167,18 @@ export class GlassStudio {
     const t = this.trace
     if (!t || !t.polygons.length) { this.onRebuild?.(); return }
     const t0 = performance.now()
-    const built = buildExtrudeGeometry(t, { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: p.bevelMm, bevelSegments: p.bevelSegments, layerMm: p.layerMm, stack: active === 'stack' })
+    const built = buildExtrudeGeometry(t, { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: p.bevelMm, bevelSegments: p.bevelSegments, layerMm: p.layerMm, stack: active === 'stack', spread: p.spread })
     if (!built) { this.onRebuild?.(); return }
     const merged = built.geometry
-    const { bw, bh, scale, cx, cy } = built.frame
+    const { bw, bh, scale, cx, cy, arrangement } = built.frame
     this.mesh = new THREE.Mesh(merged, this.materialFor(p.finish))
     this.mesh.rotation.z = this.pose?.spin ?? 0
     this.mesh.name = active === 'stack' ? 'stack' : 'glass-logo'
-    this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: p.bevelMm, bevelSegments: p.bevelSegments, reliefMm: NaN, layerMm: p.layerMm, geometry: active, relief: null }
+    this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: p.bevelMm, bevelSegments: p.bevelSegments, reliefMm: NaN, layerMm: p.layerMm, spread: p.spread, geometry: active, relief: null }
     this.scene.add(this.mesh)
+    const footprint = arrangedPolygons(t.polygons, arrangement)
     this.paintShadow(bw * scale, bh * scale, p.depthMm, (ctx, sx, sy) => {
-      pathMapped(ctx, t.polygons, (x, y) => [(x - cx) * scale * sx, (y - cy) * scale * sy])
+      pathMapped(ctx, footprint, (x, y) => [(x - cx) * scale * sx, (y - cy) * scale * sy])
     })
     this.lastRebuildMs = performance.now() - t0
     this.placeFloor()
@@ -1049,7 +1202,7 @@ export class GlassStudio {
     this.mesh = new THREE.Mesh(geo, this.materialFor(p.finish))
     this.mesh.rotation.z = this.pose?.spin ?? 0
     this.mesh.name = r.mirror ? 'inflate' : 'relief'
-    this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: NaN, bevelSegments: NaN, reliefMm: p.reliefMm, layerMm: NaN, geometry: r.mirror ? 'inflate' : 'relief', relief: r }
+    this.built = { widthMm: p.widthMm, depthMm: p.depthMm, bevelMm: NaN, bevelSegments: NaN, reliefMm: p.reliefMm, layerMm: NaN, spread: NaN, geometry: r.mirror ? 'inflate' : 'relief', relief: r }
     this.scene.add(this.mesh)
     const size = geo.boundingBox!.getSize(new THREE.Vector3())
     const t = this.trace
@@ -1092,6 +1245,7 @@ export class GlassStudio {
     ctx.fill('evenodd')
     ctx.restore()
     ;(this.shadowPlane.material.map as THREE.CanvasTexture).needsUpdate = true
+    this.invalidate()
     this.shadowPlane.scale.set(wMm, hMm, 1)
     // Light comes from the upper left, so the shadow falls slightly down and to the right.
     this.shadowPlane.position.set(wMm * 0.015, -hMm * 0.02, -depth / 2 - depth * 0.6)
@@ -1115,6 +1269,7 @@ export class GlassStudio {
     this.shadowPlane.rotation.z = spin
     this.view = 'angle'
     this.snapNext = true
+    this.invalidate()
   }
 
   /**
@@ -1140,6 +1295,7 @@ export class GlassStudio {
    * camera at once instead of gliding: a keyboard command answers without animating.
    */
   frame(named = false, instant = false): void {
+    this.invalidate()
     const box = this.modelBox()
     if (!box) return
     const size = box.getSize(new THREE.Vector3())
@@ -1249,6 +1405,7 @@ export class GlassStudio {
     this.printTex?.dispose()
     this.dropSurface()
     this.envRoom?.dispose()
+    this.envLiquid?.dispose()
     this.envStudio.dispose()
     this.print.dispose()
     this.floor.geometry.dispose()
@@ -1261,6 +1418,7 @@ export class GlassStudio {
     this.backdrop.geometry.dispose()
     this.backdrop.material.dispose()
     this.material.dispose()
+    this.backMaterial.dispose()
     this.metal.dispose()
     this.shadowPlane.geometry.dispose()
     this.shadowPlane.material.map?.dispose()

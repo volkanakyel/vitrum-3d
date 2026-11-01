@@ -140,7 +140,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
          ones they gather underneath. -->
     <section
       ref="hero"
-      class="relative h-svh min-h-[660px] max-tab:min-h-[720px]"
+      class="relative h-svh min-h-[660px] max-tab:min-h-[600px]"
       aria-labelledby="hero-title"
       @pointermove="moveGlint"
       @pointerleave="glintOn = false"
@@ -154,14 +154,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
         @unavailable="live = false"
       />
 
-      <div class="frame pointer-events-none relative z-[2] flex h-full flex-col items-center justify-center pb-[13svh] text-center max-tab:justify-start max-tab:pt-[124px] max-tab:pb-0">
-        <p class="mb-7 flex animate-rise items-center gap-2.5 text-[15px] text-ink-2 max-tab:mb-6">
-          <LiveDot
-            on
-            pulse
-          />
-          Free, and nothing leaves your browser
-        </p>
+      <div class="frame pointer-events-none relative z-[2] flex h-full flex-col items-center justify-center pb-[13svh] text-center max-tab:justify-start max-tab:pt-[108px] max-tab:pb-0">
         <!-- Each line clips its own half of one two-line gradient. Clipping on the h1 instead would
              leave the lines invisible in Safari: their rise animation lifts them onto their own
              layers, which the parent's text clip never reaches. -->
@@ -169,15 +162,15 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
           id="hero-title"
           class="heading-hero flex flex-col pb-[0.08em] max-2xs:text-[38px]"
         >
-          <span :class="[heroLine, 'animation-delay-60 bg-top']">Custom 3D icons</span>
-          <span :class="[heroLine, 'animation-delay-120 bg-bottom']">from any logo.</span>
+          <span :class="[heroLine, 'bg-top']">Custom 3D icons</span>
+          <span :class="[heroLine, 'animation-delay-60 bg-bottom']">from any logo.</span>
         </h1>
-        <p class="mt-6 max-w-[46ch] animate-rise text-lead text-balance animation-delay-180 max-2xs:text-[17px]">
+        <p class="mt-6 max-w-[46ch] animate-rise text-lead text-balance animation-delay-120 max-2xs:text-[17px]">
           Drop in an SVG or PNG and get it back in glass, metal or colour. Export a PNG for your designs, a GLB for three.js or an STL for print.
         </p>
         <div
           ref="heroActions"
-          class="pointer-events-auto mt-9 animate-rise justify-center animation-delay-240"
+          class="pointer-events-auto mt-9 animate-rise justify-center animation-delay-180"
           :class="actions"
         >
           <SiteButton
@@ -191,7 +184,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
           <SiteButton
             href="#features"
             variant="plain"
-            :class="action"
+            :class="[action, 'max-2xs:hidden']"
           >
             See how it works
           </SiteButton>
@@ -229,7 +222,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
             :to="{ path: '/studio', query: { sample: logo.id } }"
             :aria-label="`Open the ${logo.name} logo in the studio`"
             :title="logo.name"
-            class="grid size-10 place-items-center rounded-full text-ink-3 press focus-ring [--press:.92] [--ring-offset:2px] hover:bg-well-strong hover:text-ink max-phone:size-9"
+            class="grid size-10 place-items-center rounded-full text-ink-3 press focus-ring [--press:.92] [--ring-offset:2px] hover:bg-well-strong hover:text-ink"
           >
             <LogoMark
               :id="logo.id"

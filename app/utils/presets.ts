@@ -3,7 +3,9 @@
  * the server bundle can read presets without pulling in three.js.
  */
 /** All units are millimetres so exported files carry real-world dimensions. */
-export type Finish = 'glass' | 'metal' | 'print'
+/** Liquid is glass shot the way a liquid-glass render is: on black, under hard strip lights, with
+ *  the light split into a spectrum at every edge and a fine film grain over the body. */
+export type Finish = 'glass' | 'liquid' | 'metal' | 'print'
 /**
  * Extrude: the traced silhouette as a bevelled slab. Inflate: the silhouette puffed into a
  * rounded volume, front and back. Relief: the picture as a height field on a slab.
@@ -50,6 +52,11 @@ export interface GlassParams {
   soften: number
   widthMm: number
   depthMm: number
+  /**
+   * Icon sheets: how far the separate marks are spread apart, as a share of each mark's distance
+   * from the set's centre (0 = as drawn). Extrude only.
+   */
+  spread: number
   bevelMm: number
   bevelSegments: number
   ior: number
@@ -102,6 +109,7 @@ export const DEFAULT_GLASS_PARAMS: GlassParams = {
   soften: 0,
   widthMm: 100,
   depthMm: 14,
+  spread: 0,
   bevelMm: 3.2,
   bevelSegments: 10,
   ior: 1.52,
@@ -146,6 +154,16 @@ const glass = (v: Partial<GlassParams>): Partial<GlassParams> => ({
   finish: 'glass', ior: 1.52, dispersion: 0.08, roughness: 0.08, clearcoat: 1, edgeChroma: 0.45, tir: 1,
   clarity: 1, blur: 0.15, tint: '#ffffff', attenuationMm: 400, ...v,
 })
+const LIQUID_BACKDROP = { background: '#262628', backdropFill: 'solid', background2: '#262628', backdropAngle: 180, vignette: 0 } satisfies Partial<GlassParams>
+
+// Liquid: real dispersion is the look, so it runs an order above glass; the thin-film rim is off
+// (the colour here is a spectrum, not a soap film, whose orange and teal would tint the faces); the frost is nearly gone so the strip
+// lights stay sharp; and it sits on the Charcoal backdrop, the dark grey the look is shot on (a
+// touch lighter than the glass, so the dark body still reads against it).
+const liquid = (v: Partial<GlassParams>): Partial<GlassParams> => ({
+  finish: 'liquid', ior: 1.6, dispersion: 0.5, roughness: 0.02, clearcoat: 1, edgeChroma: 0, tir: 1,
+  clarity: 1, blur: 0.04, tint: '#ffffff', attenuationMm: 400, ...LIQUID_BACKDROP, ...v,
+})
 const metal = (v: Partial<GlassParams>): Partial<GlassParams> => ({
   finish: 'metal', metalness: 1, roughness: 0.22, clearcoat: 0, tint: '#ffffff', ...v,
 })
@@ -167,6 +185,10 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
   { id: 'rose', label: 'Rosé', group: 'glass', swatch: 'linear-gradient(135deg,#ffe4ec,#ff8fb0)', values: glass({ tint: '#ff9ab8', attenuationMm: 45, edgeChroma: 0.25 }) },
   { id: 'amethyst', label: 'Amethyst', group: 'glass', swatch: 'linear-gradient(135deg,#f0e6ff,#9a6cf0)', values: glass({ tint: '#b796ff', attenuationMm: 44, edgeChroma: 0.25 }) },
   { id: 'holo', label: 'Holo', group: 'glass', swatch: 'linear-gradient(135deg,#ffd1f0,#c8e7ff 40%,#d9ffe1 70%,#fff2c2)', values: glass({ edgeChroma: 1, dispersion: 0.3, ior: 1.7, tir: 0.7, blur: 0.1 }) },
+  { id: 'liquid', label: 'Liquid', group: 'liquid', swatch: 'conic-gradient(from 200deg at 60% 60%,#0b0b0d,#ff5a3c 8%,#ffe25a 12%,#4cff8a 16%,#3c8cff 20%,#0b0b0d 26%,#d9dce2 52%,#0b0b0d 70%)', values: liquid({}) },
+  { id: 'liquid-smoke', label: 'Smoked', group: 'liquid', swatch: 'conic-gradient(from 160deg at 40% 45%,#2a2b30,#ff6a3c 7%,#4cff8a 11%,#3c7cff 15%,#16171b 22%,#5a5c63 55%,#0b0b0d 80%)', values: liquid({ tint: '#33353b', attenuationMm: 24, ior: 1.55, tir: 0.85 }) },
+  { id: 'liquid-prism', label: 'Prism', group: 'liquid', swatch: 'conic-gradient(from 90deg,#0b0b0d,#ff4d4d 10%,#ffd84d 20%,#4dff88 30%,#4db8ff 40%,#8a5cff 50%,#0b0b0d 62%,#c9ccd3 80%,#0b0b0d)', values: liquid({ ior: 1.75, dispersion: 0.75, tir: 0.9 }) },
+  { id: 'liquid-noir', label: 'Noir', group: 'liquid', swatch: 'conic-gradient(from 230deg at 55% 55%,#050506,#ff5a3c 6%,#3c8cff 11%,#050506 18%,#2e3036 60%,#050506)', values: liquid({ tint: '#111215', attenuationMm: 6, ior: 1.5, dispersion: 0.4, tir: 1 }) },
   { id: 'gold', label: 'Gold', group: 'metal', swatch: 'linear-gradient(135deg,#fff1b8,#d4a017 55%,#8a6508)', values: metal({ tint: '#e4b84a', roughness: 0.2 }) },
   { id: 'rosegold', label: 'Rose gold', group: 'metal', swatch: 'linear-gradient(135deg,#ffe0d0,#d9946f 55%,#8e5a45)', values: metal({ tint: '#d9a08a', roughness: 0.22 }) },
   { id: 'chrome', label: 'Chrome', group: 'metal', swatch: 'linear-gradient(135deg,#ffffff,#b8bcc4 50%,#5d6169)', values: metal({ tint: '#f2f3f5', roughness: 0.06 }) },
@@ -233,10 +255,17 @@ export const BACKDROP_PRESETS: BackdropPreset[] = [
   backdrop('sky', 'Sky', '#cfe1ff', 'linear', '#f6f8fc', 0, 0.15),
   backdrop('sand', 'Sand', '#f6efe6', 'radial', '#e3d3bf', 180, 0.2),
   backdrop('blush', 'Blush', '#fbeaec', 'linear', '#e9d6f2', 135, 0.15),
+  // Azure's warm twin: a cream centre glowing out to a soft pumpkin, for seasonal sets.
+  backdrop('pumpkin', 'Pumpkin', '#fff1e4', 'radial', '#f3a467', 180, 0.25),
   backdrop('graphite', 'Graphite', '#3a3d45', 'radial', '#16171b', 180, 0.3),
   backdrop('ink', 'Ink', '#1c1c1f', 'solid', '#1c1c1f', 180, 0.5),
   backdrop('night', 'Night', '#1d3a74', 'radial', '#070b16', 180, 0.3),
+  // The Liquid finish's walls: charcoal (its own default) and pure black.
+  backdrop('charcoal', 'Charcoal', LIQUID_BACKDROP.background, 'solid', LIQUID_BACKDROP.background2, 180, 0),
+  backdrop('void', 'Void', '#000000', 'solid', '#000000', 180, 0),
 ]
+/** Backdrops the Liquid finish brings; leaving Liquid on one of them returns to the studio wall. */
+export const LIQUID_BACKDROP_IDS: ReadonlySet<string> = new Set(['charcoal', 'void'])
 
 /** CSS for a backdrop swatch: the same fill the stage paints, so a tile previews its set. */
 export function backdropCss(v: BackdropPreset['values'] | GlassParams): string {
