@@ -65,12 +65,13 @@ const link = 'inline-flex items-center gap-[7px] pointer-coarse:min-h-11 press f
           :size="24"
         /></a>
       </div>
-      <div class="flex items-center justify-between gap-5 border-t border-hairline pt-6 pb-8 text-[14px] text-ink-3 max-tab:flex-wrap max-tab:gap-2.5">
-        <span class="flex items-center gap-[7px]"><Icon
-          name="lock"
-          :size="15"
-        /> Made on your device. Yours to keep.</span>
-        <span>© Vitrum</span>
+      <div class="flex items-center border-t border-hairline pt-6 pb-8 text-[14px] text-ink-3">
+        <span>Made by <a
+          href="https://volkanakielle.com"
+          target="_blank"
+          rel="noopener"
+          class="font-semibold text-ink-2 transition-colors focus-ring [--ring-offset:3px] hover:text-ink focus-visible:rounded-[3px]"
+        >Volkan</a></span>
       </div>
     </div>
   </footer>
