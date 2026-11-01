@@ -28,7 +28,7 @@ onMounted(() => centre(active.value, false))
 <template>
   <div
     ref="strip"
-    class="relative flex touch-pan-x items-center overflow-x-auto overscroll-x-contain py-1 pr-4 pl-1 [scrollbar-width:none] [mask-image:linear-gradient(to_right,transparent,#000_10px,#000_calc(100%-28px),transparent)] [&::-webkit-scrollbar]:hidden"
+    class="relative flex touch-pan-x items-center overflow-x-auto overscroll-x-contain py-0.5 pr-3 pl-1 [scrollbar-width:none] [mask-image:linear-gradient(to_right,transparent,#000_10px,#000_calc(100%-28px),transparent)] [&::-webkit-scrollbar]:hidden"
     role="group"
     aria-label="Finishes"
   >
@@ -38,13 +38,13 @@ onMounted(() => centre(active.value, false))
     >
       <span
         v-if="i && p.group !== MATERIAL_PRESETS[i - 1]!.group"
-        class="mx-1.5 h-5 w-px shrink-0 bg-hairline-strong"
+        class="mx-1 h-5 w-px shrink-0 bg-hairline-strong"
         aria-hidden="true"
       />
       <motion.button
         type="button"
         :data-id="p.id"
-        class="relative grid size-11 shrink-0 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/35"
+        class="relative grid size-10 shrink-0 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/35"
         :aria-label="p.label"
         :aria-pressed="active === p.id"
         :while-press="{ scale: 0.88 }"
@@ -58,7 +58,7 @@ onMounted(() => centre(active.value, false))
           :transition="{ type: 'spring', stiffness: 520, damping: 38 }"
         />
         <span
-          class="relative size-[30px] rounded-full"
+          class="relative size-[26px] rounded-full"
           :style="presetSphere(p, glass.colorSource === 'picture' ? ink : null)"
         />
       </motion.button>

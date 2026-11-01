@@ -67,6 +67,10 @@ export default defineNuxtConfig({
       ],
     },
   },
+  // Brotli + gzip copies of every built asset, served by the Node server for clients that accept
+  // them (Three.js alone is ~700 kB raw, ~170 kB compressed). Hosts that compress at the edge
+  // ignore them.
+  nitro: { compressPublicAssets: true },
   vite: {
     plugins: [tailwindcss()],
     optimizeDeps: {

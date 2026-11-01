@@ -1,11 +1,10 @@
 import * as THREE from 'three'
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
-import { buildExtrudeGeometry } from './extrude'
 import { bakeEnvironment, createLiquidEnvironment, createStudioEnvironment } from './glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams } from './presets'
 import { buildPrintTexture } from './printTexture'
-import { DEFAULT_TRACE_OPTIONS, traceImage, type TraceResult } from './trace'
-import { drawSample, HERO_FINISH, HERO_SPOTS, HERO_STORY, LOGO_SAMPLE_IDS, SAMPLES, sampleById, type Sample } from './samples'
+import { drawSample, HERO_FINISH, HERO_SPOTS, SAMPLES, sampleById, type Sample } from './samples'
+import { buildMark, markGeometry, type MarkData, type MarkRequest } from './showcaseMark'
+import { buildMarksInWorker, heroRequests, type MarkBuild } from './heroMarks'
 
 /**
  * The landing page's showroom. Every object is built from `SAMPLES` through the same trace →
@@ -32,13 +31,17 @@ interface Placed {
   look: THREE.Vector2
 }
 
-/** A traced sample and the canvas it was drawn on, which the Color finish samples. */
-interface Traced {
-  trace: TraceResult
-  source: HTMLCanvasElement
-}
+/** Yield through a frame, not just a task, so the page paints between two pieces of work. */
+const nextFrame = () => new Promise<void>(r => requestAnimationFrame(() => setTimeout(r, 0)))
 
 const GALLERY_ICONS = ['heart', 'bolt', 'star', 'play', 'leaf', 'ring']
+/**
+ * Hero: the marks around the centre one live on their own layer and are drawn in a second pass.
+ * The centre glass then refracts only the paper, which is all it would show anyway, and the
+ * opaque marks keep one shader program instead of switching for the glass's transmission pass
+ * and back on every frame.
+ */
+const SIDE_LAYER = 1
 const ICON_GAP = 150
 const ROW_ICONS_Y = 0
 
@@ -67,16 +70,30 @@ export class Showcase {
   private backdrop: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>
   private static readonly BACKDROP_DISTANCE = 6000
   private story: THREE.Mesh | null = null
-  private storyDepth = 12
-  private storyTrace: Traced | null = null
+  private storyMark: MarkData | null = null
+  private storyPreset = ''
+  /** Bumped on every finish change, so a slow shader compile never lands over a newer pick. */
+  private presetToken = 0
+  /** Hero: nothing is drawn until every mark is built and its shaders compiled, then all land together. */
+  private holding: boolean
+  private worker: MarkBuild | null = null
   private target = new THREE.Vector3()
   /** Hero, narrow screens: canvas px from the top that the copy occupies; the marks stay below. */
   private heroClear = 0
+  /** Hero: the headline's centre in canvas px; the marks come out from behind it. */
+  private heroOrigin: { x: number; y: number } | null = null
+  /** Hero: world units per css px (see `layoutHero`). */
+  private heroU = 1
   /** Fires once per object as it lands, so the page can reveal its caption. */
   onPlaced: ((id: string) => void) | null = null
   onReady: (() => void) | null = null
 
-  constructor(private canvas: HTMLCanvasElement, private opts: { layout: Layout; narrow: boolean; sample?: string; preset?: string }) {
+  constructor(private canvas: HTMLCanvasElement, private opts: { layout: Layout; narrow: boolean; sample?: string;
+    preset?: string
+    /** Hero marks already being built (started by the page before Three.js was ready). */
+    prebuilt?: MarkBuild
+  }) {
+    this.holding = opts.layout === 'hero'
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -134,12 +151,22 @@ export class Showcase {
     this.backdrop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: bgTex, toneMapped: false }))
     this.backdrop.position.z = -Showcase.BACKDROP_DISTANCE
     this.camera.add(this.backdrop)
+    if (opts.layout === 'hero') {
+      // The hero's paper is one flat colour: a clear, not a textured plane for every pass to draw.
+      // (A scene.background colour would force a clear on the second pass too.)
+      this.backdrop.visible = false
+      this.renderer.setClearColor('#eceef2', 1)
+      // The glass refracts that flat paper; a half-size buffer reads the same at a quarter of the fill.
+      this.renderer.transmissionResolutionScale = 0.5
+    }
     this.scene.add(this.camera)
 
     const keyLight = new THREE.DirectionalLight(0xffffff, 2.0)
     keyLight.position.set(-1, 1.2, 1.6)
     const rim = new THREE.DirectionalLight(0xf4f4f4, 1.2)
     rim.position.set(1.4, -0.4, -1)
+    keyLight.layers.enableAll()
+    rim.layers.enableAll()
     this.scene.add(keyLight, rim)
 
     const sc = document.createElement('canvas')
@@ -182,23 +209,34 @@ export class Showcase {
 
   /** Build the layout's objects, yielding between them so the page stays responsive. */
   async load(): Promise<void> {
-    // Yield through a frame, not just a task, so each object is drawn and starts landing before
-    // the next one is traced.
-    const idle = () => new Promise<void>(r => requestAnimationFrame(() => setTimeout(r, 0)))
     if (this.opts.layout === 'hero') {
-      for (const spot of HERO_SPOTS) {
-        if (this.disposed) return
-        const sample = sampleById(spot.id === 'story' ? HERO_STORY : spot.id)!
-        const mesh = this.place(sample, new THREE.Vector3(0, 0, spot.z), spot.size, spot.id, spot.preset)
-        if (spot.id === 'story') {
-          this.story = mesh
-          this.setPreset(this.opts.preset ?? HERO_FINISH)
-        }
-        this.layoutHero()
-        await idle()
+      const requests = heroRequests(this.canvas.clientWidth)
+      const finishOf = (spot: typeof HERO_SPOTS[number]) =>
+        spot.id === 'story' ? this.opts.preset ?? HERO_FINISH : spot.preset ?? sampleById(spot.id)!.preset
+      // The finishes' shaders compile while the worker builds the solids, not after.
+      let release!: () => void
+      const compiled = new Promise<void>(r => (release = r))
+      const warm = this.warmUp(HERO_SPOTS.map(finishOf), compiled)
+      const marks = await this.buildMarks(requests, this.opts.prebuilt)
+      if (this.disposed) return
+      for (const mark of marks) {
+        const spot = HERO_SPOTS.find(s => s.id === mark.id)!
+        this.mountMark(mark, new THREE.Vector3(0, 0, spot.z), finishOf(spot), HERO_SPOTS.indexOf(spot))
       }
+      this.layoutHero()
+      // Compile every program before the first frame (in parallel where the driver allows), so
+      // the entrance never stalls on a shader. The canvas stays hidden until then.
+      await this.renderer.compileAsync(this.scene, this.camera).catch(() => {})
+      release()
+      await warm
+      if (this.disposed) return
+      this.holding = false
+      this.stageEntrance()
       this.invalidate()
-      this.onReady?.()
+      for (const o of this.placed) this.onPlaced?.(o.id)
+      // The page's own reaction (the finish bar) waits a frame, off the first frame's budget.
+      await nextFrame()
+      if (!this.disposed) this.onReady?.()
       return
     }
     if (this.opts.layout === 'specimen') {
@@ -217,55 +255,91 @@ export class Showcase {
     for (const [i, id] of GALLERY_ICONS.entries()) {
       if (this.disposed) return
       this.place(sampleById(id)!, new THREE.Vector3(i * ICON_GAP, ROW_ICONS_Y, 0), 92)
-      await idle()
+      await nextFrame()
     }
     this.onReady?.()
   }
 
-  private trace(sample: Sample, stack = false): Traced {
-    // Phone heroes draw each mark at ~200 device px; a 512 px trace is ample and under half
-    // the pixels traced on the main thread before the first mark can land.
-    const res = this.opts.layout === 'hero' && this.canvas.clientWidth < 768 ? 512 : 768
-    const source = drawSample(sample, res)
-    const trace = traceImage(source, { ...DEFAULT_TRACE_OPTIONS, resolution: res, stack, mode: 'auto' })
-    return { trace, source }
+  /**
+   * Compile each finish's program on a stand-in box (same attributes as a built mark) against
+   * this scene's lights. The stand-ins hold the programs until the real marks reuse them.
+   */
+  private async warmUp(presetIds: string[], compiled: Promise<void>): Promise<void> {
+    const box = new THREE.BoxGeometry(10, 10, 10)
+    const group = new THREE.Group()
+    for (const id of new Set(presetIds)) {
+      const p = this.presetParams(id, 10)
+      if (p.finish === 'print') continue
+      group.add(new THREE.Mesh(box, this.material(p, () => document.createElement('canvas'))))
+    }
+    try {
+      await this.renderer.compileAsync(group, this.camera, this.scene)
+      // Wait until the marks are compiled too, so these programs are never released in between.
+      await compiled
+    } catch { /* the real compile still runs */ }
+    box.dispose()
+    group.traverse(o => { if (o instanceof THREE.Mesh) (o.material as THREE.Material).dispose() })
+  }
+
+  /**
+   * Build marks in the showcase worker, posted back one by one; on the main thread, a frame
+   * apart, where module workers or `OffscreenCanvas` are missing.
+   */
+  private async buildMarks(requests: MarkRequest[], prebuilt?: MarkBuild): Promise<MarkData[]> {
+    const build = prebuilt ?? buildMarksInWorker(requests)
+    this.worker = build
+    try {
+      return await build.marks
+    } catch (err) {
+      if (import.meta.dev) console.warn('[showcase] worker failed, building on the main thread:', err)
+    } finally {
+      if (this.worker === build) this.worker = null
+    }
+    const marks: MarkData[] = []
+    for (const req of requests) {
+      if (this.disposed) break
+      const sample = sampleById(req.sampleId)
+      const mark = sample && buildMark(req, sample, drawSample(sample, req.res))
+      if (mark) marks.push(mark)
+      await nextFrame()
+    }
+    return marks
   }
 
   /** `sizeMm` is the longer side of the object, so a tall bolt and a wide heart read as one family. */
   private place(sample: Sample, home: THREE.Vector3, sizeMm: number, id = sample.id, presetId = sample.preset): THREE.Mesh | null {
-    const stack = sample.id === 'play'
-    const traced = this.trace(sample, stack)
-    const { trace, source } = traced
-    if (!trace.polygons.length) return null
-    const aspect = (trace.bbox.maxY - trace.bbox.minY) / Math.max(1e-6, trace.bbox.maxX - trace.bbox.minX)
-    const widthMm = aspect > 1 ? sizeMm / aspect : sizeMm
-    const roundedIcon = ['camera', 'chat', 'spark', 'heart'].includes(sample.id)
-    const isLogo = LOGO_SAMPLE_IDS.has(sample.id)
-    const depth = sizeMm * (roundedIcon ? 0.16 : isLogo ? 0.14 : 0.2)
-    // The star's tips need a smaller bevel than its broad face suggests; keep the inset
-    // from crossing those narrow features.
-    const bevelLimit = isLogo || ['star', 'bolt'].includes(sample.id) ? sizeMm * 0.012 : sample.id === 'spark' ? sizeMm * 0.02 : sizeMm * 0.038
-    const bevel = Math.min(bevelLimit, Math.max(0.6, (trace.strokeWidth * widthMm) / Math.max(1, trace.bbox.maxX - trace.bbox.minX) * (roundedIcon ? 0.44 : 0.3)))
-    const built = buildExtrudeGeometry(trace, { widthMm, depthMm: depth, bevelMm: bevel, bevelSegments: 8, layerMm: 2, stack })
-    if (!built) return null
-    const preset = MATERIAL_PRESETS.find(p => p.id === presetId)!
-    const params = { ...DEFAULT_GLASS_PARAMS, ...preset.values, depthMm: depth }
-    const material = this.material(params, () => buildPrintTexture(source, trace))
-    let geometry = built.geometry
-    if (roundedIcon) {
-      geometry.deleteAttribute('normal')
-      const smooth = mergeVertices(geometry, 0.001)
-      smooth.computeVertexNormals()
-      geometry.dispose()
-      geometry = smooth
-    }
-    const mesh = new THREE.Mesh(geometry, material)
-    this.mount(id, mesh, home, widthMm, built.frame.bh * built.frame.scale, depth)
-    if (id === 'story') { this.storyDepth = depth; this.storyTrace = traced }
+    const req = { id, sampleId: sample.id, sizeMm, res: 768 }
+    const mark = buildMark(req, sample, drawSample(sample, req.res))
+    if (!mark) return null
+    const mesh = this.mountMark(mark, home, presetId, this.placed.length)
+    this.onPlaced?.(id)
     return mesh
   }
 
-  private mount(id: string, mesh: THREE.Mesh, home: THREE.Vector3, w: number, h: number, depth: number) {
+  /** Put a built mark on stage in its finish. `order` staggers its entrance after the others. */
+  private mountMark(mark: MarkData, home: THREE.Vector3, presetId: string, order: number): THREE.Mesh {
+    const params = this.presetParams(presetId, mark.depthMm)
+    const mesh = new THREE.Mesh(markGeometry(mark), this.material(params, () => this.printSource(mark)))
+    this.mount(mark.id, mesh, home, mark.widthMm, mark.heightMm, mark.depthMm, order)
+    if (mark.id === 'story') {
+      this.story = mesh
+      this.storyMark = mark
+      this.storyPreset = presetId
+    }
+    return mesh
+  }
+
+  private presetParams(presetId: string, depthMm: number): GlassParams {
+    const preset = MATERIAL_PRESETS.find(p => p.id === presetId) ?? MATERIAL_PRESETS[0]!
+    return { ...DEFAULT_GLASS_PARAMS, ...preset.values, depthMm }
+  }
+
+  /** The Color finish prints the source onto the solid; redrawn only when that finish is picked. */
+  private printSource(mark: MarkData): HTMLCanvasElement {
+    return buildPrintTexture(drawSample(sampleById(mark.sampleId)!, mark.trace.width), mark.trace)
+  }
+
+  private mount(id: string, mesh: THREE.Mesh, home: THREE.Vector3, w: number, h: number, depth: number, order: number) {
     const group = new THREE.Group()
     group.add(mesh)
     const shadow = new THREE.Mesh(
@@ -276,13 +350,14 @@ export class Showcase {
     shadow.position.set(w * 0.02, -h * 0.02, -depth * 1.4)
     shadow.renderOrder = -1
     group.add(shadow)
+    if (this.opts.layout === 'hero' && id !== 'story') group.traverse(o => o.layers.set(SIDE_LAYER))
     group.position.copy(home)
     group.position.y = home.y - 40
     group.scale.setScalar(0.92)
     this.scene.add(group)
     const n = this.placed.length
-    this.placed.push({ id, group, home: home.clone(), spin: (n % 2 ? -1 : 1) * 0.16, phase: n * 1.37, landing: 0, look: new THREE.Vector2() })
-    this.onPlaced?.(id)
+    // Negative landing is a delay: each mark starts its rise a beat after the one before.
+    this.placed.push({ id, group, home: home.clone(), spin: (n % 2 ? -1 : 1) * 0.16, phase: n * 1.37, landing: -order * 0.07, look: new THREE.Vector2() })
   }
 
   /** A single-pass physical material per finish; glass uses three's own transmission. */
@@ -338,18 +413,33 @@ export class Showcase {
     })
   }
 
-  /** Swap the story object's finish. */
+  /**
+   * Swap the story object's finish. The new material's shaders compile in the background
+   * against this scene's lights first, so the click never freezes a frame.
+   */
   setPreset(id: string): void {
-    const preset = MATERIAL_PRESETS.find(p => p.id === id)
     const mesh = this.story
-    if (!preset || !mesh || !this.storyTrace) return
-    const params = { ...DEFAULT_GLASS_PARAMS, ...preset.values, depthMm: this.storyDepth }
-    const old = mesh.material as THREE.MeshPhysicalMaterial
-    const { trace, source } = this.storyTrace
-    mesh.material = this.material(params, () => buildPrintTexture(source, trace))
-    old.map?.dispose()
-    old.dispose()
-    this.invalidate()
+    const mark = this.storyMark
+    if (!mesh || !mark || id === this.storyPreset || !MATERIAL_PRESETS.some(p => p.id === id)) return
+    this.storyPreset = id
+    const token = ++this.presetToken
+    const material = this.material(this.presetParams(id, mark.depthMm), () => this.printSource(mark))
+    const swap = () => {
+      if (token !== this.presetToken || this.disposed) {
+        material.map?.dispose()
+        material.dispose()
+        return
+      }
+      const old = mesh.material as THREE.MeshPhysicalMaterial
+      mesh.material = material
+      old.map?.dispose()
+      old.dispose()
+      this.invalidate()
+    }
+    if (this.holding) return swap()
+    const probe = new THREE.Mesh(mesh.geometry, material)
+    probe.matrixWorld.copy(mesh.matrixWorld)
+    this.renderer.compileAsync(probe, this.camera, this.scene).then(swap, swap)
   }
 
   private invalidate() {
@@ -365,7 +455,7 @@ export class Showcase {
 
   /** Render immediately before capture; no persistent drawing buffer needed. */
   capture(): string {
-    this.renderer.render(this.scene, this.camera)
+    this.draw()
     return this.canvas.toDataURL('image/webp', 0.92)
   }
 
@@ -380,6 +470,31 @@ export class Showcase {
     this.heroClear = px
     if (this.opts.layout === 'hero') this.layoutHero()
     this.invalidate()
+  }
+
+  /** Hero: the headline's centre in canvas px. */
+  setHeroOrigin(x: number, y: number): void {
+    this.heroOrigin = { x, y }
+  }
+
+  /**
+   * Hero entrance order: nearest the headline first, so the set opens outward from the title,
+   * the inner pair a beat before the outer pair. Negative landing is the delay.
+   */
+  private stageEntrance() {
+    const o0 = this.heroOrigin
+    if (!o0) return
+    const w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1
+    const ox = (o0.x - w / 2) / this.heroU, oy = (h / 2 - o0.y) / this.heroU
+    const ranked = [...this.placed].sort((a, b) => Math.hypot(a.home.x - ox, a.home.y - oy) - Math.hypot(b.home.x - ox, b.home.y - oy))
+    // Mirrored pairs sit at the same distance: they share a beat.
+    let beat = -1, last = -Infinity
+    for (const o of ranked) {
+      const d = Math.hypot(o.home.x - ox, o.home.y - oy)
+      if (d - last > 24) beat++
+      last = d
+      o.landing = -beat * 0.07
+    }
   }
 
   /** Pointer in canvas CSS px; `inside` false once it leaves the canvas. Objects turn toward it. */
@@ -431,6 +546,7 @@ export class Showcase {
     const halfFov = Math.tan((this.camera.fov * Math.PI) / 360)
     this.camera.position.set(0, 0, h / 2 / halfFov / u)
     this.camera.lookAt(0, 0, 0)
+    this.heroU = u
     const hw = w / 2 / u, hh = h / 2 / u
     // Narrow: the band between the copy and the finish bar, in canvas px.
     const top = this.heroClear + 24, bottom = h - 104
@@ -450,7 +566,7 @@ export class Showcase {
 
   private loop = (now: number) => {
     if (this.disposed) return
-    if (!this.visible) { this.raf = 0; return }
+    if (!this.visible || this.holding) { this.raf = 0; return }
     this.raf = this.reducedMotion || this.paused ? 0 : requestAnimationFrame(this.loop)
     const dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
@@ -469,9 +585,14 @@ export class Showcase {
 
     for (const o of this.placed) {
       const g = o.group
-      const landing = o.landing = still ? 1 : Math.min(1, o.landing + dt * 1.4)
-      const e = 1 - Math.pow(1 - landing, 3)
-      g.scale.setScalar(0.92 + 0.08 * e)
+      // The hero's marks travel out from behind the headline (0.65 s each); the other layouts rise.
+      const fromTitle = layout === 'hero' && this.heroOrigin
+      const landing = o.landing = still ? 1 : Math.min(1, o.landing + dt * (fromTitle ? 1.55 : 1.7))
+      const l = Math.max(0, landing)
+      const e = 1 - Math.pow(1 - l, 3)
+      // Quartic out: leaves the title fast and glides the last stretch into place.
+      const q = 1 - Math.pow(1 - l, 4)
+      g.scale.setScalar(fromTitle ? (l > 0 ? 0.18 + 0.82 * q : 0.0001) : 0.92 + 0.08 * e)
 
       // Where the cursor is relative to this object, on screen. The object turns to face it:
       // fully when the cursor is on or near it, fading out with distance, off when it leaves.
@@ -492,15 +613,28 @@ export class Showcase {
       if (still) look.set(0, 0)
 
       if (layout === 'hero' || layout === 'specimen') {
-        g.position.y = o.home.y - 24 * (1 - e) + Math.sin(t * 0.65 + (layout === 'hero' ? Math.abs(o.home.x) * 0.004 : o.phase)) * 4
+        const bob = Math.sin(t * 0.65 + (layout === 'hero' ? Math.abs(o.home.x) * 0.004 : o.phase)) * 4
+        if (fromTitle) {
+          // From the headline's centre, a little behind it, out to the mark's spot. Height eases
+          // a touch slower than width, so each path bows out of the title instead of a straight line.
+          const ox = (this.heroOrigin!.x - w / 2) / this.heroU, oy = (h / 2 - this.heroOrigin!.y) / this.heroU
+          const ey = 1 - Math.pow(1 - l, 2.4)
+          g.position.x = ox + (o.home.x - ox) * q
+          g.position.y = oy + (o.home.y - oy) * ey + bob
+          g.position.z = o.home.z - 220 * (1 - q)
+        } else {
+          g.position.y = o.home.y - 24 * (1 - e) + bob
+        }
         // A slow sway so the object never sits still; the cursor turns it further.
         if (layout === 'hero') {
           // Mirrored: every mark turns the same amount toward the centre and stands upright, so the
           // set reads as one arrangement; the centre mark keeps a slight turn to show its depth.
           const side = Math.sign(Math.round(o.home.x))
           const sway = Math.sin(t * 0.32 + (side < 0 ? 0 : Math.PI)) * 0.1 * (1 - gain * 0.6)
-          g.rotation.y = (side ? -side * 0.34 : -0.3) + sway + look.y * 0.35
-          g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x * 0.35 + 0.16
+          // On the way out each mark turns in from edge-on, as if dealt from the title, and settles.
+          const deal = fromTitle ? (1 - q) * (side || 1) * 1.1 : 0
+          g.rotation.y = (side ? -side * 0.34 : -0.3) + sway + look.y * 0.35 + deal
+          g.rotation.x = Math.sin(t * 0.3) * 0.04 + look.x * 0.35 + 0.16 - (fromTitle ? (1 - q) * 0.35 : 0)
           g.rotation.z = 0
         } else {
           g.rotation.y = Math.sin(t * 0.32 + o.phase) * 0.16 * (1 - gain * 0.6) + look.y * 0.35 + (o.id === 'chat' ? 0.35 : -0.38)
@@ -519,11 +653,25 @@ export class Showcase {
         g.rotation.x = Math.sin(t * 0.35 + o.phase) * 0.03 * (1 - gain) + look.x
       }
     }
+    this.draw()
+  }
+
+  private draw() {
+    if (this.opts.layout !== 'hero') return this.renderer.render(this.scene, this.camera)
+    const layers = this.camera.layers
+    layers.set(0)
     this.renderer.render(this.scene, this.camera)
+    layers.set(SIDE_LAYER)
+    this.renderer.autoClear = false
+    this.renderer.render(this.scene, this.camera)
+    this.renderer.autoClear = true
+    layers.set(0)
   }
 
   dispose(): void {
     this.disposed = true
+    this.worker?.terminate()
+    this.worker = null
     cancelAnimationFrame(this.raf)
     this.raf = 0
     this.onPlaced = this.onReady = null

@@ -26,6 +26,7 @@ const props = withDefaults(
   { step: 0.01, unit: '', decimals: 2 },
 )
 const emit = defineEmits<{ 'update:modelValue': [number] }>()
+const describedBy = `slider-desc-${useId()}`
 const reduced = useReducedMotion()
 
 const range = computed(() => props.max - props.min)
@@ -253,6 +254,12 @@ function onRowKey(e: KeyboardEvent) {
     startEdit()
     return
   }
+  // The reset mark is a pointer shortcut inside the slider; from the keyboard it is a key.
+  if ((e.key === 'Delete' || e.key === 'Backspace') && changed.value) {
+    e.preventDefault()
+    resetToDefault()
+    return
+  }
   const big = e.shiftKey ? 10 : 1
   const by: Record<string, number> = {
     ArrowRight: props.step * big, ArrowUp: props.step * big, ArrowLeft: -props.step * big, ArrowDown: -props.step * big,
@@ -327,6 +334,7 @@ const handleHidden = computed(() => pct.value < 3 || textZones.value.some(([a, b
     role="slider"
     tabindex="0"
     :aria-label="label"
+    :aria-describedby="hint || changed ? describedBy : undefined"
     :aria-valuemin="min"
     :aria-valuemax="max"
     :aria-valuenow="modelValue"
@@ -413,8 +421,8 @@ const handleHidden = computed(() => pct.value < 3 || textZones.value.some(([a, b
         <TooltipTrigger as-child>
           <span
             data-no-drag
-            class="flex cursor-help text-muted-foreground opacity-0 transition-[opacity,color] duration-150 group-hover/row:opacity-100 group-focus-visible/row:opacity-100 hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-100"
-            tabindex="0"
+            class="flex cursor-help text-muted-foreground opacity-0 transition-[opacity,color] duration-150 group-hover/row:opacity-100 group-focus-visible/row:opacity-100 hover:text-foreground pointer-coarse:opacity-100"
+            aria-hidden="true"
           >
             <Icon
               name="info"
@@ -430,11 +438,12 @@ const handleHidden = computed(() => pct.value < 3 || textZones.value.some(([a, b
         </TooltipContent>
       </Tooltip>
       <AnimatePresence>
-        <!-- Press squash on the CSS `scale` property; motion owns `transform` and `opacity`. -->
-        <motion.button
+        <!-- A pointer shortcut, not a control: the slider is the one focus stop and Delete resets
+             from the keyboard, so nothing focusable nests inside it. Press squash on the CSS
+             `scale` property; motion owns `transform` and `opacity`. -->
+        <motion.span
           v-if="changed && !dragging"
           key="reset"
-          type="button"
           data-no-drag
           class="relative flex cursor-pointer text-muted-foreground transition-[color,scale] duration-150 ease-out before:absolute before:-inset-2 hover:text-lamp-ink active:scale-[.85] pointer-coarse:before:-inset-3.5"
           :initial="{ opacity: 0, transform: 'scale(0.9)' }"
@@ -442,14 +451,14 @@ const handleHidden = computed(() => pct.value < 3 || textZones.value.some(([a, b
           :exit="{ opacity: 0, transform: 'scale(0.9)', transition: { duration: 0.1, ease: EASE_OUT } }"
           :transition="{ duration: 0.15, ease: EASE_OUT }"
           title="Reset to default"
-          aria-label="Reset to default"
+          aria-hidden="true"
           @click="resetToDefault"
         >
           <Icon
             name="reset"
             :size="11"
           />
-        </motion.button>
+        </motion.span>
       </AnimatePresence>
     </span>
 
@@ -500,5 +509,10 @@ const handleHidden = computed(() => pct.value < 3 || textZones.value.some(([a, b
         >{{ unit }}</span>
       </span>
     </span>
+    <!-- The slider is one focus stop: its hint and its reset are read from here, not tabbed to. -->
+    <span
+      :id="describedBy"
+      class="sr-only"
+    >{{ [hint, changed ? 'Delete resets to default.' : ''].filter(Boolean).join(' ') }}</span>
   </div>
 </template>

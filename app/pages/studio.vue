@@ -122,9 +122,10 @@ onMounted(async () => {
           />
         </header>
 
-        <main
+        <section
           ref="stageEl"
-          class="lightbox relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-window bg-background shadow-[0_0_0_0.5px_rgba(38,40,46,.07),0_1px_2px_rgba(38,40,46,.04),0_18px_44px_-24px_rgba(38,40,46,.24)] max-md:mx-1.5 max-md:mb-1.5 max-md:rounded-[14px]">
+          aria-label="Stage"
+          class="lightbox relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-window bg-background shadow-[0_0_0_0.5px_rgba(38,40,46,.07),0_1px_2px_rgba(38,40,46,.04),0_18px_44px_-24px_rgba(38,40,46,.24)] max-md:mx-1.5 max-md:mb-1.5 max-md:rounded-[14px] max-md:rounded-b-[38px]">
           <GlassViewer
             ref="viewer"
             :trace="trace"
@@ -422,7 +423,7 @@ onMounted(async () => {
               {{ toast }}
             </motion.div>
           </AnimatePresence>
-        </main>
+        </section>
       </SidebarInset>
     </TooltipProvider>
   </SidebarProvider>

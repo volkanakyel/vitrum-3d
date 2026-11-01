@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { useDocumentVisibility, useEventListener, useIntersectionObserver, useMediaQuery, useResizeObserver } from '@vueuse/core'
 import type { Showcase } from '~/utils/showcase'
+import { buildMarksInWorker, heroRequests } from '~/utils/heroMarks'
 
-const { preset, paused = false, clear = 0 } = defineProps<{ preset: string; paused?: boolean; clear?: number }>()
+const { preset, paused = false, clear = 0, origin } = defineProps<{
+  preset: string
+  paused?: boolean
+  clear?: number
+  /** The headline's centre in canvas px: the marks come out from behind it. */
+  origin?: { x: number; y: number }
+}>()
 const emit = defineEmits<{ ready: []; unavailable: [] }>()
 const canvas = useTemplateRef('canvas')
 const ready = ref(false)
@@ -13,6 +20,7 @@ let disposed = false
 watch(() => preset, value => scene?.setPreset(value))
 watch(() => paused, value => scene?.setPaused(value))
 watch(() => clear, value => scene?.setHeroClear(value))
+watch(() => origin, value => value && scene?.setHeroOrigin(value.x, value.y))
 
 // The objects follow the cursor anywhere over the hero, not only over the canvas: from the
 // headline above, they already turn up toward it. Below the stage they ease back to idle.
@@ -49,13 +57,17 @@ useEventListener(canvas, 'webglcontextlost', (event: Event) => {
 
 onMounted(async () => {
   try {
+    // The marks are traced in workers from now, while Three.js loads and the renderer sets up.
+    // (Not earlier, in setup: spawning workers there holds up hydration on a slow phone.)
+    const prebuilt = buildMarksInWorker(heroRequests(canvas.value?.clientWidth || window.innerWidth))
     const { Showcase } = await import('~/utils/showcase')
-    if (disposed || !canvas.value) return
-    scene = new Showcase(canvas.value, { layout: 'hero', narrow: false, preset })
+    if (disposed || !canvas.value) return prebuilt.terminate()
+    scene = new Showcase(canvas.value, { layout: 'hero', narrow: false, preset, prebuilt })
     // Show the canvas as soon as the first mark lands; the rest arrive one by one behind it.
     scene.onPlaced = () => { shown.value = true }
     scene.setPaused(paused)
     scene.setHeroClear(clear)
+    if (origin) scene.setHeroOrigin(origin.x, origin.y)
     scene.setVisible(visible.value)
     await scene.load()
     if (disposed) return
@@ -84,7 +96,7 @@ onBeforeUnmount(() => {
   >
     <canvas
       ref="canvas"
-      class="absolute inset-0 block size-full object-cover opacity-0 transition-opacity duration-450 ease-[ease] motion-reduce:transition-none"
+      class="absolute inset-0 block size-full object-cover opacity-0 transition-opacity duration-300 ease-[ease] motion-reduce:transition-none"
       :class="{ 'opacity-100': shown }"
       aria-hidden="true"
     />
