@@ -6,7 +6,7 @@ import { useElementVisibility } from '@vueuse/core'
  * objects sit on the table itself and frame the headline. It morphs into the studio's stage on
  * navigation. Auto-rotate is on the R key, as in the studio.
  */
-defineProps<{ preset: string; paused: boolean; clear?: number }>()
+defineProps<{ preset: string; paused: boolean; clear?: number; copy?: { left: number; top: number; right: number; bottom: number } }>()
 const emit = defineEmits<{ ready: []; unavailable: [] }>()
 
 // Morph only while on screen: from further down the page it would fly in from outside the viewport.
@@ -24,6 +24,7 @@ const stageVisible = useElementVisibility(stage)
       :preset="preset"
       :paused="paused"
       :clear="clear"
+      :copy="copy"
       @ready="emit('ready')"
       @unavailable="emit('unavailable')"
     />

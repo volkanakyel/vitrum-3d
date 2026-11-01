@@ -46,6 +46,33 @@ onMounted(afterPaint)
 const fadePage = ref(true)
 const tabPage = computed(() => cn('mt-0 flex flex-col divide-y divide-hairline', fadePage.value && 'animate-[fade-in_180ms_var(--ease-out)_both]'))
 
+/**
+ * A tab's page mounts the first time it is opened and then stays, hidden, while another tab shows:
+ * switching back is a display toggle, not a rebuild of every slider and swatch, so the tab pill's
+ * glide never shares its frames with a component tree being mounted.
+ */
+const seen = reactive<Record<Tab, boolean>>({ shape: false, material: false, scene: false })
+watchEffect(() => (seen[tab.value] = true))
+// The other pages are built while the studio is idle, one per idle slot, so even a tab's first
+// opening is only a display toggle. Browsers without requestIdleCallback build them on first open.
+onMounted(() => {
+  if (typeof requestIdleCallback !== 'function') return
+  const rest = TABS.map(t => t.value).filter(v => !seen[v])
+  const next = () => {
+    const v = rest.shift()
+    if (!v) return
+    requestIdleCallback(() => {
+      // Built as a page, not as sections appearing: nothing waits on a rise it cannot show.
+      sectionAppear.value = false
+      seen[v] = true
+      afterPaint()
+      next()
+    })
+  }
+  // Not before the model is on the stage and the sheet has risen.
+  setTimeout(next, 2500)
+})
+
 const panelBody = useTemplateRef<HTMLElement>('panelBody')
 watch(tab, () => {
   fadePage.value = !keyed.value
@@ -64,9 +91,10 @@ watch(tab, () => {
   >
     <Tabs
       v-model="tab"
+      :unmount-on-hide="false"
       class="flex min-h-0 flex-1 flex-col gap-0"
     >
-      <SidebarHeader class="gap-5 px-4 pt-0 pb-5 max-md:gap-3 max-md:pb-3.5 md:pb-0">
+      <SidebarHeader class="gap-5 px-4 pt-0 pb-5 max-md:gap-2.5 max-md:px-3 max-md:pb-[max(12px,calc(env(safe-area-inset-bottom)-10px))] md:pb-0">
         <div class="-mb-1 flex h-12 items-center max-md:hidden">
           <NuxtLink
             to="/"
@@ -91,7 +119,7 @@ watch(tab, () => {
         />
       </SidebarHeader>
 
-      <SidebarSeparator class="mx-4 bg-hairline data-[orientation=horizontal]:w-auto md:hidden" />
+      <SidebarSeparator class="mx-4 max-md:mx-3 bg-hairline data-[orientation=horizontal]:w-auto md:hidden" />
 
       <!-- The settings slab: the active tab above is cut from the same sheet, so the panel reads as
            that tab's page. Its top corner squares off under an end tab so the two meet flush. -->
@@ -125,19 +153,19 @@ watch(tab, () => {
               value="shape"
               :class="tabPage"
             >
-              <ShapeTab />
+              <ShapeTab v-if="seen.shape" />
             </TabsContent>
             <TabsContent
               value="material"
               :class="tabPage"
             >
-              <MaterialTab />
+              <MaterialTab v-if="seen.material" />
             </TabsContent>
             <TabsContent
               value="scene"
               :class="tabPage"
             >
-              <SceneTab />
+              <SceneTab v-if="seen.scene" />
             </TabsContent>
           </div>
         </ScrollArea>

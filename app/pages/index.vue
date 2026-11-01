@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useElementBounding, useEventListener } from '@vueuse/core'
+import { useEventListener, useResizeObserver } from '@vueuse/core'
 import { LANDING_EXAMPLES, LANDING_FAQS, landingLooks } from '~/data/landing'
 import { LOGOS } from '~/utils/logos'
 import { HERO_FINISH } from '~/utils/samples'
@@ -17,11 +17,35 @@ function exampleSwatch(id: string) {
 const preset = ref<string>(HERO_FINISH)
 const live = ref(false)
 // Where the hero copy ends, so the 3D marks on narrow screens settle in the room beneath it.
+// Measured on resize only: both boxes scroll together, so tracking scroll would only re-render
+// the page (and every motion component in it) on each scroll event for the same number.
 const hero = useTemplateRef('hero')
 const heroActions = useTemplateRef('heroActions')
-const { top: heroTop } = useElementBounding(hero)
-const { bottom: actionsBottom } = useElementBounding(heroActions)
-const heroClear = computed(() => Math.max(0, actionsBottom.value - heroTop.value))
+const heroTitle = useTemplateRef('heroTitle')
+const heroClear = ref(0)
+/** The copy block (headline to actions) in the hero: the 3D marks grow out of its edges. */
+const heroCopy = shallowRef<{ left: number; top: number; right: number; bottom: number }>()
+function measureHeroClear() {
+  if (!hero.value || !heroActions.value) return
+  const box = hero.value.getBoundingClientRect()
+  const clear = Math.round(Math.max(0, heroActions.value.getBoundingClientRect().bottom - box.top))
+  if (clear !== heroClear.value) heroClear.value = clear
+  const title = heroTitle.value
+  if (title) {
+    const parts = [title, title.nextElementSibling, heroActions.value].filter(Boolean).map(el => el!.getBoundingClientRect())
+    const copy = {
+      left: Math.round(Math.min(...parts.map(r => r.left)) - box.left),
+      top: Math.round(Math.min(...parts.map(r => r.top)) - box.top),
+      right: Math.round(Math.max(...parts.map(r => r.right)) - box.left),
+      bottom: clear,
+    }
+    const c = heroCopy.value
+    if (!c || c.left !== copy.left || c.top !== copy.top || c.right !== copy.right || c.bottom !== copy.bottom) heroCopy.value = copy
+  }
+}
+useResizeObserver([hero, heroActions], measureHeroClear)
+// The actions rise in on a transform; measure again once they have landed.
+useEventListener(heroActions, 'animationend', measureHeroClear)
 const paused = ref(false)
 const { status: shareStatus, fallbackUrl: shareUrl, share } = useShare()
 
@@ -150,6 +174,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
         :preset="preset"
         :paused="paused"
         :clear="heroClear"
+        :copy="heroCopy"
         @ready="live = true"
         @unavailable="live = false"
       />
@@ -160,6 +185,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
              layers, which the parent's text clip never reaches. -->
         <h1
           id="hero-title"
+          ref="heroTitle"
           class="heading-hero flex flex-col pb-[0.08em] max-2xs:text-[38px]"
         >
           <span :class="[heroLine, 'bg-top']">Custom 3D icons</span>

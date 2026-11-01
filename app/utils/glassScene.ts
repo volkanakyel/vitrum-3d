@@ -443,6 +443,10 @@ export class GlassStudio {
   setFocus(shift: number, scale: number): void {
     if (shift === this.focus.shift && scale === this.focus.scale) return
     this.focus = { shift, scale }
+    // The phone sheet moves the focus every frame of a drag: the same cheaper refraction as an
+    // orbit while it moves, full resolution once it settles.
+    this.setInteracting(true)
+    this.setInteracting(false)
     this.applyFocus()
   }
 

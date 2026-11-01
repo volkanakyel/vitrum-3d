@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { PopoverAnchor } from 'reka-ui'
+import { Popover, PopoverContent } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { SegmentOption } from '~/components/studio/SegmentedControl.vue'
 import { backdropCss, type BackdropFill, type GlassParams } from '~/utils/presets'
@@ -12,6 +13,7 @@ import { backdropCss, type BackdropFill, type GlassParams } from '~/utils/preset
  */
 const props = defineProps<{ glass: GlassParams; disabled?: boolean }>()
 const open = ref(false)
+const anchor = useTemplateRef<HTMLElement>('anchor')
 const FILLS: SegmentOption<BackdropFill>[] = [
   { value: 'solid', label: 'Solid' },
   { value: 'linear', label: 'Linear' },
@@ -22,10 +24,14 @@ const swatch = computed(() => backdropCss(props.glass))
 
 <template>
   <Popover v-model:open="open">
-    <!-- The popover trigger wraps the tooltip, not the other way round: inside a tooltip trigger
-         the popover never finds its anchor and opens off screen. -->
-    <PopoverTrigger as-child>
-      <span class="inline-flex">
+    <!-- The popover anchors on a wrapper around the tooltip, not inside it: inside a tooltip
+         trigger the popover never finds its anchor and opens off screen. The button itself opens
+         it and carries the popup state, so assistive tech hears a button that expands. -->
+    <PopoverAnchor as-child>
+      <span
+        ref="anchor"
+        class="inline-flex"
+      >
         <Tooltip>
           <TooltipTrigger as-child>
             <Button
@@ -34,7 +40,10 @@ const swatch = computed(() => backdropCss(props.glass))
               class="size-8 pointer-coarse:size-9"
               :class="{ 'bg-well-strong': open }"
               aria-label="Background"
+              aria-haspopup="dialog"
+              :aria-expanded="open"
               :disabled="disabled"
+              @click="open = !open"
             >
               <span
                 class="size-4 rounded-[5px] shadow-[inset_0_0_0_1px_rgba(255,255,255,.28),0_1px_2px_rgba(0,0,0,.3)]"
@@ -45,12 +54,13 @@ const swatch = computed(() => backdropCss(props.glass))
           <TooltipContent>Background</TooltipContent>
         </Tooltip>
       </span>
-    </PopoverTrigger>
+    </PopoverAnchor>
     <PopoverContent
       side="top"
       :side-offset="10"
       class="flex w-72 flex-col gap-3 rounded-2xl p-3"
       @open-auto-focus.prevent
+      @interact-outside="(e: Event) => anchor?.contains(e.target as Node) && e.preventDefault()"
     >
       <div class="flex h-5 items-center justify-between px-0.5">
         <span class="text-[13px] font-medium text-foreground">Background</span>

@@ -7,10 +7,10 @@ const { trace, fileName, busy, glass, onPick } = useStudioContext()
 </script>
 
 <template>
-  <div class="-mr-4 flex items-center">
+  <div class="-mr-3 flex items-center">
     <label
       data-sheet-grip
-      class="relative grid size-11 shrink-0 cursor-pointer touch-none place-items-center overflow-hidden rounded-[14px] press [--press:.92]"
+      class="relative grid size-10 shrink-0 cursor-pointer touch-none place-items-center overflow-hidden rounded-[12px] press [--press:.92]"
       :class="trace ? 'lightbox tile shadow-[inset_0_1px_0_#fff,0_0_0_1px_var(--hairline)]' : 'bg-card text-muted-foreground shadow-raise'"
       :aria-label="trace ? `Replace ${fileName}` : 'Choose an image'"
     >
@@ -23,7 +23,7 @@ const { trace, fileName, busy, glass, onPick } = useStudioContext()
       <TraceThumb
         v-if="trace"
         :trace="trace"
-        class="size-7 text-foreground transition-opacity"
+        class="size-6 text-foreground transition-opacity"
         :class="{ 'opacity-30': busy }"
       />
       <Icon
@@ -39,7 +39,7 @@ const { trace, fileName, busy, glass, onPick } = useStudioContext()
       />
     </label>
     <span
-      class="mr-1 ml-2.5 h-7 w-px shrink-0 bg-hairline-strong"
+      class="mr-0.5 ml-2 h-6 w-px shrink-0 bg-hairline-strong"
       aria-hidden="true"
     />
     <QuickFinishes

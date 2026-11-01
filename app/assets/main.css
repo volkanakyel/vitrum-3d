@@ -293,6 +293,12 @@
     35%, 100% { transform: translateX(120%); }
   }
 }
+/* The entrance runs on a compositor layer; if the layer were dropped when it ends, the text would
+   be rasterised again with different antialiasing and visibly change weight a beat after landing
+   (the "flicker" on reload). Keeping the layer makes the last animated frame the resting one. */
+.animate-rise {
+  will-change: transform, opacity;
+}
 /* Reduced motion is gentler, not zero: the entrance keeps its fade, ambient loops stop. */
 @media (prefers-reduced-motion: reduce) {
   :root {
