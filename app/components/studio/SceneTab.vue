@@ -4,7 +4,7 @@ import type { SegmentOption } from '~/components/studio/SegmentedControl.vue'
 import { DEFAULT_GLASS_PARAMS as D, type BackdropFill, type RotateMode } from '~/utils/presets'
 
 /** The Scene tab: the wall behind the model, the set it stands in, the light and lens, and its turntable. */
-const { glass, resetGlass } = useStudioContext()
+const { glass, resetGlass, editBackdrop } = useStudioContext()
 
 const BACKGROUND_SWATCHES = ['#f4f5f8', '#ffffff', '#c9ced8', '#dfe6f5', '#cfe1ff', '#f4f4f2', '#f3e9e2', '#1c1c1f', '#0b0b0d', '#1d3a74']
 const FILLS: SegmentOption<BackdropFill>[] = [
@@ -32,13 +32,15 @@ const gradient = computed(() => glass.backdropFill !== 'solid')
   >
     <BackdropPicker :glass="glass" />
     <SegmentedControl
-      v-model="glass.backdropFill"
+      :model-value="glass.backdropFill"
+      @update:model-value="editBackdrop({ backdropFill: $event })"
       :options="FILLS"
       size="md"
     />
     <div class="flex flex-col gap-3">
       <ColorField
-        v-model="glass.background"
+        :model-value="glass.background"
+        @update:model-value="editBackdrop({ background: $event })"
         :label="gradient ? (glass.backdropFill === 'radial' ? 'Centre' : 'From') : 'Color'"
         :swatches="BACKGROUND_SWATCHES"
       />
@@ -48,7 +50,8 @@ const gradient = computed(() => glass.backdropFill !== 'solid')
           key="to"
         >
           <ColorField
-            v-model="glass.background2"
+            :model-value="glass.background2"
+            @update:model-value="editBackdrop({ background2: $event })"
             :label="glass.backdropFill === 'radial' ? 'Edge' : 'To'"
             :swatches="BACKGROUND_SWATCHES"
           />
@@ -61,7 +64,8 @@ const gradient = computed(() => glass.backdropFill !== 'solid')
         key="angle"
       >
         <SliderField
-          v-model="glass.backdropAngle"
+          :model-value="glass.backdropAngle"
+          @update:model-value="editBackdrop({ backdropAngle: $event })"
           label="Angle"
           hint="Which way the blend runs: 180° is top to bottom, 90° left to right"
           :min="0"
@@ -74,7 +78,8 @@ const gradient = computed(() => glass.backdropFill !== 'solid')
       </Reveal>
     </AnimatePresence>
     <SliderField
-      v-model="glass.vignette"
+      :model-value="glass.vignette"
+      @update:model-value="editBackdrop({ vignette: $event })"
       label="Vignette"
       hint="Darkens the corners so the eye settles on the model"
       :min="0"

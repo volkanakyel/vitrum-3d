@@ -1,3 +1,5 @@
+import { ref, onScopeDispose } from 'vue'
+import { abortable } from '~/utils/async'
 import { useTimeoutFn } from '@vueuse/core'
 
 /**
@@ -7,9 +9,15 @@ import { useTimeoutFn } from '@vueuse/core'
 export function useShare(clearAfter = 5000) {
   const status = ref('')
   const fallbackUrl = ref('')
+  const sharing = ref(false)
+  let disposed = false
+  let owner: AbortController | null = null
   const { start: clearLater, stop: cancelClear } = useTimeoutFn(() => { status.value = '' }, clearAfter, { immediate: false })
 
   function reset() {
+    owner?.abort()
+    owner = null
+    sharing.value = false
     cancelClear()
     status.value = ''
     fallbackUrl.value = ''
@@ -21,22 +29,33 @@ export function useShare(clearAfter = 5000) {
   }
 
   async function share(data: { title: string; text: string; url: string }) {
+    if (disposed || sharing.value) return
+    reset()
+    const request = owner = new AbortController()
+    const current = () => !disposed && owner === request && !request.signal.aborted
+    sharing.value = true
     try {
       if (navigator.share) {
-        await navigator.share(data)
-        status.value = 'Shared'
+        await abortable(navigator.share(data), request.signal)
+        if (current()) status.value = 'Shared'
       } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(data.url)
-        status.value = 'Link copied'
+        await abortable(navigator.clipboard.writeText(data.url), request.signal)
+        if (current()) status.value = 'Link copied'
       } else {
         showFallback(data.url)
       }
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return
+      if (!current() || (error instanceof Error && error.name === 'AbortError')) return
       showFallback(data.url)
+    } finally {
+      if (current()) {
+        sharing.value = false
+        if (status.value) clearLater()
+      }
     }
-    clearLater()
   }
 
-  return { status, fallbackUrl, share, reset }
+  onScopeDispose(() => { disposed = true; reset() })
+
+  return { status, fallbackUrl, sharing, share, reset }
 }

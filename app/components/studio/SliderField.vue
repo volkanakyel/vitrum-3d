@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useResizeObserver } from '@vueuse/core'
+import { useResizeObserver, useTimeoutFn } from '@vueuse/core'
 import { Input } from '@/components/ui/input'
 import { AnimatePresence, motion } from 'motion-v'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -98,7 +98,7 @@ const snapTargets = computed(() => {
 })
 const snapping = ref(false)
 let held: number | null = null
-let pulseTimer: ReturnType<typeof setTimeout> | undefined
+const { start: pulse } = useTimeoutFn(() => { snapping.value = false }, 320, { immediate: false })
 function magnet(v: number) {
   if (gear.value < 1) return v
   const win = range.value * 0.025
@@ -109,8 +109,7 @@ function magnet(v: number) {
         snapping.value = true
         // A felt click on phones that have a motor; desktops ignore it.
         if (touchDrag) navigator.vibrate?.(8)
-        clearTimeout(pulseTimer)
-        pulseTimer = setTimeout(() => (snapping.value = false), 320)
+        pulse()
       }
       return t
     }
@@ -119,9 +118,13 @@ function magnet(v: number) {
   return v
 }
 
+let stopDrag: (() => void) | null = null
+onScopeDispose(() => stopDrag?.())
+
 function onRowDown(e: PointerEvent) {
   const target = e.target as HTMLElement
   if (!e.isPrimary || e.button !== 0 || !rowEl.value || editing.value || target.closest('[data-no-drag]')) return
+  stopDrag?.()
   const el = rowEl.value
   const rect = el.getBoundingClientRect()
   width = Math.max(1, rect.width)
@@ -174,11 +177,17 @@ function onRowDown(e: PointerEvent) {
     live.value = v
     set(quantize(v))
   }
-  const up = (ev: PointerEvent) => {
-    if (ev.pointerId !== e.pointerId) return
+  const cleanup = () => {
     el.removeEventListener('pointermove', move)
     el.removeEventListener('pointerup', up)
     el.removeEventListener('pointercancel', up)
+    el.removeEventListener('lostpointercapture', up)
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
+    stopDrag = null
+  }
+  const up = (ev: PointerEvent) => {
+    if (ev.pointerId !== e.pointerId) return
+    cleanup()
     if (!moved && ev.type === 'pointerup') {
       // A click: on the figure it opens the field, anywhere else it glides the value there.
       if (target.closest('[data-value]')) startEdit()
@@ -189,8 +198,7 @@ function onRowDown(e: PointerEvent) {
     }
     if (over.value !== 0) {
       springBack.value = true
-      clearTimeout(springTimer)
-      springTimer = setTimeout(() => (springBack.value = false), 440)
+      settleSpring()
     }
     dragging.value = false
     live.value = null
@@ -199,6 +207,8 @@ function onRowDown(e: PointerEvent) {
     held = null
     if (moved) glide.value = true
   }
+  stopDrag = cleanup
+  el.addEventListener('lostpointercapture', up)
   el.addEventListener('pointermove', move)
   el.addEventListener('pointerup', up)
   el.addEventListener('pointercancel', up)
@@ -208,16 +218,15 @@ function onRowDown(e: PointerEvent) {
 const band = computed(() => Math.sign(over.value) * 8 * (1 - Math.exp(-Math.abs(over.value) / 36)))
 /** True for the moment a released band springs home: the one place anything overshoots. */
 const springBack = ref(false)
-let springTimer: ReturnType<typeof setTimeout> | undefined
+const { start: settleSpring } = useTimeoutFn(() => { springBack.value = false }, 440, { immediate: false })
 /**
  * Steps that repeat fast (keys, wheel) land without a glide; it comes back once they pause, so the
  * next preset or reset still glides.
  */
-let quietTimer: ReturnType<typeof setTimeout> | undefined
+const { start: restoreGlide } = useTimeoutFn(() => { glide.value = true }, 180, { immediate: false })
 function quiet() {
   glide.value = false
-  clearTimeout(quietTimer)
-  quietTimer = setTimeout(() => (glide.value = true), 180)
+  restoreGlide()
 }
 /**
  * One transition for whatever moves with the value: none under the hand, a spring after a band, a
@@ -322,7 +331,8 @@ function measureText() {
 }
 useResizeObserver(rowEl, measureText)
 // The reset mark comes and goes (it hides while dragging): measure again once its 100ms fade is done.
-watch(() => [props.label, editing.value, changed.value, dragging.value], () => setTimeout(measureText, 130))
+const { start: measureLater } = useTimeoutFn(measureText, 130, { immediate: false })
+watch(() => [props.label, editing.value, changed.value, dragging.value], measureLater)
 /** The default's notch would read as an underscore beneath a word: leave it out there. */
 const notchUnderText = computed(() => defaultPct.value !== null && textZones.value.some(([a, b]) => defaultPct.value! > a && defaultPct.value! < b))
 const handleHidden = computed(() => pct.value < 3 || textZones.value.some(([a, b]) => pct.value > a && pct.value < b))

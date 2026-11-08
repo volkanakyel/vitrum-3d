@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { useDocumentVisibility, useEventListener, useIntersectionObserver, useMediaQuery, useResizeObserver } from '@vueuse/core'
+import { onBeforeUnmount, onMounted, ref, computed, useTemplateRef, watch } from 'vue'
+import { abortable } from '~/utils/async'
+import type { MarkBuild } from '~/utils/heroMarks'
 import type { Showcase } from '~/utils/showcase'
 import { heroMarks, heroRequests } from '~/utils/heroMarks'
 
@@ -16,6 +19,8 @@ const ready = ref(false)
 const shown = ref(false)
 let scene: Showcase | null = null
 let disposed = false
+let loading: AbortController | null = null
+let build: MarkBuild | null = null
 const buildId = useRuntimeConfig().app.buildId
 
 watch(() => preset, value => scene?.setPreset(value))
@@ -48,46 +53,60 @@ useResizeObserver(canvas, () => scene?.resize())
 // The scene reads the preference itself when it is built; this keeps it current afterwards.
 const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
 watch(reducedMotion, value => scene?.setReducedMotion(value))
-useEventListener(canvas, 'webglcontextlost', (event: Event) => {
-  event.preventDefault()
+function stop() {
+  loading?.abort()
+  loading = null
+  build?.terminate()
+  build = null
+  scene?.dispose()
+  scene = null
   ready.value = false
   shown.value = false
-  scene?.setVisible(false)
+}
+
+useEventListener(canvas, 'webglcontextlost', (event: Event) => {
+  event.preventDefault()
+  stop()
   emit('unavailable')
 })
+useEventListener(canvas, 'webglcontextrestored', () => { if (!disposed) void start() })
 
-onMounted(async () => {
+async function start() {
+  stop()
+  const owner = loading = new AbortController()
+  const { signal } = owner
+  const current = () => !disposed && loading === owner && !signal.aborted
   try {
-    // The marks are traced in workers from now, while Three.js loads and the renderer sets up.
-    // (Not earlier, in setup: spawning workers there holds up hydration on a slow phone.) A reload
-    // of the same build reads them back from the cache instead. Dev rebuilds them every time.
-    const prebuilt = heroMarks(heroRequests(canvas.value?.clientWidth || window.innerWidth), import.meta.dev ? '' : buildId)
-    const { Showcase } = await import('~/utils/showcase')
-    if (disposed || !canvas.value) return prebuilt.terminate()
-    scene = new Showcase(canvas.value, { layout: 'hero', narrow: false, preset, prebuilt })
-    // Show the canvas as soon as the first mark lands; the rest arrive one by one behind it.
-    scene.onPlaced = () => { shown.value = true }
-    scene.setPaused(paused)
-    scene.setHeroClear(clear)
-    if (copy) scene.setHeroCopy(copy)
-    scene.setVisible(visible.value)
-    await scene.load()
-    if (disposed) return
-    scene.setPreset(preset)
+    // Start geometry before loading Three.js. Keep ownership here even if import/constructor fails.
+    const requests = heroRequests(canvas.value?.clientWidth || window.innerWidth)
+    build = heroMarks(requests, import.meta.dev ? '' : buildId)
+    const { Showcase } = await abortable(import('~/utils/showcase'), signal)
+    signal.throwIfAborted()
+    if (!canvas.value) throw new Error('Canvas unavailable')
+    const created = new Showcase(canvas.value, { layout: 'hero', narrow: false, preset, hero: { requests, build } })
+    scene = created
+    created.onPlaced = () => { if (current()) shown.value = true }
+    created.setPaused(paused)
+    created.setHeroClear(clear)
+    if (copy) created.setHeroCopy(copy)
+    created.setVisible(visible.value)
+    await abortable(created.load(), signal)
+    if (!current()) return
+    build = null
+    created.setPreset(preset)
     ready.value = true
     emit('ready')
   } catch {
-    scene?.dispose()
-    scene = null
-    shown.value = false
+    if (!current()) return
+    stop()
     emit('unavailable')
   }
-})
+}
 
+onMounted(start)
 onBeforeUnmount(() => {
   disposed = true
-  scene?.dispose()
-  scene = null
+  stop()
 })
 </script>
 

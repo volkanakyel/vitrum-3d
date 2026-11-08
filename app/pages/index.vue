@@ -47,7 +47,7 @@ useResizeObserver([hero, heroActions], measureHeroClear)
 // The actions rise in on a transform; measure again once they have landed.
 useEventListener(heroActions, 'animationend', measureHeroClear)
 const paused = ref(false)
-const { status: shareStatus, fallbackUrl: shareUrl, share } = useShare()
+const { status: shareStatus, fallbackUrl: shareUrl, sharing, share } = useShare()
 
 const title = 'Vitrum — Custom 3D icons from any logo'
 useSeoMeta({
@@ -387,6 +387,7 @@ const remixChip = 'origin-bottom-right translate-y-1 scale-[.96] opacity-0 blur-
             <SiteButton
               variant="plain"
               :class="action"
+              :disabled="sharing"
               @click="shareLook"
             >
               <Icon

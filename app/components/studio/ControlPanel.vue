@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { nextPaint } from '~/utils/async'
+import { useTimeoutFn } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -37,7 +39,13 @@ const edge = computed(() => (tab.value === TABS[0].value ? 'start' : tab.value =
  */
 const sectionAppear = ref(false)
 provide('sectionAppear', sectionAppear)
-const afterPaint = () => requestAnimationFrame(() => requestAnimationFrame(() => (sectionAppear.value = true)))
+const lifetime = new AbortController()
+const afterPaint = () => { void nextPaint(lifetime.signal).then(() => { sectionAppear.value = true }, () => {}) }
+let idle: number | undefined
+onScopeDispose(() => {
+  lifetime.abort()
+  if (idle !== undefined) cancelIdleCallback(idle)
+})
 onMounted(afterPaint)
 
 // The new tab's settings fade in where they stand while the tab shape glides; the old ones leave
@@ -55,13 +63,15 @@ const seen = reactive<Record<Tab, boolean>>({ shape: false, material: false, sce
 watchEffect(() => (seen[tab.value] = true))
 // The other pages are built while the studio is idle, one per idle slot, so even a tab's first
 // opening is only a display toggle. Browsers without requestIdleCallback build them on first open.
-onMounted(() => {
-  if (typeof requestIdleCallback !== 'function') return
+const { start: warmPages } = useTimeoutFn(() => {
+  if (typeof requestIdleCallback !== 'function' || lifetime.signal.aborted) return
   const rest = TABS.map(t => t.value).filter(v => !seen[v])
   const next = () => {
     const v = rest.shift()
     if (!v) return
-    requestIdleCallback(() => {
+    idle = requestIdleCallback(() => {
+      idle = undefined
+      if (lifetime.signal.aborted) return
       // Built as a page, not as sections appearing: nothing waits on a rise it cannot show.
       sectionAppear.value = false
       seen[v] = true
@@ -69,9 +79,10 @@ onMounted(() => {
       next()
     })
   }
-  // Not before the model is on the stage and the sheet has risen.
-  setTimeout(next, 2500)
-})
+  next()
+}, 2500, { immediate: false })
+// Not before the model is on the stage and the sheet has risen.
+onMounted(warmPages)
 
 const panelBody = useTemplateRef<HTMLElement>('panelBody')
 watch(tab, () => {

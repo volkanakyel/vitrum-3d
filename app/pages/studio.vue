@@ -13,7 +13,7 @@ definePageMeta({ layout: 'studio', key: 'studio' })
 const studio = useStudio()
 const {
   image, fileName, trace, relief, glass, dims, importing,
-  dragging, exporting, toast, view, viewer, subject, ready, keyed,
+  dragging, exporting, toast, view, viewer, viewerError, subject, ready, canExport, keyed,
   setView, onDrop, onPick, loadSample, openLinkedSample, doExport,
 } = studio
 provideStudio(studio)
@@ -115,7 +115,7 @@ onMounted(async () => {
           </div>
 
           <ExportMenu
-            :disabled="!ready"
+            :disabled="!canExport"
             :exporting="exporting"
             :dims="dims"
             @export="doExport"
@@ -133,6 +133,7 @@ onMounted(async () => {
             :params="glass"
             :source="image"
             @dimensions="dims = $event"
+            @error="viewerError = $event"
           />
           <motion.div
             class="pointer-events-none absolute inset-0 bg-(--graphite-900) md:hidden"
@@ -140,6 +141,9 @@ onMounted(async () => {
             aria-hidden="true"
           />
 
+          <p v-if="viewerError" role="alert" class="absolute inset-x-4 top-4 rounded-xl bg-card p-4 text-sm text-destructive">
+            {{ viewerError }}
+          </p>
           <AnimatePresence>
             <StageLoader
               v-if="importing"

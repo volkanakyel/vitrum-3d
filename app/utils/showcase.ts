@@ -1,10 +1,11 @@
 import * as THREE from 'three'
+import { abortable, nextPaint } from './async'
 import { bakeEnvironment, createLiquidEnvironment, createStudioEnvironment } from './glassScene'
 import { DEFAULT_GLASS_PARAMS, MATERIAL_PRESETS, type GlassParams } from './presets'
 import { buildPrintTexture } from './printTexture'
 import { drawSample, HERO_FINISH, HERO_SPOTS, SAMPLES, sampleById, type Sample } from './samples'
 import { buildMark, markGeometry, type MarkData, type MarkRequest } from './showcaseMark'
-import { buildMarksInWorker, heroRequests, type MarkBuild } from './heroMarks'
+import type { MarkBuild } from './heroMarks'
 
 /**
  * The landing page's showroom. Every object is built from `SAMPLES` through the same trace →
@@ -56,9 +57,6 @@ function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
 }
 const SWELL = cubicBezier(0.3, 0.15, 0, 1)
 
-/** Yield through a frame, not just a task, so the page paints between two pieces of work. */
-const nextFrame = () => new Promise<void>(r => requestAnimationFrame(() => setTimeout(r, 0)))
-
 const GALLERY_ICONS = ['heart', 'bolt', 'star', 'play', 'leaf', 'ring']
 /**
  * Hero: the marks around the centre one live on their own layer and are drawn in a second pass.
@@ -84,6 +82,7 @@ export class Showcase {
   private raf = 0
   private last = 0
   private disposed = false
+  private lifetime = new AbortController()
   private visible = true
   private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   private paused = false
@@ -115,8 +114,13 @@ export class Showcase {
 
   constructor(private canvas: HTMLCanvasElement, private opts: { layout: Layout; narrow: boolean; sample?: string;
     preset?: string
-    /** Hero marks already being built (started by the page before Three.js was ready). */
-    prebuilt?: MarkBuild
+    /**
+     * The hero's marks, requested and already building (started by the page before Three.js was
+     * ready). The page passes them in rather than this module importing `heroMarks`: that import
+     * made the landing page chunk a shared chunk, and Rolldown then pulled the studio and Three.js
+     * into the landing page's initial load. Without it the hero builds its marks on the main thread.
+     */
+    hero?: { requests: MarkRequest[]; build: MarkBuild }
   }) {
     this.holding = opts.layout === 'hero'
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' })
@@ -234,34 +238,40 @@ export class Showcase {
 
   /** Build the layout's objects, yielding between them so the page stays responsive. */
   async load(): Promise<void> {
+    this.lifetime.signal.throwIfAborted()
     if (this.opts.layout === 'hero') {
-      const requests = heroRequests(this.canvas.clientWidth)
+      const requests = this.opts.hero?.requests ?? []
       const finishOf = (spot: typeof HERO_SPOTS[number]) =>
         spot.id === 'story' ? this.opts.preset ?? HERO_FINISH : spot.preset ?? sampleById(spot.id)!.preset
       // The finishes' shaders compile while the worker builds the solids, not after.
       let release!: () => void
       const compiled = new Promise<void>(r => (release = r))
       const warm = this.warmUp(HERO_SPOTS.map(finishOf), compiled)
-      const marks = await this.buildMarks(requests, this.opts.prebuilt)
-      if (this.disposed) return
-      for (const mark of marks) {
-        const spot = HERO_SPOTS.find(s => s.id === mark.id)!
-        this.mountMark(mark, new THREE.Vector3(0, 0, spot.z), finishOf(spot), HERO_SPOTS.indexOf(spot))
+      try {
+        const marks = await this.buildMarks(requests, this.opts.hero?.build)
+        if (this.disposed) return
+        for (const mark of marks) {
+          const spot = HERO_SPOTS.find(s => s.id === mark.id)!
+          this.mountMark(mark, new THREE.Vector3(0, 0, spot.z), finishOf(spot), HERO_SPOTS.indexOf(spot))
+        }
+        this.layoutHero()
+        // Compile every program before the first frame (in parallel where the driver allows), so
+        // the entrance never stalls on a shader. The canvas stays hidden until then.
+        await abortable(this.renderer.compileAsync(this.scene, this.camera).catch(() => {}), this.lifetime.signal)
+        release()
+        await warm
+        if (this.disposed) return
+        this.holding = false
+        this.stageEntrance()
+        this.invalidate()
+        for (const o of this.placed) this.onPlaced?.(o.id)
+        // The page's own reaction (the finish bar) waits a frame, off the first frame's budget.
+        await nextPaint(this.lifetime.signal)
+        if (!this.disposed) this.onReady?.()
+      } finally {
+        release()
+        await warm
       }
-      this.layoutHero()
-      // Compile every program before the first frame (in parallel where the driver allows), so
-      // the entrance never stalls on a shader. The canvas stays hidden until then.
-      await this.renderer.compileAsync(this.scene, this.camera).catch(() => {})
-      release()
-      await warm
-      if (this.disposed) return
-      this.holding = false
-      this.stageEntrance()
-      this.invalidate()
-      for (const o of this.placed) this.onPlaced?.(o.id)
-      // The page's own reaction (the finish bar) waits a frame, off the first frame's budget.
-      await nextFrame()
-      if (!this.disposed) this.onReady?.()
       return
     }
     if (this.opts.layout === 'specimen') {
@@ -280,7 +290,7 @@ export class Showcase {
     for (const [i, id] of GALLERY_ICONS.entries()) {
       if (this.disposed) return
       this.place(sampleById(id)!, new THREE.Vector3(i * ICON_GAP, ROW_ICONS_Y, 0), 92)
-      await nextFrame()
+      await nextPaint(this.lifetime.signal)
     }
     this.onReady?.()
   }
@@ -298,9 +308,9 @@ export class Showcase {
       group.add(new THREE.Mesh(box, this.material(p, () => document.createElement('canvas'))))
     }
     try {
-      await this.renderer.compileAsync(group, this.camera, this.scene)
+      await abortable(this.renderer.compileAsync(group, this.camera, this.scene), this.lifetime.signal)
       // Wait until the marks are compiled too, so these programs are never released in between.
-      await compiled
+      await abortable(compiled, this.lifetime.signal)
     } catch { /* the real compile still runs */ }
     box.dispose()
     group.traverse(o => { if (o instanceof THREE.Mesh) (o.material as THREE.Material).dispose() })
@@ -310,15 +320,17 @@ export class Showcase {
    * Build marks in the showcase worker, posted back one by one; on the main thread, a frame
    * apart, where module workers or `OffscreenCanvas` are missing.
    */
-  private async buildMarks(requests: MarkRequest[], prebuilt?: MarkBuild): Promise<MarkData[]> {
-    const build = prebuilt ?? buildMarksInWorker(requests)
-    this.worker = build
-    try {
-      return await build.marks
-    } catch (err) {
-      if (import.meta.dev) console.warn('[showcase] worker failed, building on the main thread:', err)
-    } finally {
-      if (this.worker === build) this.worker = null
+  private async buildMarks(requests: MarkRequest[], build?: MarkBuild): Promise<MarkData[]> {
+    if (build) {
+      this.worker = build
+      try {
+        return await abortable(build.marks, this.lifetime.signal)
+      } catch (err) {
+        this.lifetime.signal.throwIfAborted()
+        if (import.meta.dev) console.warn('[showcase] worker failed, building on the main thread:', err)
+      } finally {
+        if (this.worker === build) this.worker = null
+      }
     }
     const marks: MarkData[] = []
     for (const req of requests) {
@@ -326,7 +338,7 @@ export class Showcase {
       const sample = sampleById(req.sampleId)
       const mark = sample && buildMark(req, sample, drawSample(sample, req.res))
       if (mark) marks.push(mark)
-      await nextFrame()
+      await nextPaint(this.lifetime.signal)
     }
     return marks
   }
@@ -464,7 +476,7 @@ export class Showcase {
     if (this.holding) return swap()
     const probe = new THREE.Mesh(mesh.geometry, material)
     probe.matrixWorld.copy(mesh.matrixWorld)
-    this.renderer.compileAsync(probe, this.camera, this.scene).then(swap, swap)
+    void abortable(this.renderer.compileAsync(probe, this.camera, this.scene), this.lifetime.signal).then(swap, swap)
   }
 
   private invalidate() {
@@ -700,7 +712,9 @@ export class Showcase {
   }
 
   dispose(): void {
+    if (this.disposed) return
     this.disposed = true
+    this.lifetime.abort()
     this.worker?.terminate()
     this.worker = null
     cancelAnimationFrame(this.raf)

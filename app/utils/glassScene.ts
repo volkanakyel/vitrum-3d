@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { abortable } from './async'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
 import { STLExporter } from 'three/addons/exporters/STLExporter.js'
@@ -221,6 +222,7 @@ export class GlassStudio {
   private pageVisible = true
   private pmrem: THREE.PMREMGenerator
   private disposed = false
+  private lifetime = new AbortController()
   private key: THREE.DirectionalLight
   private rim: THREE.DirectionalLight
   /** Product stage only: sky/ground ambient and a cool fill opposite the key. */
@@ -602,7 +604,7 @@ export class GlassStudio {
         gl.setRenderTarget(target)
         const done = gl.compileAsync(proxy, this.camera, this.scene)
         gl.setRenderTarget(prev)
-        await done
+        await abortable(done, this.lifetime.signal)
       }
     } catch {
       // A missed warm-up only costs the first frame its compile; nothing to recover.
@@ -1330,14 +1332,16 @@ export class GlassStudio {
   }
 
   async exportGLB(): Promise<Blob> {
+    if (this.disposed) throw new Error('Viewer unavailable')
+    this.snapParams({ ...this.target })
     if (!this.mesh) throw new Error('Nothing to export')
     // glTF uses metres; scale the millimetre mesh down on a wrapper.
     const wrapper = new THREE.Group()
     wrapper.name = 'glass-logo'
     wrapper.scale.setScalar(0.001)
     // The screen-space material zeroes `transmission`; export a standard KHR glass material.
-    const p = this.target
-    if (p.finish === 'print') this.ensurePrintTexture()
+    const p = { ...this.target }
+    if (p.finish === 'print') { this.ensurePrintTexture(); this.buildSurface() }
     const exportMaterial = p.finish === 'metal'
       ? new THREE.MeshPhysicalMaterial({ color: new THREE.Color(p.tint), metalness: p.metalness, roughness: p.roughness, clearcoat: p.clearcoat, clearcoatRoughness: 0.08 })
       : p.finish === 'print'
@@ -1361,7 +1365,11 @@ export class GlassStudio {
       attenuationDistance: p.attenuationMm * 0.001,
     })
     exportMaterial.name = p.finish
-    const clone = new THREE.Mesh(this.mesh.geometry, exportMaterial)
+    // Encoding yields. The editor may replace/dispose its geometry and maps before it finishes.
+    for (const key of ['map', 'normalMap', 'roughnessMap'] as const) {
+      exportMaterial[key] = exportMaterial[key]?.clone() ?? null
+    }
+    const clone = new THREE.Mesh(this.mesh.geometry.clone(), exportMaterial)
     clone.name = this.mesh.name
     wrapper.add(clone)
     const exporter = new GLTFExporter()
@@ -1369,11 +1377,15 @@ export class GlassStudio {
       const result = await exporter.parseAsync(wrapper, { binary: true })
       return new Blob([result as ArrayBuffer], { type: 'model/gltf-binary' })
     } finally {
+      clone.geometry.dispose()
+      for (const key of ['map', 'normalMap', 'roughnessMap'] as const) exportMaterial[key]?.dispose()
       exportMaterial.dispose()
     }
   }
 
   exportSTL(): Blob {
+    if (this.disposed) throw new Error('Viewer unavailable')
+    this.snapParams({ ...this.target })
     if (!this.mesh) throw new Error('Nothing to export')
     const exporter = new STLExporter()
     // The pop animation scales the mesh; the file must carry the true millimetres.
@@ -1383,25 +1395,36 @@ export class GlassStudio {
   }
 
   async screenshot(scale = 2): Promise<Blob> {
+    if (this.disposed) throw new Error('Viewer unavailable')
+    this.snapParams({ ...this.target })
+    if (!this.mesh) throw new Error('Nothing to export')
     const prevRatio = this.renderer.getPixelRatio()
     const prevFocus = this.focus
-    this.focus = { shift: 0, scale: 1 }
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio * scale, 4))
-    this.resize()
-    this.renderPasses()
+    const prevInteracting = this.interacting
     try {
-      return await new Promise<Blob>((resolve, reject) =>
+      this.focus = { shift: 0, scale: 1 }
+      this.interacting = false
+      this.pop = 1
+      this.mesh.scale.setScalar(1)
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio * scale, 4))
+      this.resize()
+      this.renderPasses()
+      // toBlob snapshots pixels when called. Restore live view now, before its encoder yields.
+      return new Promise<Blob>((resolve, reject) =>
         this.canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'),
       )
     } finally {
       this.renderer.setPixelRatio(prevRatio)
       this.focus = prevFocus
+      this.interacting = prevInteracting
       this.resize()
     }
   }
 
   dispose(): void {
+    if (this.disposed) return
     this.disposed = true
+    this.lifetime.abort()
     cancelAnimationFrame(this.raf)
     clearTimeout(this.interactTimer)
     this.onRebuild = null

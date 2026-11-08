@@ -1,8 +1,10 @@
 import { useEventListener } from '@vueuse/core'
-import type { InjectionKey } from 'vue'
+import { computed, inject, nextTick, onScopeDispose, provide, reactive, ref, shallowRef, watch, type InjectionKey } from 'vue'
+import { abortable, delay, nextPaint } from '~/utils/async'
+import { pictureInk, isNeutral } from '~/utils/pictureInk'
 import type { ImportPhase } from '~/components/studio/StageLoader.vue'
 import type { ModelDimensions, ViewName } from '~/utils/glassScene'
-import { activeBackdropId, BACKDROP_PRESETS, DEFAULT_GLASS_PARAMS, LIQUID_BACKDROP_IDS, MATERIAL_PRESETS, type GlassParams, type Geometry } from '~/utils/presets'
+import { activeBackdropId, BACKDROP_PRESETS, DEFAULT_GLASS_PARAMS, LIQUID_BACKDROP_IDS, MATERIAL_PRESETS, type GlassParams, type Geometry, type MaterialPreset } from '~/utils/presets'
 import { DEFAULT_RELIEF_OPTIONS, reliefAspect, type ReliefData, type ReliefOptions } from '~/utils/relief'
 import { LOGO_SAMPLE_IDS, SAMPLES, sampleFile, type SamplePose } from '~/utils/samples'
 import { SHEET_MIN_ITEMS, layoutBox, medianItemSize } from '~/utils/sheet'
@@ -77,9 +79,12 @@ export function useStudio() {
   const relief = shallowRef<ReliefData | null>(null)
   const glass = reactive<GlassParams>({ ...DEFAULT_GLASS_PARAMS })
   const dims = ref<ModelDimensions | null>(null)
-  const busy = ref(false)
+  const tracing = ref(false)
+  const relieving = ref(false)
   const importing = ref<{ phase: ImportPhase; preview: string; name: string } | null>(null)
+  const busy = computed(() => !!importing.value || tracing.value || relieving.value)
   const error = ref('')
+  const viewerError = ref('')
   const dragging = ref(false)
   const exporting = ref<'' | ExportKind>('')
   const toast = ref('')
@@ -94,10 +99,64 @@ export function useStudio() {
   let traceTimer: ReturnType<typeof setTimeout> | undefined
   let reliefTimer: ReturnType<typeof setTimeout> | undefined
   let toastTimer: ReturnType<typeof setTimeout> | undefined
+  let disposed = false
+  let documentRevision = 0
+  let traceRevision = 0
+  let reliefRevision = 0
+  let currentImport: AbortController | null = null
+  let classifying = false
+  const traceValid = ref(false)
+  const needsGrid = () => glass.geometry === 'inflate' || glass.geometry === 'relief'
+
+  function invalidateRelief() {
+    reliefRevision++
+    clearTimeout(reliefTimer)
+    reliefTimer = undefined
+    relieving.value = false
+    relief.value = null
+  }
+
+  function cancelDocument() {
+    documentRevision++
+    traceRevision++
+    currentImport?.abort()
+    currentImport = null
+    importing.value = null
+    clearTimeout(traceTimer)
+    traceTimer = undefined
+    tracing.value = false
+    traceValid.value = false
+    invalidateRelief()
+    tracer.setSource(null)
+  }
   /** Finish set by `pickGeometry` rather than the user; a user's own choice clears it. */
   let autoFinish: '' | 'print' = ''
+  let materialChoice = 0
+  let userFinish = false
+  let liquidBackdropOwned = false
+
+  /** Explicit edit events retain user intent even when the chosen value equals the current one. */
+  function editMaterial(values: Partial<GlassParams>) {
+    materialChoice++
+    userFinish = true
+    autoFinish = ''
+    Object.assign(glass, values)
+  }
+  function selectMaterial(preset: MaterialPreset) {
+    if (preset.group === 'liquid') liquidBackdropOwned = true
+    editMaterial(preset.values)
+  }
+  function editBackdrop(values: Partial<GlassParams>) {
+    liquidBackdropOwned = false
+    Object.assign(glass, values)
+  }
+  function editShape(values: Partial<GlassParams>) {
+    beforeLiquid = null
+    Object.assign(glass, values)
+  }
 
   function notify(msg: string) {
+    if (disposed) return
     toast.value = msg
     clearTimeout(toastTimer)
     toastTimer = setTimeout(() => (toast.value = ''), 2200)
@@ -118,7 +177,11 @@ export function useStudio() {
     if (c.length) glass.colorSource = c.length === 1 && isNeutral(c[0]!) ? 'paint' : 'picture'
   })
   /** A model stands on the stage that can be framed, viewed and exported. */
-  const ready = computed(() => !!trace.value)
+  const ready = computed(() => !viewerError.value && !!dims.value && !!trace.value && (
+    needsGrid() ? !!relief.value && relief.value.mirror === (glass.geometry === 'inflate')
+      : trace.value.polygons.length > 0 && (glass.geometry !== 'stack' || !!trace.value.layers)
+  ))
+  const canExport = computed(() => ready.value && traceValid.value && !busy.value && !error.value && !exporting.value)
 
   function thumbnail(img: HTMLImageElement, size = 160): string {
     const iw = img.naturalWidth || img.width
@@ -130,55 +193,89 @@ export function useStudio() {
     c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
     return c.toDataURL('image/png')
   }
-  // Two frames: the first rAF fires before paint, so heavy work started there would block the
-  // very frame that shows the new phase.
-  const nextFrame = () => new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())))
-  const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
-
-  /** Drop everything the last import built: the trace, the relief. */
+  /** Drop everything the last import built. */
   function reset() {
     trace.value = null
     relief.value = null
     dims.value = null
   }
 
-  async function useFile(file: File, pose: SamplePose | null = null) {
-    error.value = ''
-    if (!file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.svg')) {
-      error.value = 'Use a PNG, JPG, WebP or SVG.'
-      return
-    }
-    const started = performance.now()
-    importing.value = { phase: 'read', preview: '', name: file.name }
-    busy.value = true
+  async function importFile(
+    source: File | (() => Promise<File>), name: string, pose: SamplePose | null = null,
+    linked?: { sampleId: string; finishId?: string },
+  ) {
+    if (disposed) return
+    cancelDocument()
     reset()
-    // Before the trace lands, so the first frame already uses the pose's angle.
+    image.value = null
+    fileName.value = ''
+    error.value = ''
+    beforeLiquid = null
+    const controller = currentImport = new AbortController()
+    const { signal } = controller
+    const state = { phase: 'read' as ImportPhase, preview: '', name }
+    importing.value = state
+    const started = performance.now()
+    const owned = () => !disposed && currentImport === controller && !signal.aborted
     view.value = 'angle'
     viewer.value?.setPose(pose)
+    const finish = linked && (MATERIAL_PRESETS.find(p => p.id === linked.finishId)
+      ?? MATERIAL_PRESETS.find(p => p.id === SAMPLES.find(s => s.id === linked.sampleId)?.preset))
+    if (finish) { selectMaterial(finish); viewer.value?.snap(finish.values) }
+    const choice = materialChoice
     try {
-      const img = await loadImage(file)
-      importing.value.preview = thumbnail(img)
+      const file = typeof source === 'function' ? await abortable(source(), signal) : source
+      signal.throwIfAborted()
+      importing.value!.name = file.name
+      const img = await abortable(loadImage(file, signal), signal)
+      signal.throwIfAborted()
+      importing.value!.preview = thumbnail(img)
       image.value = img
       fileName.value = file.name
       tracer.setSource(img)
       const hold = IMPORT_MIN_MS / 3
-      await sleep(Math.max(0, hold - (performance.now() - started)))
-      importing.value.phase = 'trace'
-      await nextFrame()
+      await delay(Math.max(0, hold - (performance.now() - started)), signal)
+      importing.value!.phase = 'trace'
+      await nextPaint(signal)
       const traced = performance.now()
-      await runTrace({ fitBevel: true, pickGeometry: true })
-      if (glass.geometry === 'stack') { clearTimeout(traceTimer); await runTrace({ fitBevel: true }) }
-      await sleep(Math.max(0, hold - (performance.now() - traced)))
-      importing.value.phase = 'build'
-      await nextFrame()
-      if (glass.geometry === 'inflate' || glass.geometry === 'relief') await runRelief()
-      await sleep(Math.max(0, IMPORT_MIN_MS - (performance.now() - started)))
+      await abortable(runTrace({ fitBevel: true, pickGeometry: true }), signal)
+      signal.throwIfAborted()
+      if (!traceValid.value) return
+      if (glass.geometry === 'stack') {
+        await abortable(runTrace({ fitBevel: true }), signal)
+        signal.throwIfAborted()
+        if (!traceValid.value) return
+      }
+      await delay(Math.max(0, hold - (performance.now() - traced)), signal)
+      importing.value!.phase = 'build'
+      await nextPaint(signal)
+      if (needsGrid()) await abortable(runRelief(), signal)
+      await delay(Math.max(0, IMPORT_MIN_MS - (performance.now() - started)), signal)
+      if (linked && traceValid.value) {
+        if (finish && choice === materialChoice) Object.assign(glass, finish.values)
+        Object.assign(glass, linkedSampleShape(linked.sampleId))
+        if (glass.finish === 'liquid' && trace.value && glass.geometry === 'extrude') rounden(trace.value)
+        viewer.value?.snap({ ...glass })
+      }
     } catch (e) {
-      error.value = (e as Error).message
-      busy.value = false
+      if (owned()) error.value = (e as Error).message
     } finally {
-      importing.value = null
+      if (owned()) {
+        importing.value = null
+        currentImport = null
+        // Options may change after the build step while its minimum display time elapses.
+        // Finish that deferred work now; a still-pending trace will start its own grid.
+        if (traceValid.value && needsGrid() && !relief.value && !relieving.value && !error.value) await runRelief()
+      }
     }
+  }
+
+  async function useFile(file: File, pose: SamplePose | null = null) {
+    if (!file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.svg')) {
+      if (!disposed && !importing.value) error.value = 'Use a PNG, JPG, WebP or SVG.'
+      return
+    }
+    await importFile(file, file.name, pose)
   }
 
   /** Cap the bevel at ~30% of the traced stroke width so thin letters are not swallowed. */
@@ -240,7 +337,7 @@ export function useStudio() {
     if (stage.spread === undefined && glass.spread) {
       Object.assign(stage, { spread: 0, widthMm: DEFAULT_GLASS_PARAMS.widthMm, depthMm: DEFAULT_GLASS_PARAMS.depthMm })
     }
-    if (rich) {
+    if (rich && !userFinish) {
       autoFinish = 'print'
       const preset = MATERIAL_PRESETS.find(m => m.id === ICON_PROFILE.colourPreset)!.values
       Object.assign(glass, preset, stage)
@@ -271,7 +368,7 @@ export function useStudio() {
     // back, unless the user has since picked a backdrop or tuned the shape themselves.
     if (f === 'liquid' && was !== 'liquid' && trace.value?.strokeWidth && glass.geometry === 'extrude') rounden(trace.value)
     if (was === 'liquid' && f !== 'liquid') {
-      if (LIQUID_BACKDROP_IDS.has(activeBackdropId(glass) ?? '')) Object.assign(glass, BACKDROP_PRESETS[0]!.values)
+      if (liquidBackdropOwned && LIQUID_BACKDROP_IDS.has(activeBackdropId(glass) ?? '')) Object.assign(glass, BACKDROP_PRESETS[0]!.values)
       const b = beforeLiquid?.body
       if (b && glass.depthMm === b.depthMm && glass.bevelMm === b.bevelMm && glass.bevelSegments === b.bevelSegments) {
         // The depth and smoothness come back as they were; the edge is fitted to the outline
@@ -280,73 +377,100 @@ export function useStudio() {
         if (trace.value) fitBevelToStroke(trace.value)
       }
       beforeLiquid = null
+      liquidBackdropOwned = false
     }
   })
 
   async function runRelief(): Promise<void> {
+    clearTimeout(reliefTimer)
+    reliefTimer = undefined
     const t = trace.value
     const img = image.value
-    if (!img || !t) return
-    if (glass.geometry !== 'inflate' && glass.geometry !== 'relief') return
-    busy.value = true
+    if (disposed || !img || !t || !traceValid.value || !needsGrid()) return
+    const revision = ++reliefRevision
+    const doc = documentRevision
+    const geometry = glass.geometry
+    const current = () => !disposed && doc === documentRevision && revision === reliefRevision && trace.value === t && glass.geometry === geometry
+    relieving.value = true
     try {
-      const inflate = glass.geometry === 'inflate'
+      const inflate = geometry === 'inflate'
       const cut = (inflate || reliefOpts.cutout) && t.polygons.length > 0
       const mask = cut ? { polygons: t.polygons, width: t.width, height: t.height } : null
       const got = await tracer.relief({ ...reliefOpts, inflate }, cut ? t.crop : { x: 0, y: 0, w: 1, h: 1 }, mask)
-      if (!got || image.value !== img) return
-      if (import.meta.dev) console.debug(`[relief] ${Math.round(got.ms)} ms (${got.where}), ${got.result.width}×${got.result.height}`)
+      if (!got || !current()) return
       relief.value = got.result
       error.value = ''
     } catch (e) {
-      error.value = (e as Error).message
+      if (current()) error.value = (e as Error).message
+    } finally {
+      if (current()) relieving.value = false
     }
-    busy.value = false
   }
 
   async function runTrace(opts: { fitBevel?: boolean; pickGeometry?: boolean } = {}): Promise<void> {
+    clearTimeout(traceTimer)
+    traceTimer = undefined
     const img = image.value
-    if (!img) return
-    busy.value = true
+    if (disposed || !img) return
+    const revision = ++traceRevision
+    const doc = documentRevision
+    const current = () => !disposed && doc === documentRevision && revision === traceRevision
+    tracing.value = true
+    traceValid.value = false
+    invalidateRelief()
     try {
       const traced = await tracer.trace(traceOpts)
-      if (!traced || image.value !== img) return
-      const { result, ms, where } = traced
-      if (import.meta.dev) console.debug(`[trace] ${Math.round(ms)} ms (${where}), ${result.resolvedMode}, ${result.polygons.length} shapes`)
-      if (opts.pickGeometry) pickGeometry(result)
+      if (!traced || !current()) return
+      const { result } = traced
+      // Classification changes dependent options; this import explicitly runs the follow-up jobs.
+      classifying = true
+      try {
+        if (opts.pickGeometry) pickGeometry(result)
+        if (!result.polygons.length && glass.geometry === 'inflate') glass.geometry = 'relief'
+        if (opts.fitBevel && result.polygons.length) fitBevelToStroke(result)
+      } finally { classifying = false }
       error.value = result.polygons.length || glass.geometry === 'relief'
-        ? ''
-        : 'No outline found. Try another source mode, or switch to Relief.'
-      if (!result.polygons.length && glass.geometry === 'inflate') glass.geometry = 'relief'
-      if (opts.fitBevel && result.polygons.length) fitBevelToStroke(result)
+        ? '' : 'No outline found. Try another source mode, or switch to Relief.'
       trace.value = result
-      if (glass.geometry !== 'extrude' && !opts.pickGeometry) void runRelief()
+      traceValid.value = true
+      if (needsGrid() && !importing.value) await runRelief()
     } catch (e) {
-      error.value = (e as Error).message
+      if (current()) error.value = (e as Error).message
+    } finally {
+      if (current()) tracing.value = false
     }
-    busy.value = false
   }
 
   watch(() => ({ ...traceOpts }), () => {
+    if (classifying || disposed) return
+    traceRevision++
+    traceValid.value = false
+    invalidateRelief()
     clearTimeout(traceTimer)
-    traceTimer = setTimeout(runTrace, 120)
-  }, { deep: true })
+    tracing.value = !!image.value
+    if (image.value) traceTimer = setTimeout(() => { void runTrace() }, 120)
+  }, { flush: 'sync' })
   watch(() => ({ ...reliefOpts }), () => {
-    if (importing.value) return
-    clearTimeout(reliefTimer)
+    if (classifying || disposed) return
+    invalidateRelief()
+    if (importing.value || !traceValid.value || !needsGrid()) return
+    relieving.value = true
     reliefTimer = setTimeout(() => { void runRelief() }, 120)
-  }, { deep: true })
+  }, { flush: 'sync' })
   watch(() => glass.geometry, (g) => {
+    if (classifying || disposed) return
+    invalidateRelief()
     const retrace = traceOpts.stack !== (g === 'stack')
     if (retrace) traceOpts.stack = g === 'stack'
-    const have = relief.value && relief.value.mirror === (g === 'inflate')
-    if ((g === 'inflate' || g === 'relief') && !have && !importing.value && !retrace) void runRelief()
-    if (g === 'relief') error.value = ''
+    if (needsGrid() && !importing.value && !retrace && traceValid.value) void runRelief()
+    if (traceValid.value && (g === 'relief' || trace.value?.polygons.length)) error.value = ''
     else if (trace.value && !trace.value.polygons.length) error.value = 'No outline found. Try another source mode, or switch to Relief.'
-  })
+  }, { flush: 'sync' })
   watch(() => glass.depthMm, (d) => { if (glass.bevelMm > d / 2) glass.bevelMm = Math.max(0, +(d / 2).toFixed(1)) })
 
   function clearImage() {
+    cancelDocument()
+    beforeLiquid = null
     reset()
     image.value = null
     tracer.setSource(null)
@@ -373,47 +497,34 @@ export function useStudio() {
   /** Open a built-in sample mark (drawn in code, never downloaded). */
   async function loadSample(id = 'vitrum'): Promise<void> {
     const sample = SAMPLES.find(s => s.id === id) ?? SAMPLES[0]!
-    await useFile(await sampleFile(sample), sample.pose ?? null)
+    await importFile(() => sampleFile(sample), `${sample.id}.png`, sample.pose ?? null)
   }
 
-  /**
-   * Open a sample from a landing link (`?sample=&finish=`). The trace runs first, then the
-   * link's finish and silhouette override what automatic detection picked.
-   */
+  /** A linked sample owns rasterization, import, and the final shape/finish override together. */
   async function openLinkedSample(sampleId: string, finishId?: string): Promise<void> {
     const sample = SAMPLES.find(s => s.id === sampleId)
     if (!sample) return
-    const finish = MATERIAL_PRESETS.find(p => p.id === finishId) ?? MATERIAL_PRESETS.find(p => p.id === sample.preset)
-    try {
-      // The finish is in place before the model lands: set after, the model would show for a few
-      // frames in the default glass and then turn into the linked finish.
-      if (finish) { viewer.value?.snap(finish.values); Object.assign(glass, finish.values) }
-      await loadSample(sample.id)
-      // Again after the trace, which may have picked a finish of its own for the picture.
-      if (finish) Object.assign(glass, finish.values)
-      Object.assign(glass, linkedSampleShape(sample.id))
-      // A link into Liquid keeps the round body Liquid is rendered as.
-      if (glass.finish === 'liquid' && trace.value && glass.geometry === 'extrude') rounden(trace.value)
-      // The link's shape lands at once, in the same frame the loader starts to leave, rather than
-      // easing from the traced defaults in front of the viewer.
-      viewer.value?.snap({ ...glass })
-    } catch {
-      error.value = 'This example could not be opened. Choose a sample or upload your own artwork.'
-    }
+    await importFile(() => sampleFile(sample), `${sample.id}.png`, sample.pose ?? null, { sampleId, finishId })
   }
 
   async function doExport(kind: ExportKind) {
-    if (!viewer.value || exporting.value) return
+    if (disposed || !viewer.value || !canExport.value) return
     exporting.value = kind
+    const handle = viewer.value
+    const revision = documentRevision
     const base = fileName.value.replace(/\.[^.]+$/, '') || 'vitrum'
     const name = base + (glass.geometry === 'extrude' ? '' : `-${glass.geometry}`)
     try {
-      if (kind === 'glb') await viewer.value.exportGLB(name)
-      else if (kind === 'stl') viewer.value.exportSTL(name)
-      else await viewer.value.screenshot(name)
-      notify(`${kind.toUpperCase()} saved`)
+      // Vue must deliver the current trace/grid before the renderer flushes its target parameters.
+      await nextTick()
+      if (disposed || revision !== documentRevision || busy.value || !traceValid.value || !ready.value || error.value) return
+      handle.snap({ ...glass })
+      if (kind === 'glb') await handle.exportGLB(name)
+      else if (kind === 'stl') handle.exportSTL(name)
+      else await handle.screenshot(name)
+      if (revision === documentRevision) notify(`${kind.toUpperCase()} saved`)
     } catch (e) {
-      notify((e as Error).message)
+      if (revision === documentRevision) notify((e as Error).message)
     } finally {
       exporting.value = ''
     }
@@ -439,6 +550,8 @@ export function useStudio() {
   function resetGlass<K extends keyof GlassParams>(...keys: K[]) {
     const out: Partial<GlassParams> = {}
     for (const k of keys) out[k] = DEFAULT_GLASS_PARAMS[k]
+    if (keys.some(k => ['depthMm', 'bevelMm', 'bevelSegments', 'geometry'].includes(k))) beforeLiquid = null
+    if (keys.some(k => ['background', 'background2', 'backdropFill', 'backdropAngle', 'vignette'].includes(k))) liquidBackdropOwned = false
     Object.assign(glass, out)
   }
 
@@ -447,9 +560,9 @@ export function useStudio() {
   // Capture, so the flag is set before any component reacts to the same key or pointer.
   useEventListener('keydown', () => (keyed.value = true), { capture: true })
   useEventListener('pointerdown', () => (keyed.value = false), { capture: true })
-  onBeforeUnmount(() => {
-    clearTimeout(traceTimer)
-    clearTimeout(reliefTimer)
+  onScopeDispose(() => {
+    disposed = true
+    cancelDocument()
     clearTimeout(toastTimer)
     tracer.dispose()
   })
@@ -482,9 +595,9 @@ export function useStudio() {
 
   return {
     image, ink, fileName, trace, traceOpts, reliefOpts, relief, glass, dims, busy, importing, error,
-    dragging, exporting, toast, view, viewer, heightMm, subject, ready, keyed,
+    dragging, exporting, toast, view, viewer, viewerError, heightMm, subject, ready, canExport, keyed,
     setView, useFile, clearImage, onDrop, onPick, loadSample, openLinkedSample, doExport, setHeight, setSpread, notify,
-    resetGlass,
+    resetGlass, selectMaterial, editMaterial, editBackdrop, editShape,
   }
 }
 
