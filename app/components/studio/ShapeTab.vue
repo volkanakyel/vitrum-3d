@@ -6,7 +6,7 @@ import { DEFAULT_RELIEF_OPTIONS as R, type HeightSource } from '~/utils/relief'
 import { DEFAULT_TRACE_OPTIONS as T, type TraceOptions } from '~/utils/trace'
 
 /** The Shape tab: how the outline becomes a solid, and how big it is. */
-const { glass, trace, traceOpts, reliefOpts, heightMm, setHeight, setSpread, resetGlass } = useStudioContext()
+const { glass, trace, traceOpts, reliefOpts, heightMm, setHeight, setSpread, resetGlass, editShape } = useStudioContext()
 
 const GEOMETRIES: SegmentOption<Geometry>[] = [
   { value: 'extrude', label: 'Extrude' },
@@ -82,7 +82,8 @@ function resetOutline() {
       :hint="GEOMETRY_HINT[glass.geometry]"
     >
       <SegmentedControl
-        v-model="glass.geometry"
+        :model-value="glass.geometry"
+        @update:model-value="editShape({ geometry: $event })"
         :options="GEOMETRIES"
         size="md"
       />
@@ -310,7 +311,7 @@ function resetOutline() {
           :model-value="glass.depthMm"
           :min="0.5"
           :step="0.5"
-          @update:model-value="(v) => isNumber(v) && (glass.depthMm = v)"
+          @update:model-value="(v) => isNumber(v) && editShape({ depthMm: v })"
         />
       </div>
       <AnimatePresence :initial="false">
@@ -319,7 +320,8 @@ function resetOutline() {
           key="bevel"
         >
           <SliderField
-            v-model="glass.bevelMm"
+            :model-value="glass.bevelMm"
+            @update:model-value="editShape({ bevelMm: $event })"
             label="Edge radius"
             hint="Rounds the front and back edges; capped at half the depth"
             :min="0"

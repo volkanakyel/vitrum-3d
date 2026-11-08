@@ -12,6 +12,7 @@ import { backdropCss, type BackdropFill, type GlassParams } from '~/utils/preset
  * controls (colours, angle, vignette) stay in the Scene tab.
  */
 const props = defineProps<{ glass: GlassParams; disabled?: boolean }>()
+const { editBackdrop } = useStudioContext()
 const open = ref(false)
 const anchor = useTemplateRef<HTMLElement>('anchor')
 const FILLS: SegmentOption<BackdropFill>[] = [
@@ -68,7 +69,8 @@ const swatch = computed(() => backdropCss(props.glass))
       </div>
       <BackdropPicker :glass="glass" />
       <SegmentedControl
-        v-model="glass.backdropFill"
+        :model-value="glass.backdropFill"
+      @update:model-value="editBackdrop({ backdropFill: $event })"
         :options="FILLS"
       />
     </PopoverContent>

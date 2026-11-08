@@ -8,11 +8,12 @@ import { BACKDROP_PRESETS, activeBackdropId, backdropCss, type BackdropPreset, t
  * gap, then a thin half-strength azure line) slides to the pick; a tuned backdrop shows no ring. Used in the Scene tab and the stage's quick menu.
  */
 const props = withDefaults(defineProps<{ glass: GlassParams; columns?: number }>(), { columns: 5 })
+const { editBackdrop } = useStudioContext()
 const reduced = useReducedMotion()
 const ringId = `backdrop-ring-${useId()}`
 const active = computed(() => activeBackdropId(props.glass))
 // A set carries its own vignette: a glow wants less falloff than a flat wall.
-const apply = (b: BackdropPreset) => Object.assign(props.glass, b.values)
+const apply = (b: BackdropPreset) => editBackdrop(b.values)
 </script>
 
 <template>

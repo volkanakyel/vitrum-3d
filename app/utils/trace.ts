@@ -99,18 +99,28 @@ export const DEFAULT_TRACE_OPTIONS: TraceOptions = {
  */
 export type TraceSource = HTMLImageElement | HTMLCanvasElement | ImageBitmap
 
-export async function loadImage(file: File): Promise<HTMLImageElement> {
+export async function loadImage(file: File, signal?: AbortSignal): Promise<HTMLImageElement> {
+  signal?.throwIfAborted()
   const url = URL.createObjectURL(file)
+  let img: HTMLImageElement | null = null
+  let abort = () => {}
   try {
     return await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image()
-      img.onload = () => resolve(img)
-      img.onerror = () => reject(new Error('Could not decode image'))
-      img.src = url
+      const image = img = new Image()
+      abort = () => {
+        image.onload = image.onerror = null
+        image.src = ''
+        reject(signal?.reason ?? new DOMException('Operation cancelled', 'AbortError'))
+      }
+      image.onload = () => resolve(image)
+      image.onerror = () => reject(new Error('Could not decode image'))
+      signal?.addEventListener('abort', abort, { once: true })
+      image.src = url
     })
   } finally {
-    // Revoke after decode; the element keeps its bitmap.
-    setTimeout(() => URL.revokeObjectURL(url), 0)
+    signal?.removeEventListener('abort', abort)
+    if (img) (img as HTMLImageElement).onload = (img as HTMLImageElement).onerror = null
+    URL.revokeObjectURL(url)
   }
 }
 

@@ -1,3 +1,4 @@
+import { abortable, abortError } from './async'
 import type { ShowcaseWorkerResponse } from '~/workers/showcase.worker'
 import type { MarkData, MarkRequest } from './showcaseMark'
 import { HERO_SPOTS, HERO_STORY } from './samples'
@@ -22,24 +23,33 @@ export interface MarkBuild {
 /** One worker, one batch: marks are posted back one by one, `done` closes the batch. */
 function runWorker(requests: MarkRequest[]): MarkBuild {
   let worker: Worker | null = null
+  let finish: (err?: Error) => void = () => {}
   const marks = new Promise<MarkData[]>((resolve, reject) => {
-    worker = new Worker(new URL('../workers/showcase.worker.ts', import.meta.url), { type: 'module' })
     const out: MarkData[] = []
-    const finish = (err?: Error) => {
-      worker?.terminate()
-      worker = null
+    let settled = false
+    finish = (err?: Error) => {
+      if (settled) return
+      settled = true
+      if (worker) {
+        worker.onmessage = worker.onerror = null
+        worker.terminate()
+        worker = null
+      }
       if (err) reject(err)
       else resolve(out)
     }
-    worker.onmessage = (e: MessageEvent<ShowcaseWorkerResponse>) => {
-      const msg = e.data
-      if (msg.type === 'mark') out.push(msg.mark)
-      else finish(msg.type === 'error' ? new Error(msg.message) : undefined)
-    }
-    worker.onerror = e => finish(new Error(e.message || 'worker failed'))
-    worker.postMessage({ marks: requests })
+    try {
+      worker = new Worker(new URL('../workers/showcase.worker.ts', import.meta.url), { type: 'module' })
+      worker.onmessage = (e: MessageEvent<ShowcaseWorkerResponse>) => {
+        const msg = e.data
+        if (msg.type === 'mark') out.push(msg.mark)
+        else finish(msg.type === 'error' ? new Error(msg.message) : undefined)
+      }
+      worker.onerror = e => finish(new Error(e.message || 'worker failed'))
+      worker.postMessage({ marks: requests })
+    } catch (err) { finish(err as Error) }
   })
-  return { marks, terminate: () => { worker?.terminate(); worker = null } }
+  return { marks, terminate: () => finish(abortError()) }
 }
 
 /**
@@ -49,13 +59,18 @@ function runWorker(requests: MarkRequest[]): MarkBuild {
  */
 export function buildMarksInWorker(requests: MarkRequest[]): MarkBuild {
   if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
-    return { marks: Promise.reject(new Error('no module worker')), terminate: () => {} }
+    const marks = Promise.reject<MarkData[]>(new Error('no module worker'))
+    marks.catch(() => {})
+    return { marks, terminate: () => {} }
   }
   const lanes = Math.min(2, requests.length, Math.max(1, (navigator.hardwareConcurrency || 2) - 1))
   const batches: MarkRequest[][] = Array.from({ length: lanes }, () => [])
   requests.forEach((r, i) => batches[i % lanes]!.push(r))
   const runs = batches.map(runWorker)
-  const marks = Promise.all(runs.map(r => r.marks)).then(all => all.flat())
+  const marks = Promise.all(runs.map(r => r.marks)).then(all => all.flat()).catch(err => {
+    runs.forEach(r => r.terminate())
+    throw err
+  })
   // An unawaited rejection (fallback taken, page left) is not an error worth reporting.
   marks.catch(() => {})
   return { marks, terminate: () => runs.forEach(r => r.terminate()) }
@@ -95,19 +110,22 @@ export function heroMarks(requests: MarkRequest[], version: string): MarkBuild {
   if (typeof indexedDB === 'undefined' || !version) return buildMarksInWorker(requests)
   const key = `${version}:${requests.map(r => `${r.id}/${r.sampleId}/${r.sizeMm}/${r.res}`).join(',')}`
   let build: MarkBuild | null = null
-  let stopped = false
-  const marks = idb<MarkData[] | undefined>('readonly', s => s.get(key))
+  const controller = new AbortController()
+  const { signal } = controller
+  const work = idb<MarkData[] | undefined>('readonly', s => s.get(key))
     .catch(() => undefined)
     .then((hit) => {
+      signal.throwIfAborted()
       if (hit?.length === requests.length) return hit
-      if (stopped) throw new Error('stopped')
       build = buildMarksInWorker(requests)
       return build.marks.then((built) => {
+        signal.throwIfAborted()
         // Earlier builds' entries go; this one is written once (structured clone of the arrays).
         idb('readwrite', s => s.clear()).then(() => idb('readwrite', s => s.put(built, key))).catch(() => {})
         return built
       })
     })
+  const marks = abortable(work, signal)
   marks.catch(() => {})
-  return { marks, terminate: () => { stopped = true; build?.terminate() } }
+  return { marks, terminate: () => { controller.abort(); build?.terminate() } }
 }

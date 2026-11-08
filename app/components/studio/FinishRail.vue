@@ -11,10 +11,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 const RAIL = ['clear', 'frosted', 'smoke', 'obsidian', 'liquid', 'chrome', 'silver', 'titanium', 'black', 'ceramic'] as const
 
 const props = defineProps<{ glass: GlassParams }>()
+const { selectMaterial } = useStudioContext()
 const reduced = useReducedMotion()
 const looks = RAIL.map(id => MATERIAL_PRESETS.find(p => p.id === id)!).filter(Boolean)
 const active = computed(() => activePresetId(props.glass))
-const apply = (p: MaterialPreset) => applyPreset(props.glass, p)
+const apply = (p: MaterialPreset) => selectMaterial(p)
 </script>
 
 <template>

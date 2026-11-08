@@ -42,6 +42,9 @@ export class Tracer {
   private workerHasSource = false
   private sourceReady: Promise<void> = Promise.resolve()
   private nextId = 1
+  private sourceRevision = 0
+  private disposed = false
+  private cancelMain: (() => void) | null = null
   private inflight: Job | null = null
   /** One waiting request per kind: a slider drag on the relief never cancels a pending trace. */
   private pending: { trace: Work | null; relief: Work | null } = { trace: null, relief: null }
@@ -68,10 +71,13 @@ export class Tracer {
    * waits for it, so a trace issued right after `setSource` is ordered correctly.
    */
   setSource(img: HTMLImageElement | null): void {
+    if (this.disposed) return
+    this.cancelJobs()
+    const revision = ++this.sourceRevision
     this.image = img
     this.workerHasSource = false
     const worker = this.worker
-    if (!worker) return
+    if (!worker) { this.sourceReady = Promise.resolve(); return }
     this.sourceReady = (async () => {
       let bitmap: ImageBitmap | null = null
       if (img) {
@@ -82,9 +88,14 @@ export class Tracer {
           if (import.meta.dev) console.warn('[tracer] createImageBitmap failed, tracing on the main thread:', err)
         }
       }
-      if (this.worker !== worker || this.image !== img) { bitmap?.close(); return }
-      worker.postMessage({ type: 'source', bitmap } satisfies TraceWorkerRequest, bitmap ? [bitmap] : [])
-      this.workerHasSource = !!bitmap
+      if (this.disposed || revision !== this.sourceRevision || this.worker !== worker) { bitmap?.close(); return }
+      try {
+        worker.postMessage({ type: 'source', bitmap } satisfies TraceWorkerRequest, bitmap ? [bitmap] : [])
+        this.workerHasSource = !!bitmap
+      } catch {
+        bitmap?.close()
+        this.dropWorker()
+      }
     })()
   }
 
@@ -102,6 +113,12 @@ export class Tracer {
   }
 
   private enqueue(work: Work) {
+    if (this.disposed) { work.resolve(null); return }
+    // A new outline invalidates queued grids: their crop/mask belongs to the previous trace.
+    if (work.kind === 'trace') {
+      this.pending.relief?.resolve(null)
+      this.pending.relief = null
+    }
     if (this.inflight) {
       // Newest options win; the request they replace resolves empty so callers can ignore it.
       this.pending[work.kind]?.resolve(null)
@@ -139,10 +156,17 @@ export class Tracer {
     // Yield a frame first so whatever the UI just changed (a loader step, a slider thumb)
     // paints before the synchronous trace takes the thread. rAF is paused in background
     // tabs, so a short timeout backs it up.
+    this.cancelMain?.()
+    let frame = 0
+    let timer: ReturnType<typeof setTimeout>
     let started = false
+    const cancel = () => { cancelAnimationFrame(frame); clearTimeout(timer) }
+    this.cancelMain = cancel
     const go = () => {
       if (started) return
       started = true
+      cancel()
+      if (this.cancelMain === cancel) this.cancelMain = null
       if (this.inflight !== job) return
       const img = this.image
       if (!img) { this.finish(job, () => job.resolve(null)); return }
@@ -159,8 +183,8 @@ export class Tracer {
         this.finish(job, () => job.reject(err as Error))
       }
     }
-    requestAnimationFrame(go)
-    setTimeout(go, 80)
+    frame = requestAnimationFrame(go)
+    timer = setTimeout(go, 80)
   }
 
   private onMessage(msg: TraceWorkerResponse) {
@@ -185,17 +209,26 @@ export class Tracer {
   }
 
   private dropWorker() {
-    this.worker?.terminate()
+    if (this.worker) { this.worker.onmessage = null; this.worker.onerror = null; this.worker.terminate() }
     this.worker = null
     this.workerHasSource = false
   }
 
-  dispose(): void {
+  private cancelJobs(): void {
+    this.cancelMain?.()
+    this.cancelMain = null
     this.pending.trace?.resolve(null)
     this.pending.relief?.resolve(null)
     this.pending = { trace: null, relief: null }
     this.inflight?.resolve(null)
     this.inflight = null
+  }
+
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    this.sourceRevision++
+    this.cancelJobs()
     this.image = null
     this.dropWorker()
   }

@@ -5,7 +5,7 @@ import type { SegmentOption } from './SegmentedControl.vue'
 import { MATERIAL_PRESETS, type Finish, type GlassParams, type MaterialPreset } from '~/utils/presets'
 
 const props = defineProps<{ glass: GlassParams }>()
-const { ink } = useStudioContext()
+const { ink, selectMaterial } = useStudioContext()
 
 const tab = ref<Finish>(props.glass.finish)
 const finishLabel: Record<Finish, string> = { glass: 'Glass', liquid: 'Liquid', metal: 'Metal', print: 'Color' }
@@ -14,7 +14,7 @@ watch(() => props.glass.finish, f => (tab.value = f))
 
 const presets = computed(() => MATERIAL_PRESETS.filter(p => p.group === tab.value))
 const active = computed(() => activePresetId(props.glass))
-const apply = (p: MaterialPreset) => applyPreset(props.glass, p)
+const apply = (p: MaterialPreset) => selectMaterial(p)
 const finishes: SegmentOption<Finish>[] = (['glass', 'liquid', 'metal', 'print'] as const).map(f => ({ value: f, label: finishLabel[f], icon: finishIcon[f] }))
 function pickPreset(id: unknown) {
   const p = presets.value.find(m => m.id === id)

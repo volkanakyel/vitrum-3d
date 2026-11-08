@@ -5,7 +5,7 @@ import type { SegmentOption } from '~/components/studio/SegmentedControl.vue'
 import { DEFAULT_GLASS_PARAMS as D, MATERIAL_PRESETS, type ColorSource, type GlassParams, type MaterialPreset } from '~/utils/presets'
 
 /** The Material tab: the finish, then the knobs that finish has. */
-const { glass, ink } = useStudioContext()
+const { glass, ink, editMaterial } = useStudioContext()
 const { isMobile } = useSidebar()
 
 const METAL_SWATCHES = ['#e4b84a', '#d9a08a', '#f2f3f5', '#d8d9dc', '#c8734a', '#5f636b', '#15161a', '#f4f4f2', '#2c5cff', '#c0392b']
@@ -35,7 +35,7 @@ const base = computed<GlassParams>(() => {
   return { ...D, ...finishBase, ...picked }
 })
 function restore(...keys: (keyof GlassParams)[]) {
-  Object.assign(glass, Object.fromEntries(keys.map(k => [k, base.value[k]])))
+  editMaterial(Object.fromEntries(keys.map(k => [k, base.value[k]])))
 }
 
 function resetSurface() {
@@ -65,17 +65,20 @@ function resetSurface() {
       <Reveal :key="glass.finish">
         <template v-if="glass.finish === 'print'">
           <SegmentedControl
-            v-model="glass.colorSource"
+            :model-value="glass.colorSource"
+            @update:model-value="editMaterial({ colorSource: $event })"
             :options="COLOR_SOURCES"
           />
           <ColorField
             v-if="glass.colorSource === 'paint'"
-            v-model="glass.paint"
+            :model-value="glass.paint"
+            @update:model-value="editMaterial({ paint: $event })"
             label="Paint"
             :swatches="PAINT_SWATCHES"
           />
           <SliderField
-            v-model="glass.roughness"
+            :model-value="glass.roughness"
+            @update:model-value="editMaterial({ roughness: $event })"
             label="Roughness"
             :min="0"
             :max="1"
@@ -83,7 +86,8 @@ function resetSurface() {
             :default-value="base.roughness"
           />
           <SliderField
-            v-model="glass.sheen"
+            :model-value="glass.sheen"
+            @update:model-value="editMaterial({ sheen: $event })"
             label="Sheen"
             hint="Soft glow at grazing angles, the way cloth and velvet catch the light"
             :min="0"
@@ -97,7 +101,8 @@ function resetSurface() {
         </template>
         <template v-else-if="isGlass">
           <SliderField
-            v-model="glass.ior"
+            :model-value="glass.ior"
+            @update:model-value="editMaterial({ ior: $event })"
             label="Refraction"
             hint="How much the glass bends what is behind it: 1.5 window glass, 1.9 crystal, 2.4 diamond"
             :min="1"
@@ -107,7 +112,8 @@ function resetSurface() {
           />
           <SliderField
             v-if="glass.finish === 'liquid'"
-            v-model="glass.dispersion"
+            :model-value="glass.dispersion"
+            @update:model-value="editMaterial({ dispersion: $event })"
             label="Dispersion"
             hint="How far each edge splits into a spectrum, red on one side and blue on the other"
             :min="0"
@@ -116,7 +122,8 @@ function resetSurface() {
             :default-value="base.dispersion"
           />
           <SliderField
-            v-model="glass.clarity"
+            :model-value="glass.clarity"
+            @update:model-value="editMaterial({ clarity: $event })"
             label="Clarity"
             hint="How much light passes through; lower reads as milky glass"
             :min="0.3"
@@ -125,7 +132,8 @@ function resetSurface() {
             :default-value="base.clarity"
           />
           <SliderField
-            v-model="glass.roughness"
+            :model-value="glass.roughness"
+            @update:model-value="editMaterial({ roughness: $event })"
             label="Frost"
             hint="Matte, sandblasted surface"
             :min="0"
@@ -136,12 +144,14 @@ function resetSurface() {
         </template>
         <template v-else>
           <ColorField
-            v-model="glass.tint"
+            :model-value="glass.tint"
+            @update:model-value="editMaterial({ tint: $event })"
             label="Color"
             :swatches="METAL_SWATCHES"
           />
           <SliderField
-            v-model="glass.metalness"
+            :model-value="glass.metalness"
+            @update:model-value="editMaterial({ metalness: $event })"
             label="Metalness"
             :min="0"
             :max="1"
@@ -149,7 +159,8 @@ function resetSurface() {
             :default-value="base.metalness"
           />
           <SliderField
-            v-model="glass.roughness"
+            :model-value="glass.roughness"
+            @update:model-value="editMaterial({ roughness: $event })"
             label="Roughness"
             :min="0"
             :max="1"
@@ -169,7 +180,8 @@ function resetSurface() {
       @reset="restore('tir', 'edgeChroma', 'clearcoat', 'tint', 'attenuationMm')"
     >
       <SliderField
-        v-model="glass.edgeChroma"
+        :model-value="glass.edgeChroma"
+            @update:model-value="editMaterial({ edgeChroma: $event })"
         label="Rainbow rim"
         hint="Thin-film colours on the rims that turn with the view; 1 is holographic"
         :min="0"
@@ -178,11 +190,13 @@ function resetSurface() {
         :default-value="base.edgeChroma"
       />
       <ColorField
-        v-model="glass.tint"
+        :model-value="glass.tint"
+            @update:model-value="editMaterial({ tint: $event })"
         label="Tint"
       />
       <SliderField
-        v-model="glass.attenuationMm"
+        :model-value="glass.attenuationMm"
+            @update:model-value="editMaterial({ attenuationMm: $event })"
         label="Tint depth"
         hint="How far light travels before it takes the full tint; small is deep colour"
         :min="2"

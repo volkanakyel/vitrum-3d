@@ -63,8 +63,12 @@ function pickSwatch(v: unknown) {
 // --- pointer handling on the saturation/value square and hue strip ------------
 // The markers follow the pointer 1:1 (no transition on their position); pointer capture keeps the
 // drag alive outside the square, and a second finger can't hijack it.
+let stopDrag: (() => void) | null = null
+onScopeDispose(() => stopDrag?.())
+
 function drag(e: PointerEvent, onMove: (x: number, y: number) => void) {
-  if (!e.isPrimary) return
+  if (!e.isPrimary || e.button !== 0) return
+  stopDrag?.()
   const el = e.currentTarget as HTMLElement
   el.setPointerCapture(e.pointerId)
   const rect = el.getBoundingClientRect()
@@ -76,11 +80,17 @@ function drag(e: PointerEvent, onMove: (x: number, y: number) => void) {
     commit()
   }
   update(e)
-  const stop = () => {
+  const stop = (event?: PointerEvent) => {
+    if (event && event.pointerId !== e.pointerId) return
     el.removeEventListener('pointermove', update)
     el.removeEventListener('pointerup', stop)
     el.removeEventListener('pointercancel', stop)
+    el.removeEventListener('lostpointercapture', stop)
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
+    stopDrag = null
   }
+  stopDrag = stop
+  el.addEventListener('lostpointercapture', stop)
   el.addEventListener('pointermove', update)
   el.addEventListener('pointerup', stop)
   el.addEventListener('pointercancel', stop)
